@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 use std::sync::Arc;
 use std::thread;
 use tauri::{AppHandle, Emitter, State};
+use headless_chrome::{Browser, LaunchOptions};
+use std::time::Duration;
 
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
@@ -260,6 +262,7 @@ async fn ensure_maros_dir() -> Result<String, String> {
 struct ProjectInfo {
     name: String,
     path: String,
+    thumbnail: Option<String>,
 }
 
 #[tauri::command]
@@ -381,15 +384,85 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         if path.is_dir() {
             // Check if it's a valid project (has package.json)
             if path.join("package.json").exists() {
+                // Check for thumbnail
+                let thumbnail_path = path.join(".maros").join("thumbnail.png");
+                let thumbnail = if thumbnail_path.exists() {
+                    Some(thumbnail_path.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+
                 projects.push(ProjectInfo {
                     name: entry.file_name().to_string_lossy().to_string(),
                     path: path.to_string_lossy().to_string(),
+                    thumbnail,
                 });
             }
         }
     }
 
     Ok(projects)
+}
+
+#[tauri::command]
+async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
+    let project = std::path::Path::new(&project_path);
+    let maros_dir = project.join(".maros");
+
+    // Ensure .maros directory exists
+    if !maros_dir.exists() {
+        std::fs::create_dir_all(&maros_dir).map_err(|e| e.to_string())?;
+    }
+
+    let thumbnail_path = maros_dir.join("thumbnail.png");
+
+    // Launch headless browser and capture screenshot
+    let launch_options = LaunchOptions::default_builder()
+        .headless(true)
+        .window_size(Some((1200, 800)))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let browser = Browser::new(launch_options).map_err(|e| e.to_string())?;
+    let tab = browser.new_tab().map_err(|e| e.to_string())?;
+
+    // Navigate to the URL
+    tab.navigate_to(&url).map_err(|e| e.to_string())?;
+
+    // Wait for page to load
+    tab.wait_until_navigated().map_err(|e| e.to_string())?;
+    std::thread::sleep(Duration::from_millis(1500)); // Extra time for JS rendering
+
+    // Capture screenshot
+    let screenshot = tab
+        .capture_screenshot(
+            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+            None,
+            None,
+            true,
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Save to file
+    std::fs::write(&thumbnail_path, &screenshot).map_err(|e| e.to_string())?;
+
+    Ok(thumbnail_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, String> {
+    let project = std::path::Path::new(&project_path);
+    let thumbnail_path = project.join(".maros").join("thumbnail.png");
+
+    if thumbnail_path.exists() {
+        // Return as base64 data URL for easy display
+        use base64::Engine;
+        let data = std::fs::read(&thumbnail_path).map_err(|e| e.to_string())?;
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+        Ok(Some(format!("data:image/png;base64,{}", base64_data)))
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -409,6 +482,8 @@ pub fn run() {
             list_projects,
             list_pages,
             delete_project,
+            capture_project_thumbnail,
+            get_project_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

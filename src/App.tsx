@@ -6,6 +6,7 @@ import { CreateProject } from "./components/CreateProject";
 import { SetupScreen } from "./components/SetupScreen";
 import { SplitPane } from "./components/SplitPane";
 import { checkPrerequisites, startDevServer, Prerequisite, Project, DevServerHandle } from "./lib/project";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
 type AppView = "loading" | "setup" | "projects" | "create" | "workspace";
@@ -14,6 +15,7 @@ function App() {
   const [view, setView] = useState<AppView>("loading");
   const [prerequisites, setPrerequisites] = useState<Prerequisite[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
   const devServerRef = useRef<DevServerHandle | null>(null);
 
   // Check prerequisites on mount
@@ -58,16 +60,31 @@ function App() {
 
   const handleProjectCreated = async (projectPath: string) => {
     const projectName = projectPath.split("/").pop() || "project";
-    handleSelectProject({ name: projectName, path: projectPath });
+    handleSelectProject({ name: projectName, path: projectPath, thumbnail: null });
   };
 
   const handleBackToProjects = async () => {
+    setIsClosing(true);
+
+    // Capture thumbnail before closing
+    if (currentProject) {
+      try {
+        await invoke("capture_project_thumbnail", {
+          projectPath: currentProject.path,
+          url: "http://localhost:3000",
+        });
+      } catch (error) {
+        console.error("Failed to capture thumbnail:", error);
+      }
+    }
+
     // Stop dev server if running
     if (devServerRef.current) {
       await devServerRef.current.stop();
       devServerRef.current = null;
     }
     setCurrentProject(null);
+    setIsClosing(false);
     setView("projects");
   };
 
@@ -114,8 +131,12 @@ function App() {
   return (
     <div className="app workspace">
       <header className="workspace-header">
-        <button className="back-button" onClick={handleBackToProjects}>
-          ← Projects
+        <button
+          className="back-button"
+          onClick={handleBackToProjects}
+          disabled={isClosing}
+        >
+          {isClosing ? "Saving..." : "← Projects"}
         </button>
         <h1>{currentProject?.name}</h1>
         <span className="project-path">{currentProject?.path}</span>

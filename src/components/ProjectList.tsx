@@ -4,6 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 interface Project {
   name: string;
   path: string;
+  thumbnail: string | null;
+}
+
+interface ProjectWithThumbnail extends Project {
+  thumbnailData: string | null;
 }
 
 interface ProjectListProps {
@@ -12,7 +17,7 @@ interface ProjectListProps {
 }
 
 export function ProjectList({ onSelectProject, onCreateProject }: ProjectListProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -20,7 +25,25 @@ export function ProjectList({ onSelectProject, onCreateProject }: ProjectListPro
   const loadProjects = async () => {
     try {
       const projectList = await invoke<Project[]>("list_projects");
-      setProjects(projectList);
+
+      // Load thumbnails for each project
+      const projectsWithThumbnails = await Promise.all(
+        projectList.map(async (project) => {
+          let thumbnailData: string | null = null;
+          if (project.thumbnail) {
+            try {
+              thumbnailData = await invoke<string | null>("get_project_thumbnail", {
+                projectPath: project.path,
+              });
+            } catch (e) {
+              console.error("Failed to load thumbnail for", project.name, e);
+            }
+          }
+          return { ...project, thumbnailData };
+        })
+      );
+
+      setProjects(projectsWithThumbnails);
     } catch (error) {
       console.error("Failed to load projects:", error);
     } finally {
@@ -59,7 +82,7 @@ export function ProjectList({ onSelectProject, onCreateProject }: ProjectListPro
     <div className="project-list">
       <div className="project-list-header">
         <h1>MarOS</h1>
-        <p>Build Next.js sites with Claude Code</p>
+        <p>Build AI native marketing sites easily with SOTA technology.</p>
       </div>
 
       <div className="project-list-actions">
@@ -74,27 +97,40 @@ export function ProjectList({ onSelectProject, onCreateProject }: ProjectListPro
           <p className="hint">Create your first project to get started</p>
         </div>
       ) : (
-        <div className="project-list-items">
-          <h2>Your Projects</h2>
+        <div className="project-grid">
           {projects.map((project) => (
-            <div key={project.path} className="project-item-row">
+            <div key={project.path} className="project-card">
               <button
-                className="project-item"
+                className="project-card-thumbnail"
                 onClick={() => onSelectProject(project)}
               >
-                <span className="project-name">{project.name}</span>
-                <span className="project-path">{project.path}</span>
+                {project.thumbnailData ? (
+                  <img
+                    src={project.thumbnailData}
+                    alt={project.name}
+                  />
+                ) : (
+                  <div className="project-card-placeholder">
+                    <span>No preview</span>
+                  </div>
+                )}
               </button>
-              <button
-                className="project-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteConfirm(project);
-                }}
-                title="Delete project"
-              >
-                ×
-              </button>
+              <div className="project-card-info">
+                <div className="project-card-details">
+                  <span className="project-card-name">{project.name}</span>
+                  <span className="project-card-path">{project.path}</span>
+                </div>
+                <button
+                  className="project-card-menu"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteConfirm(project);
+                  }}
+                  title="Delete project"
+                >
+                  •••
+                </button>
+              </div>
             </div>
           ))}
         </div>

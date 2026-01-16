@@ -4,6 +4,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 export interface Project {
   name: string;
   path: string;
+  thumbnail: string | null;
 }
 
 export interface Prerequisite {
