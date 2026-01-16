@@ -258,7 +258,7 @@ button:hover {
 }
 
 .project-card-thumbnail {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1200 / 661;
   width: 100%;
   padding: 0;
   border: none;
@@ -270,8 +270,8 @@ button:hover {
 .project-card-thumbnail img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: top;
+  object-fit: contain;
+  background: var(--bg-tertiary);
 }
 
 .project-card-placeholder {
