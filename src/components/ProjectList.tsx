@@ -39,7 +39,6 @@ export function ProjectList({
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openingProject, setOpeningProject] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -102,11 +101,6 @@ export function ProjectList({
   useEffect(() => {
     loadProjects();
   }, []);
-
-  const handleOpenProject = (project: Project) => {
-    setOpeningProject(project.path);
-    onSelectProject(project);
-  };
 
   const handleDelete = async (project: Project) => {
     setDeleting(true);
@@ -342,15 +336,9 @@ export function ProjectList({
             <div key={project.path} className="project-card">
               <button
                 className="project-card-thumbnail"
-                onClick={() => handleOpenProject(project)}
-                disabled={openingProject !== null}
+                onClick={() => onSelectProject(project)}
               >
-                {openingProject === project.path ? (
-                  <div className="project-card-placeholder">
-                    <div className="spinner" />
-                    <span>Opening...</span>
-                  </div>
-                ) : project.thumbnailData ? (
+                {project.thumbnailData ? (
                   <img
                     src={project.thumbnailData}
                     alt={project.name}
