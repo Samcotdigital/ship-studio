@@ -1,7 +1,7 @@
-use headless_chrome::{Browser, LaunchOptions};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use std::time::Duration;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 #[derive(Serialize)]
 struct PrerequisiteCheck {
@@ -196,7 +196,7 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
 }
 
 #[tauri::command]
-async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
+async fn capture_project_thumbnail(project_path: String, _url: String) -> Result<String, String> {
     let project = std::path::Path::new(&project_path);
     let marketingstack_dir = project.join(".marketingstack");
 
@@ -206,38 +206,20 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
     }
 
     let thumbnail_path = marketingstack_dir.join("thumbnail.png");
+    let thumbnail_path_str = thumbnail_path.to_string_lossy().to_string();
 
-    // Launch headless browser and capture screenshot
-    let launch_options = LaunchOptions::default_builder()
-        .headless(true)
-        .window_size(Some((1200, 800)))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // Use macOS native screencapture - doesn't spawn any browser
+    let output = Command::new("screencapture")
+        .args(["-x", "-t", "png", &thumbnail_path_str])
+        .output()
+        .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 
-    let browser = Browser::new(launch_options).map_err(|e| e.to_string())?;
-    let tab = browser.new_tab().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("screencapture failed: {}", stderr));
+    }
 
-    // Navigate to the URL
-    tab.navigate_to(&url).map_err(|e| e.to_string())?;
-
-    // Wait for page to load
-    tab.wait_until_navigated().map_err(|e| e.to_string())?;
-    std::thread::sleep(Duration::from_millis(1500)); // Extra time for JS rendering
-
-    // Capture screenshot
-    let screenshot = tab
-        .capture_screenshot(
-            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
-            None,
-            None,
-            true,
-        )
-        .map_err(|e| e.to_string())?;
-
-    // Save to file
-    std::fs::write(&thumbnail_path, &screenshot).map_err(|e| e.to_string())?;
-
-    Ok(thumbnail_path.to_string_lossy().to_string())
+    Ok(thumbnail_path_str)
 }
 
 #[tauri::command]
@@ -257,7 +239,7 @@ async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, S
 }
 
 #[tauri::command]
-async fn capture_preview_to_file(url: String, project_path: String) -> Result<String, String> {
+async fn capture_preview_to_clipboard(project_path: String) -> Result<(), String> {
     let project = std::path::Path::new(&project_path);
     let screenshots_dir = project.join(".marketingstack").join("screenshots");
 
@@ -272,38 +254,60 @@ async fn capture_preview_to_file(url: String, project_path: String) -> Result<St
         .map_err(|e| e.to_string())?
         .as_millis();
     let screenshot_path = screenshots_dir.join(format!("screenshot-{}.png", timestamp));
+    let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
 
-    // Launch headless browser and capture screenshot
-    let launch_options = LaunchOptions::default_builder()
-        .headless(true)
-        .window_size(Some((1200, 800)))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // Use Playwright to capture localhost:3000 preview
+    // Spawn in a NEW PROCESS GROUP to prevent signals from killing Claude Code
+    #[cfg(unix)]
+    let mut cmd = {
+        let mut cmd = Command::new("npx");
+        cmd.args([
+            "playwright",
+            "screenshot",
+            "http://localhost:3000",
+            &screenshot_path_str,
+            "--viewport-size=1200,800",
+        ]);
+        cmd.process_group(0); // Create new process group
+        cmd
+    };
 
-    let browser = Browser::new(launch_options).map_err(|e| e.to_string())?;
-    let tab = browser.new_tab().map_err(|e| e.to_string())?;
+    #[cfg(not(unix))]
+    let mut cmd = {
+        let mut cmd = Command::new("npx");
+        cmd.args([
+            "playwright",
+            "screenshot",
+            "http://localhost:3000",
+            &screenshot_path_str,
+            "--viewport-size=1200,800",
+        ]);
+        cmd
+    };
 
-    // Navigate to the URL
-    tab.navigate_to(&url).map_err(|e| e.to_string())?;
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn playwright: {}", e))?;
+    let status = child.wait().map_err(|e| format!("Failed to wait for playwright: {}", e))?;
 
-    // Wait for page to load
-    tab.wait_until_navigated().map_err(|e| e.to_string())?;
-    std::thread::sleep(Duration::from_millis(1500)); // Extra time for JS rendering
+    if !status.success() {
+        return Err("Playwright screenshot failed".to_string());
+    }
 
-    // Capture screenshot as PNG
-    let screenshot_data = tab
-        .capture_screenshot(
-            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
-            None,
-            None,
-            true,
-        )
-        .map_err(|e| e.to_string())?;
+    // Copy the image file to clipboard using osascript
+    let copy_script = format!(
+        "set the clipboard to (read (POSIX file \"{}\") as «class PNGf»)",
+        screenshot_path_str
+    );
+    let copy_output = Command::new("osascript")
+        .args(["-e", &copy_script])
+        .output()
+        .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
 
-    // Save to file
-    std::fs::write(&screenshot_path, &screenshot_data).map_err(|e| e.to_string())?;
+    if !copy_output.status.success() {
+        let stderr = String::from_utf8_lossy(&copy_output.stderr);
+        return Err(format!("Failed to copy to clipboard: {}", stderr));
+    }
 
-    Ok(screenshot_path.to_string_lossy().to_string())
+    Ok(())
 }
 
 // ============ Claude Integration ============
@@ -1325,7 +1329,7 @@ pub fn run() {
             delete_project,
             capture_project_thumbnail,
             get_project_thumbnail,
-            capture_preview_to_file,
+            capture_preview_to_clipboard,
             // Claude integration
             check_claude_cli_status,
             install_claude_cli,

@@ -49,7 +49,6 @@ function App() {
   const devServerRef = useRef<DevServerHandle | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
 
   // GitHub state
   const [githubState, setGithubState] = useState<GitHubState>({
@@ -171,33 +170,6 @@ function App() {
     }
   }, []);
 
-  // Capture screenshot and send file path to terminal
-  const captureAndSend = useCallback(async (e: React.MouseEvent) => {
-    if (isCapturing || !currentProject) return;
-
-    // Prevent the button from stealing focus
-    e.preventDefault();
-
-    setIsCapturing(true);
-
-    try {
-      // 1. Capture screenshot to file
-      const filePath = await invoke<string>("capture_preview_to_file", {
-        url: "http://localhost:3000",
-        projectPath: currentProject.path,
-      });
-
-      // 2. Write file path directly to terminal
-      terminalRef.current?.write(filePath);
-
-      // 3. Focus terminal
-      terminalRef.current?.focus();
-    } catch (error) {
-      console.error("Failed to capture screenshot:", error);
-    } finally {
-      setIsCapturing(false);
-    }
-  }, [isCapturing, currentProject]);
 
   const handleSelectProject = async (project: Project) => {
     setCurrentProject(project);
@@ -373,18 +345,6 @@ function App() {
             <div className="terminal-pane">
               <div className="terminal-toolbar">
                 <span className="terminal-title">Claude Code</span>
-                <button
-                  className={`terminal-capture ${isCapturing ? "capturing" : ""}`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={captureAndSend}
-                  disabled={isCapturing}
-                  title="Capture preview screenshot and send to Claude"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                </button>
               </div>
               <div className="terminal-content">
                 <Terminal

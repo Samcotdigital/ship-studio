@@ -3,6 +3,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { spawn, IPty } from "tauri-pty";
+import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalProps {
@@ -53,6 +54,50 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       }
     };
     checkReady();
+  }, []);
+
+  // Listen for Tauri file drop events
+  // Use a ref for debounce to persist across HMR
+  const lastDropTimeRef = useRef(0);
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setupDropListener = async () => {
+      // Listen for the tauri://drag-drop event
+      unlisten = await listen<{ paths: string[]; position: { x: number; y: number } }>(
+        "tauri://drag-drop",
+        async (event) => {
+          // Debounce - ignore duplicate events within 500ms
+          const now = Date.now();
+          if (now - lastDropTimeRef.current < 500) {
+            return;
+          }
+          lastDropTimeRef.current = now;
+
+          const pty = ptyRef.current;
+          const term = terminalRef.current;
+
+          if (pty && term && event.payload.paths && event.payload.paths.length > 0) {
+            // Quote paths that contain spaces
+            const quotedPaths = event.payload.paths.map(p =>
+              p.includes(" ") ? `"${p}"` : p
+            ).join(" ");
+
+            // Focus terminal and paste the path
+            term.focus();
+            (term as any).paste(quotedPaths);
+          }
+        }
+      );
+    };
+
+    setupDropListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
   }, []);
 
   // Create terminal when ready
@@ -111,8 +156,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Setup PTY connection using tauri-pty
-    const setupPty = async () => {
+    // Setup PTY connection using tauri-pty with retry logic
+    const setupPty = async (retryCount = 0) => {
+      const maxRetries = 3;
+
       try {
         // Fit again to ensure correct size
         fitAddon.fit();
@@ -143,11 +190,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         });
 
       } catch (err) {
-        term.write(`\x1b[31mError starting Claude: ${err}\x1b[0m\r\n`);
+        console.error("Failed to spawn Claude:", err);
+
+        if (retryCount < maxRetries) {
+          term.write(`\x1b[33mFailed to start Claude, retrying (${retryCount + 1}/${maxRetries})...\x1b[0m\r\n`);
+          setTimeout(() => setupPty(retryCount + 1), 1000);
+        } else {
+          term.write(`\x1b[31mError starting Claude: ${err}\x1b[0m\r\n`);
+          term.write(`\x1b[33mMake sure Claude Code is installed: npm install -g @anthropic-ai/claude-code\x1b[0m\r\n`);
+        }
       }
     };
 
-    setupPty();
+    // Small delay before starting to ensure terminal is ready
+    setTimeout(() => setupPty(), 100);
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
@@ -169,6 +225,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     terminalRef.current?.focus();
   }, []);
 
+  // Handle drag over to allow drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  // Handle file drop - write file path to terminal (fallback for React drag events)
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Main drop handling is done via Tauri's drag-drop event listener
+  }, []);
+
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -186,6 +255,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     <div
       ref={containerRef}
       onClick={handleClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       style={{
         width: "100%",
         height: "100%",
