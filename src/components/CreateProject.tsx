@@ -10,7 +10,7 @@ interface CreateProjectProps {
   onCancel: () => void;
 }
 
-const TEMPLATE_REPO = "https://github.com/julianmemberstack/maros-boilerplate-next-1";
+const TEMPLATE_REPO = "https://github.com/marketingstack/marketingstack-boilerplate";
 
 export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
   const [projectName, setProjectName] = useState("");
