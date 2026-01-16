@@ -466,6 +466,56 @@ async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, S
     }
 }
 
+#[tauri::command]
+async fn capture_preview_to_file(url: String, project_path: String) -> Result<String, String> {
+    let project = std::path::Path::new(&project_path);
+    let screenshots_dir = project.join(".marketingstack").join("screenshots");
+
+    // Ensure screenshots directory exists
+    if !screenshots_dir.exists() {
+        std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    }
+
+    // Generate timestamped filename
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let screenshot_path = screenshots_dir.join(format!("screenshot-{}.png", timestamp));
+
+    // Launch headless browser and capture screenshot
+    let launch_options = LaunchOptions::default_builder()
+        .headless(true)
+        .window_size(Some((1200, 800)))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let browser = Browser::new(launch_options).map_err(|e| e.to_string())?;
+    let tab = browser.new_tab().map_err(|e| e.to_string())?;
+
+    // Navigate to the URL
+    tab.navigate_to(&url).map_err(|e| e.to_string())?;
+
+    // Wait for page to load
+    tab.wait_until_navigated().map_err(|e| e.to_string())?;
+    std::thread::sleep(Duration::from_millis(1500)); // Extra time for JS rendering
+
+    // Capture screenshot as PNG
+    let screenshot_data = tab
+        .capture_screenshot(
+            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+            None,
+            None,
+            true,
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Save to file
+    std::fs::write(&screenshot_path, &screenshot_data).map_err(|e| e.to_string())?;
+
+    Ok(screenshot_path.to_string_lossy().to_string())
+}
+
 // ============ Claude Integration ============
 
 #[derive(Serialize)]
@@ -1489,6 +1539,7 @@ pub fn run() {
             delete_project,
             capture_project_thumbnail,
             get_project_thumbnail,
+            capture_preview_to_file,
             // Claude integration
             check_claude_cli_status,
             install_claude_cli,

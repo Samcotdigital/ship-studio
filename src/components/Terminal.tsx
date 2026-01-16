@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -11,7 +11,13 @@ interface TerminalProps {
   onExit?: (code: number | null) => void;
 }
 
-export function Terminal({ projectPath, onExit }: TerminalProps) {
+export interface TerminalHandle {
+  focus: () => void;
+  simulateClick: () => void;
+  getPtyId: () => number | null;
+}
+
+export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal({ projectPath, onExit }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -189,6 +195,42 @@ export function Terminal({ projectPath, onExit }: TerminalProps) {
     terminalRef.current?.focus();
   }, []);
 
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      // Multiple focus attempts to ensure it works
+      terminalRef.current?.focus();
+      containerRef.current?.focus();
+      // Also try clicking the textarea inside xterm
+      const textarea = containerRef.current?.querySelector('textarea');
+      textarea?.focus();
+    },
+    simulateClick: () => {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const clickEvent = new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        });
+        container.dispatchEvent(clickEvent);
+        const upEvent = new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        });
+        container.dispatchEvent(upEvent);
+      }
+      terminalRef.current?.focus();
+    },
+    getPtyId: () => ptyIdRef.current,
+  }), []);
+
   return (
     <div
       ref={containerRef}
@@ -200,4 +242,4 @@ export function Terminal({ projectPath, onExit }: TerminalProps) {
       }}
     />
   );
-}
+});

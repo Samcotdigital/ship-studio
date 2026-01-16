@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Terminal } from "./components/Terminal";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Terminal, TerminalHandle } from "./components/Terminal";
 import { Preview } from "./components/Preview";
 import { ProjectList } from "./components/ProjectList";
 import { CreateProject } from "./components/CreateProject";
@@ -46,8 +46,10 @@ function App() {
   const [view, setView] = useState<AppView>("loading");
   const [prerequisites, setPrerequisites] = useState<Prerequisite[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [isClosing, setIsClosing] = useState(false);
   const devServerRef = useRef<DevServerHandle | null>(null);
+  const terminalRef = useRef<TerminalHandle | null>(null);
+  const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   // GitHub state
   const [githubState, setGithubState] = useState<GitHubState>({
@@ -152,6 +154,54 @@ function App() {
     setClaudeState({ cliStatus: clStatus });
   };
 
+  // Focus terminal (called after modals close)
+  const focusTerminal = useCallback(() => {
+    terminalRef.current?.focus();
+  }, []);
+
+  // Capture project screenshot in background
+  const captureScreenshot = useCallback(async (projectPath: string) => {
+    try {
+      await invoke("capture_project_thumbnail", {
+        projectPath,
+        url: "http://localhost:3000",
+      });
+    } catch (error) {
+      console.error("Failed to capture thumbnail:", error);
+    }
+  }, []);
+
+  // Capture screenshot and send file path to terminal
+  const captureAndSend = useCallback(async (e: React.MouseEvent) => {
+    if (isCapturing || !currentProject) return;
+
+    // Prevent the button from stealing focus
+    e.preventDefault();
+
+    setIsCapturing(true);
+
+    try {
+      // 1. Capture screenshot to file
+      const filePath = await invoke<string>("capture_preview_to_file", {
+        url: "http://localhost:3000",
+        projectPath: currentProject.path,
+      });
+
+      // 2. Get PTY ID and write file path directly to terminal
+      const ptyId = terminalRef.current?.getPtyId();
+      if (ptyId) {
+        await invoke("write_pty", { id: ptyId, data: filePath });
+      }
+
+      // 3. Focus terminal
+      terminalRef.current?.focus();
+    } catch (error) {
+      console.error("Failed to capture screenshot:", error);
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [isCapturing, currentProject]);
+
   const handleSelectProject = async (project: Project) => {
     setCurrentProject(project);
 
@@ -176,6 +226,16 @@ function App() {
     }
 
     setView("workspace");
+
+    // Capture initial screenshot after a delay (wait for dev server to be ready)
+    setTimeout(() => {
+      captureScreenshot(project.path);
+    }, 5000);
+
+    // Capture screenshots every 5 minutes
+    screenshotIntervalRef.current = setInterval(() => {
+      captureScreenshot(project.path);
+    }, 5 * 60 * 1000);
   };
 
   const handleCreateProject = () => {
@@ -188,18 +248,10 @@ function App() {
   };
 
   const handleBackToProjects = async () => {
-    setIsClosing(true);
-
-    // Capture thumbnail before closing
-    if (currentProject) {
-      try {
-        await invoke("capture_project_thumbnail", {
-          projectPath: currentProject.path,
-          url: "http://localhost:3000",
-        });
-      } catch (error) {
-        console.error("Failed to capture thumbnail:", error);
-      }
+    // Clear screenshot interval
+    if (screenshotIntervalRef.current) {
+      clearInterval(screenshotIntervalRef.current);
+      screenshotIntervalRef.current = null;
     }
 
     // Stop dev server if running
@@ -210,7 +262,6 @@ function App() {
     setCurrentProject(null);
     setProjectGithubStatus(null);
     setProjectVercelStatus(null);
-    setIsClosing(false);
     setView("projects");
   };
 
@@ -286,9 +337,8 @@ function App() {
         <button
           className="back-button"
           onClick={handleBackToProjects}
-          disabled={isClosing}
         >
-          {isClosing ? "Saving..." : "← Projects"}
+          ← Projects
         </button>
         <h1>{currentProject?.name}</h1>
         <span className="project-path">{currentProject?.path}</span>
@@ -302,6 +352,7 @@ function App() {
             projectName={currentProject?.name || ""}
             onStatusChange={handleGitHubStatusChange}
             onGitHubConnect={refreshGitHubStatus}
+            onModalClose={focusTerminal}
           />
           <VercelButton
             vercelState={vercelState}
@@ -311,6 +362,7 @@ function App() {
             projectName={currentProject?.name || ""}
             onStatusChange={handleVercelStatusChange}
             onVercelConnect={refreshVercelStatus}
+            onModalClose={focusTerminal}
           />
         </div>
       </header>
@@ -322,12 +374,30 @@ function App() {
           minRight={35}
           left={
             <div className="terminal-pane">
-              <Terminal
-                projectPath={currentProject?.path || ""}
-                onExit={(code) => {
-                  console.log("Terminal exited with code:", code);
-                }}
-              />
+              <div className="terminal-toolbar">
+                <span className="terminal-title">Claude Code</span>
+                <button
+                  className={`terminal-capture ${isCapturing ? "capturing" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={captureAndSend}
+                  disabled={isCapturing}
+                  title="Capture preview screenshot and send to Claude"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </button>
+              </div>
+              <div className="terminal-content">
+                <Terminal
+                  ref={terminalRef}
+                  projectPath={currentProject?.path || ""}
+                  onExit={(code) => {
+                    console.log("Terminal exited with code:", code);
+                  }}
+                />
+              </div>
             </div>
           }
           right={

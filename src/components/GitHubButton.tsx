@@ -12,6 +12,7 @@ interface GitHubButtonProps {
   projectName: string;
   onStatusChange: () => void;
   onGitHubConnect: () => void;
+  onModalClose?: () => void;
 }
 
 export function GitHubButton({
@@ -22,6 +23,7 @@ export function GitHubButton({
   projectName,
   onStatusChange,
   onGitHubConnect,
+  onModalClose,
 }: GitHubButtonProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -130,7 +132,7 @@ export function GitHubButton({
 
         {/* Publish Confirmation Modal */}
         {showPublishModal && (
-          <div className="modal-overlay" onClick={() => setShowPublishModal(false)}>
+          <div className="modal-overlay" onClick={() => { setShowPublishModal(false); onModalClose?.(); }}>
             <div className="modal github-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Publish to GitHub</h3>
               <p>
@@ -138,7 +140,7 @@ export function GitHubButton({
               </p>
               {error && <p className="github-error">{error}</p>}
               <div className="modal-actions">
-                <button onClick={() => setShowPublishModal(false)} disabled={isLoading}>
+                <button onClick={() => { setShowPublishModal(false); onModalClose?.(); }} disabled={isLoading}>
                   Cancel
                 </button>
                 <button
@@ -151,6 +153,7 @@ export function GitHubButton({
                       setShowPublishModal(false);
                       setHasChanges(false);
                       onStatusChange();
+                      onModalClose?.();
                     } catch (e) {
                       setError(String(e));
                     } finally {
@@ -187,7 +190,7 @@ export function GitHubButton({
 
       {/* Create Repo Modal */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowCreateModal(false); onModalClose?.(); }}>
           <div className="modal github-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Create GitHub Repository</h3>
             <p>Create a new GitHub repository for this project.</p>
@@ -237,7 +240,7 @@ export function GitHubButton({
             </div>
 
             <div className="modal-actions">
-              <button onClick={() => setShowCreateModal(false)} disabled={isLoading}>
+              <button onClick={() => { setShowCreateModal(false); onModalClose?.(); }} disabled={isLoading}>
                 Cancel
               </button>
               <button
@@ -270,6 +273,7 @@ export function GitHubButton({
 
                     setShowCreateModal(false);
                     onStatusChange();
+                    onModalClose?.();
                   } catch (e) {
                     setError(String(e));
                   } finally {

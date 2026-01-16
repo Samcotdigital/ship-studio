@@ -19,6 +19,7 @@ interface VercelButtonProps {
   projectName: string;
   onStatusChange: () => void;
   onVercelConnect: () => void;
+  onModalClose?: () => void;
 }
 
 export function VercelButton({
@@ -29,6 +30,7 @@ export function VercelButton({
   projectName,
   onStatusChange,
   onVercelConnect,
+  onModalClose,
 }: VercelButtonProps) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -142,6 +144,7 @@ export function VercelButton({
     setShowLoginModal(false);
     setIsLoggingIn(false);
     onVercelConnect(); // Refresh status in case login completed
+    onModalClose?.();
   };
 
   const handleDeploy = async () => {
@@ -296,7 +299,7 @@ export function VercelButton({
 
       {/* Deploy Modal */}
       {showDeployModal && (
-        <div className="modal-overlay" onClick={() => !isDeploying && setShowDeployModal(false)}>
+        <div className="modal-overlay" onClick={() => { if (!isDeploying) { setShowDeployModal(false); onModalClose?.(); } }}>
           <div className="modal vercel-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Deploy to Vercel</h3>
             <p>Deploy this project to Vercel. Future pushes to GitHub will auto-deploy.</p>
@@ -327,7 +330,7 @@ export function VercelButton({
             </div>
 
             <div className="modal-actions">
-              <button onClick={() => setShowDeployModal(false)} disabled={isDeploying}>
+              <button onClick={() => { setShowDeployModal(false); onModalClose?.(); }} disabled={isDeploying}>
                 Cancel
               </button>
               <button
@@ -335,6 +338,7 @@ export function VercelButton({
                 onClick={() => {
                   setShowDeployModal(false);
                   handleDeploy();
+                  onModalClose?.();
                 }}
                 disabled={isDeploying || !deployName.trim()}
               >
