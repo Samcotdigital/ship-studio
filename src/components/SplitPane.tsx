@@ -16,17 +16,17 @@ export function SplitPane({
   minRight = 20,
 }: SplitPaneProps) {
   const [split, setSplit] = useState(defaultSplit);
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    isDragging.current = true;
+    setIsDragging(true);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current || !containerRef.current) return;
+      if (!containerRef.current) return;
 
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -41,7 +41,7 @@ export function SplitPane({
     };
 
     const handleMouseUp = () => {
-      isDragging.current = false;
+      setIsDragging(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", handleMouseMove);
@@ -54,6 +54,8 @@ export function SplitPane({
 
   return (
     <div ref={containerRef} className="split-pane">
+      {/* Overlay to capture mouse events during drag (prevents iframe from stealing events) */}
+      {isDragging && <div className="split-pane-overlay" />}
       <div className="split-pane-left" style={{ width: `${split}%` }}>
         {left}
       </div>

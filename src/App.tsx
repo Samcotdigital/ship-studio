@@ -32,6 +32,7 @@ const SCREENSHOT_DELAY_MS = 2000; // Wait for page to render
 const DEV_SERVER_PORT = 3000;
 
 type AppView = "loading" | "setup" | "projects" | "create" | "project-loading" | "workspace";
+type EditorMode = "agent" | "visual";
 
 export interface GitHubState {
   cliStatus: GitHubCliStatus;
@@ -73,6 +74,9 @@ function App() {
   const [claudeState, setClaudeState] = useState<ClaudeState>({
     cliStatus: { installed: false, version: null },
   });
+
+  // Editor mode (agent vs visual)
+  const [editorMode, setEditorMode] = useState<EditorMode>("agent");
 
   // Check prerequisites and GitHub status on mount
   useEffect(() => {
@@ -377,14 +381,46 @@ function App() {
           left={
             <div className="terminal-pane">
               <div className="terminal-toolbar">
-                <span className="terminal-title">Claude Code</span>
+                <div className="editor-mode-toggle">
+                  <button
+                    className={`mode-btn ${editorMode === "agent" ? "active" : ""}`}
+                    onClick={() => setEditorMode("agent")}
+                    title="Agent Mode"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>Agent</span>
+                  </button>
+                  <button
+                    className={`mode-btn ${editorMode === "visual" ? "active" : ""}`}
+                    onClick={() => setEditorMode("visual")}
+                    title="Visual Editor"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
+                      <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
+                      <path d="M14.5 17.5 4.5 15" />
+                    </svg>
+                    <span>Visual</span>
+                  </button>
+                </div>
               </div>
-              <div className="terminal-content">
+              <div className="terminal-content" style={{ display: editorMode === "agent" ? "block" : "none" }}>
                 <Terminal
                   ref={terminalRef}
                   projectPath={currentProject?.path || ""}
                   onExit={handleTerminalExit}
                 />
+              </div>
+              <div className="visual-editor-placeholder" style={{ display: editorMode === "visual" ? "flex" : "none" }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
+                  <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
+                  <path d="M14.5 17.5 4.5 15" />
+                </svg>
+                <h3>Visual Editor</h3>
+                <p>Coming soon</p>
               </div>
             </div>
           }
