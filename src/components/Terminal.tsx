@@ -23,6 +23,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const ptyRef = useRef<IPty | null>(null);
   const [isReady, setIsReady] = useState(false);
 
+  // Guard against StrictMode double-mounting and HMR issues
+  const isSpawningRef = useRef(false);
+  const hasSpawnedRef = useRef(false);
+
   // Use ref for onExit to prevent effect re-runs when callback reference changes
   const onExitRef = useRef(onExit);
   useEffect(() => {
@@ -30,6 +34,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   }, [onExit]);
 
   const cleanup = useCallback(() => {
+    // Reset spawn guards on cleanup
+    isSpawningRef.current = false;
+    hasSpawnedRef.current = false;
+
     if (ptyRef.current) {
       try {
         ptyRef.current.kill();
@@ -166,6 +174,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const setupPty = async (retryCount = 0) => {
       const maxRetries = 3;
 
+      // Guard against double-spawning (StrictMode, HMR)
+      if (isSpawningRef.current || hasSpawnedRef.current) {
+        console.log("Skipping spawn - already spawning or spawned");
+        return;
+      }
+      isSpawningRef.current = true;
+
       try {
         // Fit again to ensure correct size
         fitAddon.fit();
@@ -177,6 +192,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           rows: term.rows,
         });
 
+        hasSpawnedRef.current = true;
         ptyRef.current = pty;
 
         // Handle PTY output -> terminal
@@ -197,6 +213,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
       } catch (err) {
         console.error("Failed to spawn Claude:", err);
+        isSpawningRef.current = false; // Reset for retry
 
         if (retryCount < maxRetries) {
           term.write(`\x1b[33mFailed to start Claude, retrying (${retryCount + 1}/${maxRetries})...\x1b[0m\r\n`);
