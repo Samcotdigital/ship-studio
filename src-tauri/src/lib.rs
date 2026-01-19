@@ -813,6 +813,7 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
         let screenshot_arg = format!("--screenshot={}", thumbnail_path_str);
         // Use exact dimensions for consistent thumbnails
         // force-device-scale-factor=1 prevents Retina 2x capture
+        // virtual-time-budget gives page time to render (5 seconds)
         let output = Command::new(browser)
             .args([
                 "--headless=new",
@@ -820,6 +821,7 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
                 "--hide-scrollbars",
                 "--force-device-scale-factor=1",
                 "--window-size=1280,800",
+                "--virtual-time-budget=5000",
                 &screenshot_arg,
                 &url,
             ])
