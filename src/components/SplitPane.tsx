@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, ReactNode } from "react";
+import { useState, useRef, useCallback, ReactNode, useEffect } from "react";
 
 interface SplitPaneProps {
   left: ReactNode;
@@ -18,6 +18,23 @@ export function SplitPane({
   const [split, setSplit] = useState(defaultSplit);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Store drag listeners in ref for cleanup on unmount
+  const dragListenersRef = useRef<{
+    move: ((e: MouseEvent) => void) | null;
+    up: (() => void) | null;
+  }>({ move: null, up: null });
+
+  // Cleanup drag listeners on unmount
+  useEffect(() => {
+    return () => {
+      const { move, up } = dragListenersRef.current;
+      if (move) document.removeEventListener("mousemove", move);
+      if (up) document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -46,7 +63,11 @@ export function SplitPane({
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      dragListenersRef.current = { move: null, up: null };
     };
+
+    // Store listeners for cleanup
+    dragListenersRef.current = { move: handleMouseMove, up: handleMouseUp };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);

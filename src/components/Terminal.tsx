@@ -23,9 +23,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const ptyRef = useRef<IPty | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Guard against StrictMode double-mounting and HMR issues
-  const isSpawningRef = useRef(false);
-  const hasSpawnedRef = useRef(false);
 
   // Use ref for onExit to prevent effect re-runs when callback reference changes
   const onExitRef = useRef(onExit);
@@ -34,15 +31,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   }, [onExit]);
 
   const cleanup = useCallback(() => {
-    // Reset spawn guards on cleanup
-    isSpawningRef.current = false;
-    hasSpawnedRef.current = false;
-
     if (ptyRef.current) {
       try {
         ptyRef.current.kill();
       } catch {
-        // Ignore
+        // Ignore - PTY may already be dead
       }
       ptyRef.current = null;
     }
@@ -170,16 +163,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    // Track if this effect instance is still mounted (handles StrictMode/HMR)
+    let mounted = true;
+
     // Setup PTY connection using tauri-pty with retry logic
     const setupPty = async (retryCount = 0) => {
       const maxRetries = 3;
 
-      // Guard against double-spawning (StrictMode, HMR)
-      if (isSpawningRef.current || hasSpawnedRef.current) {
-        console.log("Skipping spawn - already spawning or spawned");
-        return;
-      }
-      isSpawningRef.current = true;
+      // Check if still mounted before proceeding
+      if (!mounted) return;
 
       try {
         // Fit again to ensure correct size
@@ -192,7 +184,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           rows: term.rows,
         });
 
-        hasSpawnedRef.current = true;
+        // Check again after async operation
+        if (!mounted) {
+          pty.kill();
+          return;
+        }
+
         ptyRef.current = pty;
 
         // Handle PTY output -> terminal
@@ -213,7 +210,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
       } catch (err) {
         console.error("Failed to spawn Claude:", err);
-        isSpawningRef.current = false; // Reset for retry
+
+        if (!mounted) return;
 
         if (retryCount < maxRetries) {
           term.write(`\x1b[33mFailed to start Claude, retrying (${retryCount + 1}/${maxRetries})...\x1b[0m\r\n`);
@@ -238,6 +236,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     resizeObserver.observe(container);
 
     return () => {
+      mounted = false;
       resizeObserver.disconnect();
       cleanup();
     };

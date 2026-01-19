@@ -1042,7 +1042,7 @@ button:hover {
 
 .preview-zoom button:hover {
   background: var(--bg-tertiary);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .preview-zoom input {
@@ -1051,7 +1051,7 @@ button:hover {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 12px;
   text-align: center;
 }

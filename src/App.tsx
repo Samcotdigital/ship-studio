@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import { Terminal, TerminalHandle } from "./components/Terminal";
 import { Preview } from "./components/Preview";
 import { ProjectList } from "./components/ProjectList";
@@ -49,6 +49,56 @@ export interface ClaudeState {
   cliStatus: ClaudeCliStatus;
 }
 
+// Consolidated integration state managed by reducer for atomic updates
+interface IntegrationState {
+  github: GitHubState;
+  projectGithub: ProjectGitHubStatus | null;
+  vercel: VercelState;
+  projectVercel: ProjectVercelStatus | null;
+  claude: ClaudeState;
+}
+
+type IntegrationAction =
+  | { type: 'SET_GITHUB'; payload: GitHubState }
+  | { type: 'SET_PROJECT_GITHUB'; payload: ProjectGitHubStatus | null }
+  | { type: 'SET_VERCEL'; payload: VercelState }
+  | { type: 'SET_PROJECT_VERCEL'; payload: ProjectVercelStatus | null }
+  | { type: 'SET_CLAUDE'; payload: ClaudeState }
+  | { type: 'CLEAR_PROJECT_STATUSES' }
+  | { type: 'SET_ALL_CLI'; payload: { github: GitHubState; vercel: VercelState; claude: ClaudeState } }
+  | { type: 'SET_PROJECT_STATUSES'; payload: { github: ProjectGitHubStatus | null; vercel: ProjectVercelStatus | null } };
+
+const initialIntegrationState: IntegrationState = {
+  github: { cliStatus: { installed: false, authenticated: false }, username: null },
+  projectGithub: null,
+  vercel: { cliStatus: { installed: false, authenticated: false }, username: null },
+  projectVercel: null,
+  claude: { cliStatus: { installed: false, version: null } },
+};
+
+function integrationReducer(state: IntegrationState, action: IntegrationAction): IntegrationState {
+  switch (action.type) {
+    case 'SET_GITHUB':
+      return { ...state, github: action.payload };
+    case 'SET_PROJECT_GITHUB':
+      return { ...state, projectGithub: action.payload };
+    case 'SET_VERCEL':
+      return { ...state, vercel: action.payload };
+    case 'SET_PROJECT_VERCEL':
+      return { ...state, projectVercel: action.payload };
+    case 'SET_CLAUDE':
+      return { ...state, claude: action.payload };
+    case 'CLEAR_PROJECT_STATUSES':
+      return { ...state, projectGithub: null, projectVercel: null };
+    case 'SET_ALL_CLI':
+      return { ...state, github: action.payload.github, vercel: action.payload.vercel, claude: action.payload.claude };
+    case 'SET_PROJECT_STATUSES':
+      return { ...state, projectGithub: action.payload.github, projectVercel: action.payload.vercel };
+    default:
+      return state;
+  }
+}
+
 function App() {
   const [view, setView] = useState<AppView>("loading");
   const [prerequisites, setPrerequisites] = useState<Prerequisite[]>([]);
@@ -56,25 +106,10 @@ function App() {
   const devServerRef = useRef<DevServerHandle | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentProjectPathRef = useRef<string | null>(null);
 
-  // GitHub state
-  const [githubState, setGithubState] = useState<GitHubState>({
-    cliStatus: { installed: false, authenticated: false },
-    username: null,
-  });
-  const [projectGithubStatus, setProjectGithubStatus] = useState<ProjectGitHubStatus | null>(null);
-
-  // Vercel state
-  const [vercelState, setVercelState] = useState<VercelState>({
-    cliStatus: { installed: false, authenticated: false },
-    username: null,
-  });
-  const [projectVercelStatus, setProjectVercelStatus] = useState<ProjectVercelStatus | null>(null);
-
-  // Claude state
-  const [claudeState, setClaudeState] = useState<ClaudeState>({
-    cliStatus: { installed: false, version: null },
-  });
+  // Integration states consolidated via reducer for atomic updates
+  const [integrations, dispatch] = useReducer(integrationReducer, initialIntegrationState);
 
   // Editor mode (agent vs visual)
   const [editorMode, setEditorMode] = useState<EditorMode>("agent");
@@ -103,11 +138,9 @@ function App() {
     setOpeningIde(ide);
     try {
       await invoke("open_in_ide", { projectPath: currentProject.path, ide });
-      // Brief delay to show "Opening..." then close dropdown
-      setTimeout(() => {
-        setOpeningIde(null);
-        setShowIdeDropdown(false);
-      }, 1000);
+      // Command completed (IDE process spawned), reset state
+      // Dropdown closes naturally when user moves mouse away
+      setOpeningIde(null);
     } catch (e) {
       console.error(`Failed to open in ${ide}:`, e);
       setOpeningIde(null);
@@ -140,7 +173,6 @@ function App() {
           // Ignore - username is optional
         }
       }
-      setGithubState({ cliStatus: ghStatus, username: ghUsername });
 
       let vcUsername: string | null = null;
       if (vcStatus.authenticated) {
@@ -150,10 +182,16 @@ function App() {
           // Ignore - username is optional
         }
       }
-      setVercelState({ cliStatus: vcStatus, username: vcUsername });
 
-      // Set Claude state
-      setClaudeState({ cliStatus: clStatus });
+      // Set all CLI states atomically
+      dispatch({
+        type: 'SET_ALL_CLI',
+        payload: {
+          github: { cliStatus: ghStatus, username: ghUsername },
+          vercel: { cliStatus: vcStatus, username: vcUsername },
+          claude: { cliStatus: clStatus },
+        },
+      });
 
       const allAvailable = prereqs.every((p) => p.available);
       if (allAvailable) {
@@ -167,35 +205,33 @@ function App() {
     }
   };
 
-  const refreshGitHubStatus = async () => {
-    const ghStatus = await checkGitHubCliStatus();
+  // Generic refresh helper for authenticated integrations (GitHub, Vercel)
+  const refreshAuthenticatedIntegration = async (
+    checkStatus: () => Promise<GitHubCliStatus> | Promise<VercelCliStatus>,
+    getUsername: () => Promise<string>,
+    actionType: 'SET_GITHUB' | 'SET_VERCEL',
+  ) => {
+    const status = await checkStatus();
     let username: string | null = null;
-    if (ghStatus.authenticated) {
+    if (status.authenticated) {
       try {
-        username = await getGitHubUsername();
+        username = await getUsername();
       } catch {
-        // Ignore
+        // Ignore - username is optional
       }
     }
-    setGithubState({ cliStatus: ghStatus, username });
+    dispatch({ type: actionType, payload: { cliStatus: status, username } });
   };
 
-  const refreshVercelStatus = async () => {
-    const vcStatus = await checkVercelCliStatus();
-    let username: string | null = null;
-    if (vcStatus.authenticated) {
-      try {
-        username = await getVercelUsername();
-      } catch {
-        // Ignore
-      }
-    }
-    setVercelState({ cliStatus: vcStatus, username });
-  };
+  const refreshGitHubStatus = () =>
+    refreshAuthenticatedIntegration(checkGitHubCliStatus, getGitHubUsername, 'SET_GITHUB');
+
+  const refreshVercelStatus = () =>
+    refreshAuthenticatedIntegration(checkVercelCliStatus, getVercelUsername, 'SET_VERCEL');
 
   const refreshClaudeStatus = async () => {
-    const clStatus = await checkClaudeCliStatus();
-    setClaudeState({ cliStatus: clStatus });
+    const status = await checkClaudeCliStatus();
+    dispatch({ type: 'SET_CLAUDE', payload: { cliStatus: status } });
   };
 
   // Focus terminal (called after modals close)
@@ -245,6 +281,7 @@ function App() {
 
     setCurrentProject(project);
     setCurrentPreviewPage("/");
+    currentProjectPathRef.current = project.path;
     setView("project-loading");
 
     // Check project's GitHub and Vercel status in parallel
@@ -253,11 +290,9 @@ function App() {
         getProjectGitHubStatus(project.path).catch(() => null),
         getProjectVercelStatus(project.path).catch(() => null),
       ]);
-      setProjectGithubStatus(ghStatus);
-      setProjectVercelStatus(vcStatus);
+      dispatch({ type: 'SET_PROJECT_STATUSES', payload: { github: ghStatus, vercel: vcStatus } });
     } catch {
-      setProjectGithubStatus(null);
-      setProjectVercelStatus(null);
+      dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
     }
 
     // Start dev server in background
@@ -269,9 +304,13 @@ function App() {
 
     setView("workspace");
 
-    // Capture screenshots periodically
+    // Capture screenshots periodically - check ref to avoid stale closure
+    const projectPath = project.path;
     screenshotIntervalRef.current = setInterval(() => {
-      captureScreenshot(project.path);
+      // Only capture if this is still the current project
+      if (currentProjectPathRef.current === projectPath) {
+        captureScreenshot(projectPath);
+      }
     }, SCREENSHOT_INTERVAL_MS);
   };
 
@@ -282,11 +321,12 @@ function App() {
       devServerRef.current = null;
     }
 
-    // Clear screenshot interval
+    // Clear screenshot interval and project ref
     if (screenshotIntervalRef.current) {
       clearInterval(screenshotIntervalRef.current);
       screenshotIntervalRef.current = null;
     }
+    currentProjectPathRef.current = null;
 
     setCurrentProject(null);
     setView("create");
@@ -298,11 +338,12 @@ function App() {
   };
 
   const handleBackToProjects = async () => {
-    // Clear screenshot interval
+    // Clear screenshot interval and project ref
     if (screenshotIntervalRef.current) {
       clearInterval(screenshotIntervalRef.current);
       screenshotIntervalRef.current = null;
     }
+    currentProjectPathRef.current = null;
 
     // Stop dev server if running
     if (devServerRef.current) {
@@ -310,8 +351,7 @@ function App() {
       devServerRef.current = null;
     }
     setCurrentProject(null);
-    setProjectGithubStatus(null);
-    setProjectVercelStatus(null);
+    dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
     setView("projects");
   };
 
@@ -322,25 +362,27 @@ function App() {
         getProjectGitHubStatus(currentProject.path).catch(() => null),
         getProjectVercelStatus(currentProject.path).catch(() => null),
       ]);
-      setProjectGithubStatus(ghStatus);
-      setProjectVercelStatus(vcStatus);
+      dispatch({ type: 'SET_PROJECT_STATUSES', payload: { github: ghStatus, vercel: vcStatus } });
     }
   };
 
   const handleVercelStatusChange = async (deployedUrl?: string) => {
     // If we have a deployed URL from a successful deployment, use it directly
     if (deployedUrl && currentProject) {
-      setProjectVercelStatus({
-        is_linked: true,
-        project_name: currentProject.name,
-        production_url: deployedUrl,
+      dispatch({
+        type: 'SET_PROJECT_VERCEL',
+        payload: {
+          is_linked: true,
+          project_name: currentProject.name,
+          production_url: deployedUrl,
+        },
       });
       return;
     }
     // Otherwise refresh project Vercel status
     if (currentProject) {
       const status = await getProjectVercelStatus(currentProject.path).catch(() => null);
-      setProjectVercelStatus(status);
+      dispatch({ type: 'SET_PROJECT_VERCEL', payload: status });
     }
   };
 
@@ -367,9 +409,9 @@ function App() {
         <ProjectList
           onSelectProject={handleSelectProject}
           onCreateProject={handleCreateProject}
-          githubState={githubState}
-          vercelState={vercelState}
-          claudeState={claudeState}
+          githubState={integrations.github}
+          vercelState={integrations.vercel}
+          claudeState={integrations.claude}
           onGitHubConnect={refreshGitHubStatus}
           onVercelConnect={refreshVercelStatus}
           onClaudeConnect={refreshClaudeStatus}
@@ -459,9 +501,9 @@ function App() {
             .env
           </button>
           <GitHubButton
-            githubState={githubState}
-            vercelState={vercelState}
-            projectStatus={projectGithubStatus}
+            githubState={integrations.github}
+            vercelState={integrations.vercel}
+            projectStatus={integrations.projectGithub}
             projectPath={currentProject?.path || ""}
             projectName={currentProject?.name || ""}
             onStatusChange={handleGitHubStatusChange}
@@ -469,9 +511,9 @@ function App() {
             onModalClose={focusTerminal}
           />
           <VercelButton
-            vercelState={vercelState}
-            projectVercelStatus={projectVercelStatus}
-            projectGithubStatus={projectGithubStatus}
+            vercelState={integrations.vercel}
+            projectVercelStatus={integrations.projectVercel}
+            projectGithubStatus={integrations.projectGithub}
             projectPath={currentProject?.path || ""}
             projectName={currentProject?.name || ""}
             currentPage={currentPreviewPage}

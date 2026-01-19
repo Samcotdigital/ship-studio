@@ -73,6 +73,25 @@ async fn ensure_marketingstack_dir() -> Result<String, String> {
     Ok(marketingstack_dir.to_string_lossy().to_string())
 }
 
+/// Validates that a project path is inside the ~/Marketingstack directory.
+/// Prevents path traversal attacks where frontend could pass arbitrary paths.
+fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(project_path);
+    let canonical = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
+
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let marketingstack_dir = home.join("Marketingstack");
+
+    if !canonical.starts_with(&marketingstack_dir) {
+        return Err(format!(
+            "Security error: path '{}' is outside Marketingstack directory",
+            project_path
+        ));
+    }
+
+    Ok(canonical)
+}
+
 /// Project metadata returned by list_projects
 #[derive(Serialize)]
 struct ProjectInfo {
@@ -116,7 +135,7 @@ struct PageInfo {
 /// Supports both `/app` and `/src/app` directory structures.
 #[tauri::command]
 async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let app_dir = project.join("app");
 
     if !app_dir.exists() {
@@ -133,7 +152,7 @@ async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
 
 #[tauri::command]
 async fn check_sanity_installed(project_path: String) -> Result<bool, String> {
-    let path = std::path::PathBuf::from(&project_path);
+    let path = validate_project_path(&project_path)?;
 
     // Check for sanity.config.ts or sanity.config.js
     if path.join("sanity.config.ts").exists() || path.join("sanity.config.js").exists() {
@@ -169,7 +188,7 @@ struct EnvVar {
 
 #[tauri::command]
 async fn list_env_files(project_path: String) -> Result<Vec<EnvFile>, String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let mut env_files = Vec::new();
 
     // Common env file names to look for
@@ -264,10 +283,12 @@ async fn write_env_file(file_path: String, vars: Vec<EnvVar>) -> Result<(), Stri
 }
 
 /// Creates a new .env file in the project directory.
-/// Validates filename to prevent path traversal attacks.
-/// Only allows filenames starting with '.' and containing 'env'.
+/// Validates both project path (must be in Marketingstack) and filename.
 #[tauri::command]
 async fn create_env_file(project_path: String, file_name: String) -> Result<String, String> {
+    // Validate project path is inside Marketingstack directory
+    let project = validate_project_path(&project_path)?;
+
     // Validate filename to prevent path traversal attacks
     if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
         return Err("Invalid filename: path separators not allowed".to_string());
@@ -276,11 +297,10 @@ async fn create_env_file(project_path: String, file_name: String) -> Result<Stri
         return Err("Invalid filename: must be an env file (e.g., .env, .env.local)".to_string());
     }
 
-    let project = std::path::Path::new(&project_path);
     let env_path = project.join(&file_name);
 
     // Double-check the resolved path is still within the project
-    if !env_path.starts_with(project) {
+    if !env_path.starts_with(&project) {
         return Err("Invalid filename: path traversal detected".to_string());
     }
 
@@ -294,6 +314,16 @@ async fn create_env_file(project_path: String, file_name: String) -> Result<Stri
 
 #[tauri::command]
 async fn delete_env_file(file_path: String) -> Result<(), String> {
+    // Validate the file is inside Marketingstack directory
+    let path = std::path::Path::new(&file_path);
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let marketingstack_dir = home.join("Marketingstack");
+
+    let canonical = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
+    if !canonical.starts_with(&marketingstack_dir) {
+        return Err("Security error: cannot delete files outside Marketingstack directory".to_string());
+    }
+
     std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -443,6 +473,9 @@ async fn open_studio_window(app: tauri::AppHandle, url: String, title: String) -
 
 #[tauri::command]
 async fn open_in_ide(project_path: String, ide: String) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+    let path_str = validated_path.to_string_lossy();
+
     #[cfg(target_os = "macos")]
     {
         let app_name = match ide.as_str() {
@@ -453,7 +486,7 @@ async fn open_in_ide(project_path: String, ide: String) -> Result<(), String> {
 
         // Use 'open -a' on macOS which is more reliable
         Command::new("open")
-            .args(["-a", app_name, &project_path])
+            .args(["-a", app_name, path_str.as_ref()])
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", ide, e))?;
     }
@@ -467,7 +500,7 @@ async fn open_in_ide(project_path: String, ide: String) -> Result<(), String> {
         };
 
         Command::new(cmd)
-            .arg(&project_path)
+            .arg(path_str.as_ref())
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", ide, e))?;
     }
@@ -573,7 +606,7 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
 
 #[tauri::command]
 async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let marketingstack_dir = project.join(".marketingstack");
 
     // Ensure .marketingstack directory exists
@@ -630,7 +663,7 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
 
 #[tauri::command]
 async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let thumbnail_path = project.join(".marketingstack").join("thumbnail.png");
 
     if thumbnail_path.exists() {
@@ -646,7 +679,7 @@ async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, S
 
 #[tauri::command]
 async fn capture_preview_to_clipboard(project_path: String) -> Result<(), String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let screenshots_dir = project.join(".marketingstack").join("screenshots");
 
     // Ensure screenshots directory exists
@@ -890,16 +923,16 @@ struct DeployToVercelOptions {
 
 #[tauri::command]
 async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, String> {
-    let project_path = &options.project_path;
+    let validated_path = validate_project_path(&options.project_path)?;
     let project_name = &options.project_name;
 
-    eprintln!("Starting Vercel deployment for {} at {}", project_name, project_path);
+    eprintln!("Starting Vercel deployment for {} at {:?}", project_name, validated_path);
 
     // Step 1: Link the project to Vercel (creates project if doesn't exist)
     // Using --yes to skip prompts, --project to set the name
     let link_output = get_vercel_command()
         .args(["link", "--yes", "--project", project_name])
-        .current_dir(project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| format!("Failed to run vercel link: {}", e))?;
 
@@ -918,7 +951,7 @@ async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, Stri
         let github_url = format!("https://github.com/{}", github_repo);
         let connect_output = get_vercel_command()
             .args(["git", "connect", &github_url, "--yes"])
-            .current_dir(project_path)
+            .current_dir(&validated_path)
             .output();
 
         if let Ok(output) = connect_output {
@@ -938,7 +971,7 @@ async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, Stri
     eprintln!("Starting production deployment...");
     let deploy_output = get_vercel_command()
         .args(["--prod", "--yes"])
-        .current_dir(project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| format!("Failed to run vercel --prod: {}", e))?;
 
@@ -952,11 +985,33 @@ async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, Stri
         return Err(format!("Failed to deploy to Vercel: {} {}", stderr, stdout));
     }
 
-    // Build the production URL
-    let production_url = format!("https://{}.vercel.app", project_name);
+    // Parse production URL from vercel --prod output
+    // Output format includes lines like:
+    // ✅  Production: https://your-project.vercel.app [copied to clipboard]
+    // or just: https://your-project.vercel.app
+    let stdout = String::from_utf8_lossy(&deploy_output.stdout);
+    let production_url = stdout
+        .lines()
+        .find_map(|line| {
+            // Look for HTTPS URL in the output
+            if let Some(https_start) = line.find("https://") {
+                // Extract URL - ends at whitespace, bracket, or end of line
+                let url_part = &line[https_start..];
+                let url_end = url_part
+                    .find(|c: char| c.is_whitespace() || c == '[' || c == ']')
+                    .unwrap_or(url_part.len());
+                let url = &url_part[..url_end];
+                // Only use production URLs, not inspect URLs
+                if !url.contains("/deployments/") && !url.contains("vercel.com/") {
+                    return Some(url.to_string());
+                }
+            }
+            None
+        })
+        .unwrap_or_else(|| format!("https://{}.vercel.app", project_name));
 
     // Write the production URL to a marker file for reliable detection
-    let vercel_dir = std::path::Path::new(project_path).join(".vercel");
+    let vercel_dir = validated_path.join(".vercel");
     let url_file = vercel_dir.join("production_url");
     if let Err(e) = std::fs::write(&url_file, &production_url) {
         eprintln!("Warning: Failed to write production_url marker: {}", e);
@@ -1020,7 +1075,17 @@ struct ProjectVercelStatus {
 /// 3. Has production_url marker → linked with URL (is_linked: true, production_url: Some)
 #[tauri::command]
 async fn get_project_vercel_status(project_path: String) -> ProjectVercelStatus {
-    let project = std::path::Path::new(&project_path);
+    // Validate path and return unlinked status if invalid
+    let project = match validate_project_path(&project_path) {
+        Ok(p) => p,
+        Err(_) => {
+            return ProjectVercelStatus {
+                is_linked: false,
+                project_name: None,
+                production_url: None,
+            };
+        }
+    };
     let vercel_dir = project.join(".vercel");
     let project_json = vercel_dir.join("project.json");
 
@@ -1211,7 +1276,18 @@ struct ProjectGitHubStatus {
 
 #[tauri::command]
 async fn get_project_github_status(project_path: String) -> ProjectGitHubStatus {
-    let project = std::path::Path::new(&project_path);
+    // Validate path and return not-a-repo status if invalid
+    let project = match validate_project_path(&project_path) {
+        Ok(p) => p,
+        Err(_) => {
+            return ProjectGitHubStatus {
+                is_git_repo: false,
+                has_remote: false,
+                github_repo: None,
+                github_url: None,
+            };
+        }
+    };
     let git_dir = project.join(".git");
 
     // Check if it's a git repo
@@ -1286,10 +1362,12 @@ async fn get_project_github_status(project_path: String) -> ProjectGitHubStatus 
 
 #[tauri::command]
 async fn init_git_repo(project_path: String) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+
     // Initialize git repo
     let output = Command::new("git")
         .args(["init"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1300,7 +1378,7 @@ async fn init_git_repo(project_path: String) -> Result<(), String> {
     // Stage all files
     let output = Command::new("git")
         .args(["add", "-A"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1311,7 +1389,7 @@ async fn init_git_repo(project_path: String) -> Result<(), String> {
     // Create initial commit
     let output = Command::new("git")
         .args(["commit", "-m", "Initial commit from Marketingstack"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1324,7 +1402,7 @@ async fn init_git_repo(project_path: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
-    let project = std::path::Path::new(&project_path);
+    let project = validate_project_path(&project_path)?;
     let git_dir = project.join(".git");
 
     // Not a git repo = no changes to track
@@ -1335,7 +1413,7 @@ async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
     // Check for uncommitted changes (staged or unstaged)
     let status = Command::new("git")
         .args(["status", "--porcelain"])
-        .current_dir(&project_path)
+        .current_dir(&project)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1348,7 +1426,7 @@ async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
     // Check for unpushed commits
     let unpushed = Command::new("git")
         .args(["log", "@{u}..", "--oneline"])
-        .current_dir(&project_path)
+        .current_dir(&project)
         .output();
 
     // If this fails (no upstream), check if there are any commits at all
@@ -1361,7 +1439,7 @@ async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
             // No upstream set, check if we have commits
             let commits = Command::new("git")
                 .args(["log", "--oneline", "-1"])
-                .current_dir(&project_path)
+                .current_dir(&project)
                 .output()
                 .map_err(|e| e.to_string())?;
 
@@ -1380,31 +1458,31 @@ struct PushToGitHubOptions {
 
 #[tauri::command]
 async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> {
-    let project_path = &options.project_path;
+    let validated_path = validate_project_path(&options.project_path)?;
     let repo_name = &options.repo_name;
     let visibility = if options.is_private { "--private" } else { "--public" };
 
     // Check if it's already a git repo, if not initialize
-    let git_dir = std::path::Path::new(project_path).join(".git");
+    let git_dir = validated_path.join(".git");
     if !git_dir.exists() {
-        init_git_repo(project_path.clone()).await?;
+        init_git_repo(options.project_path.clone()).await?;
     } else {
         // Make sure all changes are committed
         let _ = Command::new("git")
             .args(["add", "-A"])
-            .current_dir(project_path)
+            .current_dir(&validated_path)
             .output();
 
         let status = Command::new("git")
             .args(["status", "--porcelain"])
-            .current_dir(project_path)
+            .current_dir(&validated_path)
             .output()
             .map_err(|e| e.to_string())?;
 
         if !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
             let _ = Command::new("git")
                 .args(["commit", "-m", "Update from Marketingstack"])
-                .current_dir(project_path)
+                .current_dir(&validated_path)
                 .output();
         }
     }
@@ -1418,7 +1496,7 @@ async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> 
             "--remote", "origin",
             "--push",
         ])
-        .current_dir(project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1433,12 +1511,13 @@ async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> 
 
 #[tauri::command]
 async fn publish_to_github(project_path: String, commit_message: Option<String>) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
     let message = commit_message.unwrap_or_else(|| "Update from Marketingstack".to_string());
 
     // Get current branch name
     let branch_output = Command::new("git")
         .args(["branch", "--show-current"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1448,7 +1527,7 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
     // Pull latest changes first (rebase to keep history clean)
     let pull_output = Command::new("git")
         .args(["pull", "--rebase", "origin", &branch])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output();
 
     // Ignore pull errors (might be first push, or no tracking branch yet)
@@ -1467,7 +1546,7 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
     // Stage all changes
     let output = Command::new("git")
         .args(["add", "-A"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1478,7 +1557,7 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
     // Check if there are changes to commit
     let status = Command::new("git")
         .args(["status", "--porcelain"])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -1488,7 +1567,7 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
         // Commit changes
         let output = Command::new("git")
             .args(["commit", "-m", &message])
-            .current_dir(&project_path)
+            .current_dir(&validated_path)
             .output()
             .map_err(|e| e.to_string())?;
 
@@ -1500,7 +1579,7 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
     // Push to origin
     let output = Command::new("git")
         .args(["push", "-u", "origin", &branch])
-        .current_dir(&project_path)
+        .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 

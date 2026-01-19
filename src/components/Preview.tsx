@@ -215,12 +215,29 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     if (!showCmsModal || !cmsModalRef.current || !serverReady) return;
 
     const createCmsWebview = async () => {
-      // Wait for modal to render
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const rect = cmsModalRef.current!.getBoundingClientRect();
       const TITLE_BAR_HEIGHT = 31;
+      const MAX_RETRIES = 20;
+      const RETRY_DELAY_MS = 50;
+
+      // Wait for modal to have valid dimensions (retry until rect is valid)
+      let rect: DOMRect | null = null;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        rect = cmsModalRef.current?.getBoundingClientRect() ?? null;
+
+        // Check if rect has valid dimensions
+        if (rect && rect.width > 0 && rect.height > 0) {
+          break;
+        }
+
+        // Wait before next retry
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+
+      if (!rect || rect.width === 0 || rect.height === 0) {
+        console.error("CMS modal never achieved valid dimensions");
+        return;
+      }
 
       try {
         // Load Sanity Studio
