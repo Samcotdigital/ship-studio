@@ -1386,9 +1386,11 @@ async fn get_project_vercel_status(project_path: String) -> ProjectVercelStatus 
             .ok();
 
         if let Some(output) = list_output {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            // The deployment table is in STDERR, not STDOUT
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
             // Look for Preview deployments (staging branch shows as "Preview" environment)
-            for line in stdout.lines() {
+            for line in stderr.lines() {
                 // Check if this line is a Preview deployment (not Production)
                 if line.contains("Preview") && !line.contains("Production") {
                     // Extract the URL from the line
