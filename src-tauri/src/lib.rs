@@ -1781,6 +1781,28 @@ async fn get_github_username() -> Result<String, String> {
     Ok(username)
 }
 
+#[tauri::command]
+async fn get_github_orgs() -> Result<Vec<String>, String> {
+    // Get orgs where user can create repos
+    let output = Command::new("gh")
+        .args(["api", "user/orgs", "--jq", ".[].login"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        // Return empty list if we can't get orgs (user might not have any)
+        return Ok(vec![]);
+    }
+
+    let orgs: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    Ok(orgs)
+}
+
 /// GitHub connection status - verified against GitHub API
 #[derive(Serialize)]
 struct ProjectGitHubStatus {
@@ -2636,10 +2658,30 @@ fn cleanup_claude_processes() {
             .args(["-P", &pid.to_string(), "claude"])
             .output();
 
-        // Also kill any orphaned claude processes (parent is init/launchd - PID 1)
-        // Note: Using grep -v to avoid killing if no matches (xargs on macOS doesn't have -r)
+        // Kill any orphaned claude processes (parent is init/launchd - PID 1)
+        // These are left over from force-closed dev sessions
         let _ = Command::new("sh")
-            .args(["-c", "ps -eo pid,ppid,comm | grep '[c]laude' | awk '$2 == 1 {print $1}' | xargs kill 2>/dev/null || true"])
+            .args(["-c", r#"
+                # Find claude processes whose parent is PID 1 (orphaned)
+                for pid in $(pgrep -x claude 2>/dev/null); do
+                    ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
+                    if [ "$ppid" = "1" ]; then
+                        kill $pid 2>/dev/null
+                    fi
+                done
+            "#])
+            .output();
+
+        // Also kill orphaned node processes running next-server (from dev server)
+        let _ = Command::new("sh")
+            .args(["-c", r#"
+                for pid in $(pgrep -f 'next-server' 2>/dev/null); do
+                    ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
+                    if [ "$ppid" = "1" ]; then
+                        kill $pid 2>/dev/null
+                    fi
+                done
+            "#])
             .output();
     }
 }
@@ -2702,6 +2744,7 @@ pub fn run() {
             // GitHub integration
             check_github_cli_status,
             get_github_username,
+            get_github_orgs,
             get_project_github_status,
             check_git_has_changes,
             init_git_repo,

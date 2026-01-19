@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { GitHubState, VercelState } from "../App";
-import { ProjectGitHubStatus, pushToGitHub } from "../lib/github";
+import { ProjectGitHubStatus, pushToGitHub, getGitHubOrgs } from "../lib/github";
 import { linkToVercel } from "../lib/vercel";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -33,8 +33,18 @@ export function GitHubButton({
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingRepo, setIsCreatingRepo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orgs, setOrgs] = useState<string[]>([]);
+  const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
 
   const { cliStatus, username } = githubState;
+
+  // Fetch orgs when modal opens
+  useEffect(() => {
+    if (showCreateModal && cliStatus.authenticated) {
+      getGitHubOrgs().then(setOrgs).catch(() => setOrgs([]));
+      setSelectedOwner(username); // Default to personal account
+    }
+  }, [showCreateModal, cliStatus.authenticated, username]);
 
   // If gh CLI not installed, show install prompt
   if (!cliStatus.installed) {
@@ -133,9 +143,23 @@ export function GitHubButton({
 
             <div className="github-form">
               <label>
+                Owner
+                <select
+                  className="owner-select"
+                  value={selectedOwner || username || ""}
+                  onChange={(e) => setSelectedOwner(e.target.value)}
+                >
+                  {username && <option value={username}>{username}</option>}
+                  {orgs.map((org) => (
+                    <option key={org} value={org}>{org}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
                 Repository name
                 <div className="repo-name-input">
-                  <span className="repo-prefix">{username}/</span>
+                  <span className="repo-prefix">{selectedOwner || username}/</span>
                   <input
                     type="text"
                     value={repoName}
@@ -188,7 +212,8 @@ export function GitHubButton({
                   setIsCreatingRepo(true);
                   setError(null);
                   try {
-                    const fullRepoName = `${username}/${repoName}`;
+                    const owner = selectedOwner || username;
+                    const fullRepoName = `${owner}/${repoName}`;
                     await pushToGitHub({
                       projectPath,
                       repoName: fullRepoName,
@@ -200,16 +225,17 @@ export function GitHubButton({
                     setIsLoading(false);
                     onModalClose?.();
 
-                    // Auto-connect to Vercel if authenticated (happens in background)
+                    // Auto-connect to Vercel if authenticated (don't block, but refresh status when done)
                     if (vercelState?.cliStatus.authenticated) {
-                      try {
-                        await linkToVercel({
-                          projectPath,
-                          githubRepo: fullRepoName,
-                        });
-                      } catch (e) {
+                      linkToVercel({
+                        projectPath,
+                        githubRepo: fullRepoName,
+                      }).then(() => {
+                        // Refresh status after Vercel links
+                        onStatusChange();
+                      }).catch((e) => {
                         console.error("Failed to auto-connect to Vercel:", e);
-                      }
+                      });
                     }
 
                     // Refresh status - this will clear isCreatingRepo when status updates

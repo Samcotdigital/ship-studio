@@ -22,6 +22,10 @@ export async function getGitHubUsername(): Promise<string> {
   return invoke<string>("get_github_username");
 }
 
+export async function getGitHubOrgs(): Promise<string[]> {
+  return invoke<string[]>("get_github_orgs");
+}
+
 export async function getProjectGitHubStatus(projectPath: string): Promise<ProjectGitHubStatus> {
   return invoke<ProjectGitHubStatus>("get_project_github_status", { projectPath });
 }
