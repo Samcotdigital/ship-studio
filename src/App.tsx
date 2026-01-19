@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import { Terminal, TerminalHandle } from "./components/Terminal";
-import { Preview } from "./components/Preview";
+import { Preview, PreviewHandle } from "./components/Preview";
 import { ProjectList } from "./components/ProjectList";
 import { CreateProject } from "./components/CreateProject";
 import { SetupScreen } from "./components/SetupScreen";
@@ -34,7 +34,6 @@ const SCREENSHOT_DELAY_MS = 2000; // Wait for page to render
 const DEV_SERVER_PORT = 3000;
 
 type AppView = "loading" | "setup" | "projects" | "create" | "project-loading" | "workspace";
-type EditorMode = "agent" | "visual";
 
 export interface GitHubState {
   cliStatus: GitHubCliStatus;
@@ -106,14 +105,15 @@ function App() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const devServerRef = useRef<DevServerHandle | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
+  const previewRef = useRef<PreviewHandle | null>(null);
   const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentProjectPathRef = useRef<string | null>(null);
 
   // Integration states consolidated via reducer for atomic updates
   const [integrations, dispatch] = useReducer(integrationReducer, initialIntegrationState);
 
-  // Editor mode (agent vs visual)
-  const [editorMode, setEditorMode] = useState<EditorMode>("agent");
+  // Capture state for screenshot button
+  const [isCapturing, setIsCapturing] = useState(false);
 
   // Env editor modal
   const [showEnvEditor, setShowEnvEditor] = useState(false);
@@ -263,6 +263,23 @@ function App() {
   const focusTerminal = useCallback(() => {
     terminalRef.current?.focus();
   }, []);
+
+  // Handle capture for Claude - screenshot preview and paste path into terminal
+  const handleCaptureForClaude = useCallback(async () => {
+    if (isCapturing || !previewRef.current) return;
+
+    setIsCapturing(true);
+    try {
+      const filePath = await previewRef.current.captureForClaude();
+      if (filePath) {
+        // Quote path if it contains spaces
+        const quotedPath = filePath.includes(" ") ? `"${filePath}"` : filePath;
+        terminalRef.current?.paste(quotedPath);
+      }
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [isCapturing]);
 
   // Handle terminal exit (memoized to prevent re-spawning Claude on every render)
   const handleTerminalExit = useCallback((code: number | null) => {
@@ -578,52 +595,43 @@ function App() {
           left={
             <div className="terminal-pane">
               <div className="terminal-toolbar">
-                <div className="editor-mode-toggle">
-                  <button
-                    className={`mode-btn ${editorMode === "agent" ? "active" : ""}`}
-                    onClick={() => setEditorMode("agent")}
-                    title="Agent Mode"
-                  >
+                <div className="agent-toolbar">
+                  <div className="agent-label">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
                     <span>Agent</span>
-                  </button>
+                  </div>
                   <button
-                    className={`mode-btn ${editorMode === "visual" ? "active" : ""}`}
-                    onClick={() => setEditorMode("visual")}
-                    title="Visual Editor"
+                    className="agent-capture-btn"
+                    onClick={handleCaptureForClaude}
+                    disabled={isCapturing}
+                    title="Screenshot preview for Claude"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
-                      <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
-                      <path d="M14.5 17.5 4.5 15" />
-                    </svg>
-                    <span>Visual</span>
+                    {isCapturing ? (
+                      <div className="capture-spinner" />
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
-              <div className="terminal-content" style={{ display: editorMode === "agent" ? "block" : "none" }}>
+              <div className="terminal-content">
                 <Terminal
                   ref={terminalRef}
                   projectPath={currentProject?.path || ""}
                   onExit={handleTerminalExit}
                 />
               </div>
-              <div className="visual-editor-placeholder" style={{ display: editorMode === "visual" ? "flex" : "none" }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
-                  <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
-                  <path d="M14.5 17.5 4.5 15" />
-                </svg>
-                <h3>Visual Editor</h3>
-                <p>Coming soon</p>
-              </div>
             </div>
           }
           right={
             <div className="preview-pane">
               <Preview
+                ref={previewRef}
                 port={DEV_SERVER_PORT}
                 projectPath={currentProject?.path || ""}
                 onServerReady={handlePreviewReady}

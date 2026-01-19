@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 // Constants
@@ -53,7 +53,12 @@ interface PreviewProps {
   onPageChange?: (page: string) => void;
 }
 
-export function Preview({ port = 3000, projectPath, onServerReady, onPageChange }: PreviewProps) {
+export interface PreviewHandle {
+  captureForClaude: () => Promise<string | null>;
+  isCapturing: () => boolean;
+}
+
+export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview({ port = 3000, projectPath, onServerReady, onPageChange }, ref) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -68,13 +73,17 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
   const [pageSearch, setPageSearch] = useState("");
   const [showCmsModal, setShowCmsModal] = useState(false);
   const [cmsWebviewReady, setCmsWebviewReady] = useState(false);
+  const [isCapturing] = useState(false); // Capture disabled for now
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeWrapperRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cmsModalRef = useRef<HTMLDivElement>(null);
 
-  const baseUrl = `http://localhost:${port}`;
-  const currentUrl = `${baseUrl}${currentPage === "/" ? "" : currentPage}`;
+  // Dev server URL (for health checks and page loading)
+  const devServerUrl = `http://localhost:${port}`;
+  // For now, always use dev server directly (proxy disabled due to issues)
+  const currentUrl = `${devServerUrl}${currentPage === "/" ? "" : currentPage}`;
 
   // Reset state when project changes
   useEffect(() => {
@@ -92,6 +101,9 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     setShowCmsModal(false);
     setCmsWebviewReady(false);
   }, [projectPath]);
+
+  // Proxy disabled for now - using dev server directly
+  // TODO: Implement capture using Tauri webview script injection instead
 
   // Load pages
   const loadPages = async () => {
@@ -175,7 +187,7 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), SERVER_CHECK_TIMEOUT_MS);
 
-        await fetch(baseUrl, {
+        await fetch(devServerUrl, {
           mode: "no-cors",
           signal: controller.signal
         });
@@ -195,7 +207,7 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     };
 
     checkServer();
-  }, [baseUrl, retryCount]);
+  }, [devServerUrl, retryCount]);
 
   const handleRefresh = () => {
     if (iframeRef.current) {
@@ -208,10 +220,23 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     setShowPageDropdown(false);
     setPageSearch("");
     if (iframeRef.current && serverReady) {
-      const newUrl = `${baseUrl}${route === "/" ? "" : route}`;
+      const newUrl = `${devServerUrl}${route === "/" ? "" : route}`;
       iframeRef.current.src = newUrl;
     }
   };
+
+  // Capture preview screenshot for Claude - temporarily disabled
+  // TODO: Re-implement using Tauri webview script injection
+  const captureForClaude = useCallback(async (): Promise<string | null> => {
+    console.log("Capture feature temporarily disabled - proxy approach had issues");
+    return null;
+  }, []);
+
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    captureForClaude,
+    isCapturing: () => isCapturing,
+  }), [captureForClaude, isCapturing]);
 
   // Open CMS modal with native webview
   const handleOpenCms = () => {
@@ -259,9 +284,9 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
       }
 
       try {
-        // Load Sanity Studio
+        // Load Sanity Studio (use dev server directly, not proxy)
         await invoke("create_preview_webview", {
-          url: `${baseUrl}/studio`,
+          url: `${devServerUrl}/studio`,
           x: rect.left,
           y: rect.top + TITLE_BAR_HEIGHT,
           width: rect.width,
@@ -294,7 +319,7 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [showCmsModal, serverReady, baseUrl]);
+  }, [showCmsModal, serverReady, devServerUrl]);
 
   const filteredPages = pages
     .filter(page => page.route !== "/studio") // Hide Sanity Studio from page list
@@ -437,6 +462,7 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
       </div>
       <div className="preview-viewport">
         <div
+          ref={iframeWrapperRef}
           className="preview-iframe-wrapper"
           style={{
             width: BREAKPOINTS[breakpoint].width,
@@ -478,4 +504,4 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
       )}
     </div>
   );
-}
+});

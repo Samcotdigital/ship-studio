@@ -14,6 +14,7 @@ interface TerminalProps {
 export interface TerminalHandle {
   focus: () => void;
   write: (data: string) => void;
+  paste: (data: string) => void;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal({ projectPath, onExit }, ref) {
@@ -270,6 +271,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     },
     write: (data: string) => {
       ptyRef.current?.write(data);
+    },
+    paste: (data: string) => {
+      if (terminalRef.current) {
+        terminalRef.current.focus();
+        (terminalRef.current as any).paste(data);
+      }
     },
   }), []);
 

@@ -717,8 +717,8 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  min-height: 44px;
+  padding: 9px 12px;
+  min-height: 46px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -730,71 +730,53 @@ button:hover {
   font-weight: 500;
 }
 
-/* Editor Mode Toggle */
-.editor-mode-toggle {
+/* Agent Toolbar */
+.agent-toolbar {
   display: flex;
-  gap: 2px;
-  background: var(--bg-tertiary);
-  padding: 2px;
-  border-radius: 6px;
+  align-items: center;
+  gap: 8px;
 }
 
-.mode-btn {
+.agent-label {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+}
+
+.agent-label svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.agent-capture-btn {
+  padding: 6px 8px;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s;
 }
 
-.mode-btn:hover {
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
-}
-
-.mode-btn.active {
-  background: var(--bg-secondary);
+.agent-capture-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.mode-btn svg {
-  flex-shrink: 0;
+.agent-capture-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* Visual Editor Placeholder (Coming Soon) */
-.visual-editor-placeholder {
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  text-align: center;
-  color: var(--text-muted);
-  padding: 24px;
-}
-
-.visual-editor-placeholder svg {
-  opacity: 0.4;
-}
-
-.visual-editor-placeholder h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.visual-editor-placeholder p {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0;
+.agent-capture-btn svg {
+  display: block;
 }
 
 .terminal-capture {
@@ -977,6 +959,15 @@ button:hover {
 
 .preview-refresh:hover {
   background: var(--bg-tertiary);
+}
+
+.capture-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .preview-breakpoints {
