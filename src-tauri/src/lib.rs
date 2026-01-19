@@ -245,6 +245,48 @@ async fn delete_project(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Ensures .marketingstack/ is in the project's .gitignore
+/// This prevents the metadata directory from being tracked and causing phantom changes
+#[tauri::command]
+async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result<(), String> {
+    let project = validate_project_path(&project_path)?;
+    let gitignore_path = project.join(".gitignore");
+
+    let entry = ".marketingstack/";
+
+    // Read existing .gitignore content
+    let content = if gitignore_path.exists() {
+        std::fs::read_to_string(&gitignore_path)
+            .map_err(|e| format!("Failed to read .gitignore: {}", e))?
+    } else {
+        String::new()
+    };
+
+    // Check if .marketingstack/ is already in gitignore
+    let already_ignored = content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed == entry || trimmed == ".marketingstack" || trimmed == "/.marketingstack/" || trimmed == "/.marketingstack"
+    });
+
+    if already_ignored {
+        return Ok(());
+    }
+
+    // Append .marketingstack/ to .gitignore
+    let new_content = if content.is_empty() {
+        format!("# Marketingstack metadata\n{}\n", entry)
+    } else if content.ends_with('\n') {
+        format!("{}\n# Marketingstack metadata\n{}\n", content, entry)
+    } else {
+        format!("{}\n\n# Marketingstack metadata\n{}\n", content, entry)
+    };
+
+    std::fs::write(&gitignore_path, new_content)
+        .map_err(|e| format!("Failed to write .gitignore: {}", e))?;
+
+    Ok(())
+}
+
 /// Next.js page route information
 #[derive(Serialize)]
 struct PageInfo {
@@ -1926,6 +1968,51 @@ async fn get_project_vercel_status(project_path: String) -> ProjectVercelStatus 
         }
     }
 
+    // Cache URLs to .marketingstack/project.json so dashboard can show deployment info
+    if production_url.is_some() || staging_url.is_some() {
+        let marketingstack_dir = project.join(".marketingstack");
+        let metadata_path = marketingstack_dir.join("project.json");
+
+        // Read existing metadata or create default
+        let mut metadata = if metadata_path.exists() {
+            std::fs::read_to_string(&metadata_path)
+                .ok()
+                .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+                .unwrap_or_default()
+        } else {
+            ProjectMetadata::default()
+        };
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // Update production URL if we have one
+        if let Some(ref url) = production_url {
+            metadata.publish.production = Some(PublishRecord {
+                url: url.clone(),
+                state: "READY".to_string(),
+                published_at: now,
+            });
+        }
+
+        // Update staging URL if we have one
+        if let Some(ref url) = staging_url {
+            metadata.publish.staging = Some(PublishRecord {
+                url: url.clone(),
+                state: "READY".to_string(),
+                published_at: now,
+            });
+        }
+
+        // Ensure .marketingstack directory exists and write
+        let _ = std::fs::create_dir_all(&marketingstack_dir);
+        if let Ok(contents) = serde_json::to_string_pretty(&metadata) {
+            let _ = std::fs::write(&metadata_path, contents);
+        }
+    }
+
     ProjectVercelStatus {
         status: "connected".to_string(),
         project_name,
@@ -2983,6 +3070,7 @@ pub fn run() {
             read_project_metadata,
             write_project_metadata,
             mark_project_opened,
+            ensure_gitignore_has_marketingstack,
             // Environment variables
             list_env_files,
             read_env_file,

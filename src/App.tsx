@@ -26,7 +26,7 @@ import {
 } from "./lib/vercel";
 import { checkClaudeCliStatus, ClaudeCliStatus } from "./lib/claude";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import "./styles/index.css";
 
 // Constants
 const SCREENSHOT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -331,6 +331,9 @@ function App() {
 
     // Mark project as opened (for sorting by last opened)
     invoke("mark_project_opened", { projectPath: project.path }).catch(() => {});
+
+    // Ensure .marketingstack/ is gitignored (backwards compat for existing projects)
+    invoke("ensure_gitignore_has_marketingstack", { projectPath: project.path }).catch(() => {});
 
     // Check project's GitHub and Vercel status in parallel
     try {

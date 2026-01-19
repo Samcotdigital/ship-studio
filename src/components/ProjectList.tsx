@@ -367,7 +367,10 @@ export function ProjectList({
               onDelete={() => setDeleteConfirm(project)}
               onOpenSite={
                 project.production_url
-                  ? () => openUrl(project.production_url!)
+                  ? () => {
+                      const url = project.production_url!;
+                      openUrl(url.startsWith("http") ? url : `https://${url}`);
+                    }
                   : undefined
               }
             />

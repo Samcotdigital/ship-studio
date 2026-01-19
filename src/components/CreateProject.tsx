@@ -116,6 +116,9 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
 
       await waitForPtyExit(rmGitId);
 
+      // Ensure .marketingstack/ is gitignored to prevent phantom changes
+      await invoke("ensure_gitignore_has_marketingstack", { projectPath: projectPath });
+
       // Install dependencies
       setCurrentStep("install");
       const installId = await invoke<number>("spawn_pty", {
