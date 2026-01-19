@@ -6,9 +6,16 @@ export interface VercelCliStatus {
 }
 
 export interface ProjectVercelStatus {
-  is_linked: boolean;
+  /** "not-linked" | "not-git-connected" | "connected" */
+  status: "not-linked" | "not-git-connected" | "connected";
+  /** Vercel project name */
   project_name: string | null;
+  /** Vercel org/team slug for dashboard URLs */
+  vercel_org: string | null;
+  /** Production URL (shortest alias, could be custom domain) */
   production_url: string | null;
+  /** Staging URL (contains -git-staging-) */
+  staging_url: string | null;
 }
 
 export async function checkVercelCliStatus(): Promise<VercelCliStatus> {
@@ -44,4 +51,23 @@ export interface DeployToVercelOptions {
 
 export async function deployToVercel(options: DeployToVercelOptions): Promise<string> {
   return invoke<string>("deploy_to_vercel", { options });
+}
+
+export interface VercelDeployment {
+  uid: string;
+  url: string;
+  state: "READY" | "BUILDING" | "ERROR" | "QUEUED" | "CANCELED" | string;
+  target: "production" | null;
+  created_at: number; // Unix timestamp in ms
+}
+
+export interface VercelDeploymentStatus {
+  staging: VercelDeployment | null;
+  production: VercelDeployment | null;
+  preview_url: string | null;
+  production_url: string | null;
+}
+
+export async function getVercelDeployments(projectPath: string): Promise<VercelDeploymentStatus> {
+  return invoke<VercelDeploymentStatus>("get_vercel_deployments", { projectPath });
 }

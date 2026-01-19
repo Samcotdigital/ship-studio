@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { GitHubState, VercelState } from "../App";
-import { ProjectGitHubStatus, pushToGitHub, publishToGitHub, checkGitHasChanges } from "../lib/github";
+import { ProjectGitHubStatus, pushToGitHub } from "../lib/github";
 import { linkToVercel } from "../lib/vercel";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -26,41 +26,13 @@ export function GitHubButton({
   onModalClose,
 }: GitHubButtonProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showPublishModal, setShowPublishModal] = useState(false);
   const [repoName, setRepoName] = useState(projectName);
   const [isPrivate, setIsPrivate] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingRepo, setIsCreatingRepo] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
-  const initialCheckDone = useRef(false);
 
   const { cliStatus, username } = githubState;
-
-  // Check for changes when project status changes or periodically
-  const checkChanges = useCallback(async () => {
-    if (!projectPath || !projectStatus?.has_remote) return;
-
-    try {
-      const changes = await checkGitHasChanges(projectPath);
-      setHasChanges(changes);
-    } catch (e) {
-      console.error("Failed to check changes:", e);
-    }
-  }, [projectPath, projectStatus?.has_remote]);
-
-  useEffect(() => {
-    // Initial check
-    if (!initialCheckDone.current && projectStatus?.has_remote) {
-      initialCheckDone.current = true;
-      checkChanges();
-    }
-
-    // Poll for changes every 10 seconds when connected to repo (less frequent to reduce flicker)
-    if (projectStatus?.has_remote) {
-      const interval = setInterval(checkChanges, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [checkChanges, projectStatus?.has_remote]);
 
   // If gh CLI not installed, show install prompt
   if (!cliStatus.installed) {
@@ -70,7 +42,8 @@ export function GitHubButton({
         onClick={() => openUrl("https://cli.github.com/")}
         title="Install GitHub CLI"
       >
-        Install GitHub CLI
+        <GitHubIcon />
+        Install CLI
       </button>
     );
   }
@@ -83,6 +56,7 @@ export function GitHubButton({
         onClick={async () => {
           try {
             await openUrl("https://github.com/login/device");
+            // Poll for auth completion
             const pollAuth = async () => {
               for (let i = 0; i < 60; i++) {
                 await new Promise((r) => setTimeout(r, 2000));
@@ -96,79 +70,39 @@ export function GitHubButton({
         }}
         title="Connect your GitHub account"
       >
-        Connect GitHub
+        <GitHubIcon />
+        Connect
       </button>
     );
   }
 
-  // If project is connected to GitHub, show GitHub link and Publish button
-  if (projectStatus?.has_remote && projectStatus?.github_repo) {
-    return (
-      <>
-        {/* GitHub link on the left */}
-        {projectStatus.github_url && (
-          <button
-            className="github-button github-link"
-            onClick={() => openUrl(projectStatus.github_url!)}
-            title="Open on GitHub"
-          >
-            <GitHubIcon />
-          </button>
-        )}
-        {/* Publish button pushed to the right */}
-        <button
-          className={`github-button github-publish ${!hasChanges ? 'disabled' : ''}`}
-          onClick={() => {
-            if (hasChanges) {
-              setShowPublishModal(true);
-              setError(null);
-            }
-          }}
-          disabled={!hasChanges || isLoading}
-          title={hasChanges ? "Publish changes to GitHub" : "Up to date with GitHub"}
-        >
-          {isLoading ? "Publishing..." : "Publish"}
-        </button>
+  // Clear isCreatingRepo when status becomes connected
+  useEffect(() => {
+    if (projectStatus?.status === "connected" && isCreatingRepo) {
+      setIsCreatingRepo(false);
+    }
+  }, [projectStatus?.status, isCreatingRepo]);
 
-        {/* Publish Confirmation Modal */}
-        {showPublishModal && (
-          <div className="modal-overlay" onClick={() => { setShowPublishModal(false); onModalClose?.(); }}>
-            <div className="modal github-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Publish to GitHub</h3>
-              <p>
-                Push your changes to <strong>{projectStatus.github_repo}</strong>?
-              </p>
-              {error && <p className="github-error">{error}</p>}
-              <div className="modal-actions">
-                <button onClick={() => { setShowPublishModal(false); onModalClose?.(); }} disabled={isLoading}>
-                  Cancel
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={async () => {
-                    setIsLoading(true);
-                    setError(null);
-                    try {
-                      await publishToGitHub(projectPath);
-                      setShowPublishModal(false);
-                      setHasChanges(false);
-                      onStatusChange();
-                      onModalClose?.();
-                    } catch (e) {
-                      setError(String(e));
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  }}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Publishing..." : "Confirm"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
+  // If project has a GitHub repo, show icon link to repo
+  if (projectStatus?.status === "connected" && projectStatus?.github_url) {
+    return (
+      <button
+        className="github-button github-link"
+        onClick={() => openUrl(projectStatus.github_url!)}
+        title="Open on GitHub"
+      >
+        <GitHubIcon />
+      </button>
+    );
+  }
+
+  // Show loading state while creating repo (even after modal closes)
+  if (isCreatingRepo) {
+    return (
+      <button className="github-button github-creating" disabled title="Setting up...">
+        <GitHubIcon />
+        Setting up...
+      </button>
     );
   }
 
@@ -249,6 +183,7 @@ export function GitHubButton({
                   if (!repoName.trim()) return;
 
                   setIsLoading(true);
+                  setIsCreatingRepo(true);
                   setError(null);
                   try {
                     const fullRepoName = `${username}/${repoName}`;
@@ -258,7 +193,12 @@ export function GitHubButton({
                       isPrivate,
                     });
 
-                    // Auto-connect to Vercel if authenticated
+                    // Close modal immediately after GitHub repo is created
+                    setShowCreateModal(false);
+                    setIsLoading(false);
+                    onModalClose?.();
+
+                    // Auto-connect to Vercel if authenticated (happens in background)
                     if (vercelState?.cliStatus.authenticated) {
                       try {
                         await linkToVercel({
@@ -266,18 +206,16 @@ export function GitHubButton({
                           githubRepo: fullRepoName,
                         });
                       } catch (e) {
-                        // Log but don't block - Vercel connection is optional
                         console.error("Failed to auto-connect to Vercel:", e);
                       }
                     }
 
-                    setShowCreateModal(false);
+                    // Refresh status - this will clear isCreatingRepo when status updates
                     onStatusChange();
-                    onModalClose?.();
                   } catch (e) {
                     setError(String(e));
-                  } finally {
                     setIsLoading(false);
+                    setIsCreatingRepo(false);
                   }
                 }}
                 disabled={isLoading || !repoName.trim()}

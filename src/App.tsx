@@ -7,6 +7,7 @@ import { SetupScreen } from "./components/SetupScreen";
 import { SplitPane } from "./components/SplitPane";
 import { GitHubButton } from "./components/GitHubButton";
 import { VercelButton } from "./components/VercelButton";
+import { PublishDropdown } from "./components/PublishDropdown";
 import { EnvEditor } from "./components/EnvEditor";
 import { checkPrerequisites, startDevServer, Prerequisite, Project, DevServerHandle } from "./lib/project";
 import {
@@ -122,8 +123,28 @@ function App() {
   const [ideAvailability, setIdeAvailability] = useState<{ vscode: boolean; cursor: boolean }>({ vscode: false, cursor: false });
   const [openingIde, setOpeningIde] = useState<string | null>(null);
 
-  // Current preview page (for Vercel Live button)
-  const [currentPreviewPage, setCurrentPreviewPage] = useState("/");
+  // Current preview page (tracked for potential future use)
+  const [, setCurrentPreviewPage] = useState("/");
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" }>>([]);
+  const toastIdRef = useRef(0);
+
+  // Publishing state (lifted from PublishDropdown so button shows "Publishing..." even when dropdown closed)
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { id, message, type }]);
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   // Check IDE availability on mount
   useEffect(() => {
@@ -279,6 +300,9 @@ function App() {
       screenshotIntervalRef.current = null;
     }
 
+    // Reset publishing state when switching projects
+    setIsPublishing(false);
+
     setCurrentProject(project);
     setCurrentPreviewPage("/");
     currentProjectPathRef.current = project.path;
@@ -345,6 +369,9 @@ function App() {
     }
     currentProjectPathRef.current = null;
 
+    // Reset publishing state
+    setIsPublishing(false);
+
     // Stop dev server if running
     if (devServerRef.current) {
       await devServerRef.current.stop();
@@ -372,9 +399,11 @@ function App() {
       dispatch({
         type: 'SET_PROJECT_VERCEL',
         payload: {
-          is_linked: true,
+          status: "connected",
           project_name: currentProject.name,
           production_url: deployedUrl,
+          staging_url: integrations.projectVercel?.staging_url ?? null,
+          vercel_org: integrations.projectVercel?.vercel_org ?? null,
         },
       });
       return;
@@ -516,10 +545,19 @@ function App() {
             projectGithubStatus={integrations.projectGithub}
             projectPath={currentProject?.path || ""}
             projectName={currentProject?.name || ""}
-            currentPage={currentPreviewPage}
             onStatusChange={handleVercelStatusChange}
             onVercelConnect={refreshVercelStatus}
             onModalClose={focusTerminal}
+          />
+          <PublishDropdown
+            projectGithubStatus={integrations.projectGithub}
+            projectVercelStatus={integrations.projectVercel}
+            projectPath={currentProject?.path || ""}
+            onStatusChange={handleGitHubStatusChange}
+            onModalClose={focusTerminal}
+            onToast={showToast}
+            isPublishing={isPublishing}
+            setIsPublishing={setIsPublishing}
           />
         </div>
       </header>
@@ -596,6 +634,37 @@ function App() {
           focusTerminal();
         }}
       />
+
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div className="toast-container">
+          {toasts.map(toast => (
+            <div key={toast.id} className={`toast toast-${toast.type}`}>
+              <span className="toast-icon">
+                {toast.type === "success" ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                )}
+              </span>
+              <span className="toast-message">{toast.message}</span>
+              <button className="toast-close" onClick={() => dismissToast(toast.id)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

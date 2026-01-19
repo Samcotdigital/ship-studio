@@ -17,7 +17,6 @@ interface VercelButtonProps {
   projectGithubStatus: ProjectGitHubStatus | null;
   projectPath: string;
   projectName: string;
-  currentPage?: string;
   onStatusChange: (deployedUrl?: string) => void;
   onVercelConnect: () => void;
   onModalClose?: () => void;
@@ -29,7 +28,6 @@ export function VercelButton({
   projectGithubStatus,
   projectPath,
   projectName,
-  currentPage = "/",
   onStatusChange,
   onVercelConnect,
   onModalClose,
@@ -63,9 +61,8 @@ export function VercelButton({
     };
   }, []);
 
-  // Don't show any Vercel options until GitHub repo is created
-  // Vercel deployments are tied to GitHub for auto-deploy
-  if (!projectGithubStatus?.has_remote || !projectGithubStatus?.github_repo) {
+  // Don't show Vercel options until GitHub repo is created
+  if (projectGithubStatus?.status !== "connected" || !projectGithubStatus?.github_repo) {
     return null;
   }
 
@@ -74,7 +71,7 @@ export function VercelButton({
     setError(null);
     try {
       await installVercelCli();
-      onVercelConnect(); // Refresh status
+      onVercelConnect();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -89,11 +86,9 @@ export function VercelButton({
     setError(null);
 
     try {
-      // Get home directory for running vercel login
       const homeDir = await invoke<string>("get_marketingstack_dir");
       const parentDir = homeDir.replace("/Marketingstack", "");
 
-      // Spawn PTY for vercel login
       const ptyId = await invoke<number>("spawn_pty", {
         cwd: parentDir,
         command: "vercel",
@@ -103,7 +98,6 @@ export function VercelButton({
       });
       ptyIdRef.current = ptyId;
 
-      // Listen for PTY output
       const unlistenOutput = await listen<{ id: number; data: string }>(
         "pty-output",
         (event) => {
@@ -113,7 +107,6 @@ export function VercelButton({
         }
       );
 
-      // Listen for PTY exit
       const unlistenExit = await listen<{ id: number; code: number | null }>(
         "pty-exit",
         async (event) => {
@@ -123,7 +116,6 @@ export function VercelButton({
             unlistenOutput();
             unlistenExit();
 
-            // Check if login was successful
             const status = await checkVercelCliStatus();
             if (status.authenticated) {
               setShowLoginModal(false);
@@ -145,7 +137,7 @@ export function VercelButton({
     }
     setShowLoginModal(false);
     setIsLoggingIn(false);
-    onVercelConnect(); // Refresh status in case login completed
+    onVercelConnect();
     onModalClose?.();
   };
 
@@ -154,25 +146,22 @@ export function VercelButton({
 
     setIsDeploying(true);
     setError(null);
-    setShowDeployModal(false); // Close modal to show deploying state on button
+    setShowDeployModal(false);
     try {
-      console.log("Starting Vercel deployment...", { projectPath, deployName });
       const deployedUrl = await deployToVercel({
         projectPath,
         projectName: deployName,
         githubRepo: projectGithubStatus?.github_repo || undefined,
       });
-      console.log("Deployment successful:", deployedUrl);
-      onStatusChange(deployedUrl); // Pass the deployed URL
+      onStatusChange(deployedUrl);
     } catch (e) {
-      console.error("Deployment failed:", e);
       setError(String(e));
     } finally {
       setIsDeploying(false);
     }
   };
 
-  // If vercel CLI not installed, show install button
+  // If Vercel CLI not installed
   if (!cliStatus.installed) {
     return (
       <>
@@ -190,7 +179,7 @@ export function VercelButton({
     );
   }
 
-  // If not authenticated, show connect button
+  // If not authenticated
   if (!cliStatus.authenticated) {
     return (
       <>
@@ -204,7 +193,6 @@ export function VercelButton({
           {isLoggingIn ? "Connecting..." : "Connect Vercel"}
         </button>
 
-        {/* Login Modal */}
         {showLoginModal && (
           <div className="modal-overlay" onClick={handleCloseLoginModal}>
             <div className="modal vercel-modal" onClick={(e) => e.stopPropagation()}>
@@ -230,87 +218,57 @@ export function VercelButton({
     );
   }
 
-  // If currently deploying, show deploying state (check FIRST before is_linked)
+  // If deploying
   if (isDeploying) {
     return (
-      <button
-        className="vercel-button vercel-deploying"
-        disabled
-        title="Deploying to Vercel..."
-      >
+      <button className="vercel-button vercel-deploying" disabled title="Deploying to Vercel...">
         <VercelIcon />
         <span className="deploying-text">Deploying...</span>
       </button>
     );
   }
 
-  // If project is connected to Vercel and has a production URL, show Live button
-  if (projectVercelStatus?.is_linked && projectVercelStatus?.production_url) {
-    const liveUrl = currentPage === "/"
-      ? projectVercelStatus.production_url
-      : `${projectVercelStatus.production_url}${currentPage}`;
+  // If project is fully connected to Vercel (linked + git connected), show icon to open dashboard
+  if (projectVercelStatus?.status === "connected") {
+    const dashboardUrl = projectVercelStatus.vercel_org && projectVercelStatus.project_name
+      ? `https://vercel.com/${projectVercelStatus.vercel_org}/${projectVercelStatus.project_name}`
+      : "https://vercel.com/dashboard";
     return (
       <button
-        className="vercel-button vercel-live"
-        onClick={() => openUrl(liveUrl)}
-        title={`Open ${liveUrl}`}
+        className="vercel-button vercel-linked"
+        onClick={() => openUrl(dashboardUrl)}
+        title="Open Vercel dashboard"
       >
         <VercelIcon />
-        Live
       </button>
     );
   }
 
-  // If project is linked but no production URL (linked but not deployed yet)
-  // Falls through to the default Deploy button + modal below
-
-  // If there was a deployment error, show error state with retry
-  if (error && !projectVercelStatus?.is_linked) {
-    return (
-      <>
-        <button
-          className="vercel-button vercel-error-state"
-          onClick={() => {
-            setError(null);
-            setDeployName(projectName);
-            setShowDeployModal(true);
-          }}
-          title="Deployment failed - click to retry"
-        >
-          <VercelIcon />
-          Deploy Failed
-        </button>
-        <span className="vercel-error-inline" title={error}>Retry?</span>
-      </>
-    );
-  }
-
-  // Project has GitHub but not connected to Vercel - show Deploy button
+  // Not linked yet - show Connect button to set up Vercel project
   return (
     <>
       <button
-        className="vercel-button vercel-deploy"
+        className="vercel-button vercel-setup"
         onClick={() => {
           setDeployName(projectName);
           setShowDeployModal(true);
           setError(null);
         }}
-        title="Deploy this project to Vercel"
+        title="Connect to Vercel for auto-deployments"
       >
         <VercelIcon />
-        Deploy
+        Connect Vercel
       </button>
 
-      {/* Deploy Modal */}
       {showDeployModal && (
         <div className="modal-overlay" onClick={() => { if (!isDeploying) { setShowDeployModal(false); onModalClose?.(); } }}>
           <div className="modal vercel-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Deploy to Vercel</h3>
-            <p>Deploy this project to Vercel. Future pushes to GitHub will auto-deploy.</p>
+            <h3>Connect to Vercel</h3>
+            <p>Link this project to Vercel for automatic deployments when you publish.</p>
 
             <div className="vercel-form">
               <label>
-                Project name
+                Vercel project name
                 <input
                   type="text"
                   value={deployName}
@@ -346,7 +304,7 @@ export function VercelButton({
                 }}
                 disabled={isDeploying || !deployName.trim()}
               >
-                Deploy
+                Connect & Deploy
               </button>
             </div>
           </div>

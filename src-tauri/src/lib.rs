@@ -101,6 +101,84 @@ struct ProjectInfo {
     thumbnail: Option<String>,
 }
 
+// ============ Project Metadata (Publish State Persistence) ============
+
+/// Record of a single publish event (staging or production)
+#[derive(Serialize, Deserialize, Clone)]
+struct PublishRecord {
+    url: String,
+    state: String,
+    #[serde(rename = "publishedAt")]
+    published_at: u64,
+}
+
+/// Publish metadata for staging and production
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct PublishMetadata {
+    staging: Option<PublishRecord>,
+    production: Option<PublishRecord>,
+}
+
+/// Project metadata stored in .marketingstack/project.json
+#[derive(Serialize, Deserialize)]
+struct ProjectMetadata {
+    #[serde(rename = "_description")]
+    description: String,
+    publish: PublishMetadata,
+}
+
+impl Default for ProjectMetadata {
+    fn default() -> Self {
+        ProjectMetadata {
+            description: "Marketingstack project metadata. Auto-generated - safe to delete if needed, will be recreated.".to_string(),
+            publish: PublishMetadata::default(),
+        }
+    }
+}
+
+/// Reads project metadata from .marketingstack/project.json
+/// Returns None if file doesn't exist (not an error)
+#[tauri::command]
+async fn read_project_metadata(project_path: String) -> Result<Option<ProjectMetadata>, String> {
+    let project = validate_project_path(&project_path)?;
+    let metadata_path = project.join(".marketingstack").join("project.json");
+
+    if !metadata_path.exists() {
+        return Ok(None);
+    }
+
+    let contents = std::fs::read_to_string(&metadata_path)
+        .map_err(|e| format!("Failed to read project metadata: {}", e))?;
+
+    let metadata: ProjectMetadata = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse project metadata: {}", e))?;
+
+    Ok(Some(metadata))
+}
+
+/// Writes project metadata to .marketingstack/project.json
+/// Creates the .marketingstack directory if needed
+#[tauri::command]
+async fn write_project_metadata(project_path: String, metadata: ProjectMetadata) -> Result<(), String> {
+    let project = validate_project_path(&project_path)?;
+    let marketingstack_dir = project.join(".marketingstack");
+
+    // Ensure .marketingstack directory exists
+    if !marketingstack_dir.exists() {
+        std::fs::create_dir_all(&marketingstack_dir)
+            .map_err(|e| format!("Failed to create .marketingstack directory: {}", e))?;
+    }
+
+    let metadata_path = marketingstack_dir.join("project.json");
+    let contents = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize project metadata: {}", e))?;
+
+    std::fs::write(&metadata_path, contents)
+        .map_err(|e| format!("Failed to write project metadata: {}", e))?;
+
+    Ok(())
+}
+
 /// Deletes a project directory. Only allows deletion from ~/Marketingstack.
 #[tauri::command]
 async fn delete_project(path: String) -> Result<(), String> {
@@ -170,6 +248,44 @@ async fn check_sanity_installed(project_path: String) -> Result<bool, String> {
     }
 
     Ok(false)
+}
+
+#[tauri::command]
+async fn check_sanity_env_keys(project_path: String) -> Result<Vec<String>, String> {
+    let path = validate_project_path(&project_path)?;
+
+    // Required Sanity env var keys (we only check if keys exist, never read values)
+    let required_keys = [
+        "NEXT_PUBLIC_SANITY_PROJECT_ID",
+        "NEXT_PUBLIC_SANITY_DATASET",
+    ];
+
+    let mut missing_keys: Vec<String> = required_keys.iter().map(|s| s.to_string()).collect();
+
+    // Check .env.local first (most common), then .env
+    let env_files = [".env.local", ".env"];
+
+    for env_file in env_files {
+        let env_path = path.join(env_file);
+        if env_path.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&env_path) {
+                for line in contents.lines() {
+                    let line = line.trim();
+                    // Skip comments and empty lines
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    // Extract key (everything before '=')
+                    if let Some(key) = line.split('=').next() {
+                        let key = key.trim();
+                        missing_keys.retain(|k| k != key);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(missing_keys)
 }
 
 // ============ Environment Variables ============
@@ -1060,42 +1176,45 @@ async fn get_vercel_username() -> Result<String, String> {
     Ok(username)
 }
 
+/// Vercel connection status - verified against Vercel API
 #[derive(Serialize)]
 struct ProjectVercelStatus {
-    is_linked: bool,
+    /// "not-linked" | "not-git-connected" | "connected"
+    status: String,
+    /// Vercel project name
     project_name: Option<String>,
+    /// Vercel org/team slug for dashboard URLs
+    vercel_org: Option<String>,
+    /// Production URL (shortest alias, could be custom domain)
     production_url: Option<String>,
+    /// Staging URL (contains -git-staging-)
+    staging_url: Option<String>,
 }
 
-/// Checks if a project is linked to Vercel and has a production deployment.
-///
-/// State flow:
-/// 1. No .vercel/project.json → not linked (is_linked: false)
-/// 2. .vercel/project.json exists but no production_url marker → linked, no URL
-/// 3. Has production_url marker → linked with URL (is_linked: true, production_url: Some)
+/// Checks Vercel status by verifying with the Vercel CLI.
+/// Asks Vercel directly instead of inferring from local files.
 #[tauri::command]
 async fn get_project_vercel_status(project_path: String) -> ProjectVercelStatus {
-    // Validate path and return unlinked status if invalid
+    let not_linked = ProjectVercelStatus {
+        status: "not-linked".to_string(),
+        project_name: None,
+        vercel_org: None,
+        production_url: None,
+        staging_url: None,
+    };
+
+    // Validate path
     let project = match validate_project_path(&project_path) {
         Ok(p) => p,
-        Err(_) => {
-            return ProjectVercelStatus {
-                is_linked: false,
-                project_name: None,
-                production_url: None,
-            };
-        }
+        Err(_) => return not_linked,
     };
+
     let vercel_dir = project.join(".vercel");
     let project_json = vercel_dir.join("project.json");
 
-    // Check if .vercel/project.json exists (indicates linked project)
+    // Check if .vercel/project.json exists
     if !project_json.exists() {
-        return ProjectVercelStatus {
-            is_linked: false,
-            project_name: None,
-            production_url: None,
-        };
+        return not_linked;
     }
 
     // Read project.json to get project name
@@ -1104,26 +1223,94 @@ async fn get_project_vercel_status(project_path: String) -> ProjectVercelStatus 
         .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
         .and_then(|json| json.get("projectName").and_then(|v| v.as_str()).map(|s| s.to_string()));
 
-    // Check for our production_url marker file (written after successful deployment)
-    let url_file = vercel_dir.join("production_url");
-    if url_file.exists() {
-        if let Ok(url) = std::fs::read_to_string(&url_file) {
-            let url = url.trim().to_string();
-            if !url.is_empty() {
-                return ProjectVercelStatus {
-                    is_linked: true,
-                    project_name,
-                    production_url: Some(url),
-                };
+    let project_name_str = match &project_name {
+        Some(name) => name.clone(),
+        None => return not_linked,
+    };
+
+    // Check if Vercel is connected to GitHub by running `vercel git connect --yes`
+    // If already connected, output contains "already connected"
+    let git_connect_output = get_vercel_command()
+        .args(["git", "connect", "--yes"])
+        .current_dir(&project)
+        .output();
+
+    let is_git_connected = match git_connect_output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let full_output = stdout + &stderr;
+            full_output.contains("already connected")
+        }
+        Err(_) => false,
+    };
+
+    if !is_git_connected {
+        return ProjectVercelStatus {
+            status: "not-git-connected".to_string(),
+            project_name,
+            vercel_org: None,
+            production_url: None,
+            staging_url: None,
+        };
+    }
+
+    // Get URLs from `vercel alias ls`
+    let alias_output = get_vercel_command()
+        .args(["alias", "ls"])
+        .current_dir(&project)
+        .output()
+        .ok();
+
+    let mut vercel_org: Option<String> = None;
+    let mut staging_url: Option<String> = None;
+    let mut production_url: Option<String> = None;
+    let mut production_candidates: Vec<String> = Vec::new();
+
+    if let Some(output) = alias_output {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let full_output = stdout + &stderr;
+
+        // Extract org from "Fetching aliases under {org}"
+        for line in full_output.lines() {
+            if line.contains("Fetching aliases under ") {
+                vercel_org = line.split("Fetching aliases under ").nth(1).map(|s| s.trim().to_string());
+                break;
             }
+        }
+
+        // Parse alias table for URLs belonging to this project
+        for line in full_output.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let url = parts[1];
+                if url.starts_with(&format!("{}.", project_name_str))
+                    || url.starts_with(&format!("{}-", project_name_str)) {
+                    if url.contains("-git-staging-") {
+                        if staging_url.is_none() {
+                            staging_url = Some(url.to_string());
+                        }
+                    } else if !url.contains("-git-") {
+                        production_candidates.push(url.to_string());
+                    }
+                }
+            }
+        }
+
+        // Pick shortest production URL (likely custom domain or {project}.vercel.app)
+        if !production_candidates.is_empty() {
+            production_candidates.sort_by_key(|s| s.len());
+            production_url = Some(production_candidates[0].clone());
         }
     }
 
-    // Project is linked but no production deployment found
     ProjectVercelStatus {
-        is_linked: true,
+        status: "connected".to_string(),
         project_name,
-        production_url: None,
+        vercel_org,
+        production_url,
+        staging_url,
     }
 }
 
@@ -1154,7 +1341,6 @@ async fn link_to_vercel(options: LinkToVercelOptions) -> Result<String, String> 
 
     // Step 2: Connect Vercel project to the GitHub repo
     // This enables automatic deployments on push
-    // vercel git connect needs the full GitHub URL
     let github_url = format!("https://github.com/{}", github_repo);
     let connect_output = get_vercel_command()
         .args(["git", "connect", &github_url, "--yes"])
@@ -1168,54 +1354,32 @@ async fn link_to_vercel(options: LinkToVercelOptions) -> Result<String, String> 
     let combined_output = format!("{}{}", stdout, stderr);
 
     if !connect_output.status.success() && !combined_output.contains("already connected") {
-        // Only log warning if it's not the "already connected" case
         eprintln!("Warning: Failed to connect Vercel to GitHub: {}", stderr);
     }
 
-    // Step 3: Get the production URL
-    // Read the project.json to get the project ID, then construct URL
-    let vercel_dir = std::path::Path::new(project_path).join(".vercel");
-    let project_json = vercel_dir.join("project.json");
+    // Step 3: Trigger initial production deployment
+    // This is required for GitHub auto-deploy to start working
+    let deploy_output = get_vercel_command()
+        .args(["--prod", "--yes"])
+        .current_dir(project_path)
+        .output();
 
-    if project_json.exists() {
-        if let Ok(content) = std::fs::read_to_string(&project_json) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                // Try to get project name from vercel inspect
-                let inspect_output = get_vercel_command()
-                    .args(["inspect", "--json"])
-                    .current_dir(project_path)
-                    .output();
-
-                if let Ok(output) = inspect_output {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        if let Ok(info) = serde_json::from_str::<serde_json::Value>(&stdout) {
-                            if let Some(name) = info.get("name").and_then(|v| v.as_str()) {
-                                return Ok(format!("https://{}.vercel.app", name));
-                            }
-                            if let Some(url) = info.get("url").and_then(|v| v.as_str()) {
-                                return Ok(if url.starts_with("http") {
-                                    url.to_string()
-                                } else {
-                                    format!("https://{}", url)
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Fallback: construct URL from project ID
-                if let Some(project_id) = json.get("projectId").and_then(|v| v.as_str()) {
-                    // Project names often match repo names
-                    let repo_name = github_repo.split('/').last().unwrap_or(project_id);
-                    return Ok(format!("https://{}.vercel.app", repo_name));
+    // Try to parse the deployment URL from the output
+    if let Ok(output) = deploy_output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Look for URL in output (format: "Production: https://...")
+        for line in stdout.lines() {
+            if line.contains("Production:") || line.starts_with("https://") {
+                if let Some(url) = line.split_whitespace().find(|s| s.starts_with("https://")) {
+                    return Ok(url.to_string());
                 }
             }
         }
     }
 
-    // If all else fails, return a generic success message
-    Ok("Project linked to Vercel".to_string())
+    // Fallback: construct URL from repo name
+    let repo_name = github_repo.split('/').last().unwrap_or("project");
+    Ok(format!("https://{}.vercel.app", repo_name))
 }
 
 // ============ GitHub Integration ============
@@ -1266,98 +1430,117 @@ async fn get_github_username() -> Result<String, String> {
     Ok(username)
 }
 
+/// GitHub connection status - verified against GitHub API
 #[derive(Serialize)]
 struct ProjectGitHubStatus {
-    is_git_repo: bool,
-    has_remote: bool,
-    github_repo: Option<String>,  // e.g., "username/repo-name"
-    github_url: Option<String>,   // e.g., "https://github.com/username/repo-name"
+    /// "not-a-repo" | "no-remote" | "connected"
+    status: String,
+    /// e.g., "username/repo-name" - only set if connected
+    github_repo: Option<String>,
+    /// e.g., "https://github.com/username/repo-name" - only set if connected
+    github_url: Option<String>,
 }
 
+/// Checks GitHub status by verifying with the GitHub CLI.
+/// Asks GitHub directly instead of inferring from local files.
 #[tauri::command]
 async fn get_project_github_status(project_path: String) -> ProjectGitHubStatus {
-    // Validate path and return not-a-repo status if invalid
+    let not_a_repo = ProjectGitHubStatus {
+        status: "not-a-repo".to_string(),
+        github_repo: None,
+        github_url: None,
+    };
+
+    // Validate path
     let project = match validate_project_path(&project_path) {
         Ok(p) => p,
-        Err(_) => {
+        Err(_) => return not_a_repo,
+    };
+
+    // Check if .git exists
+    if !project.join(".git").exists() {
+        return not_a_repo;
+    }
+
+    // Get remote URL
+    let remote_output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&project)
+        .output();
+
+    let remote_url = match remote_output {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => {
             return ProjectGitHubStatus {
-                is_git_repo: false,
-                has_remote: false,
+                status: "no-remote".to_string(),
                 github_repo: None,
                 github_url: None,
             };
         }
     };
-    let git_dir = project.join(".git");
 
-    // Check if it's a git repo
-    if !git_dir.exists() {
-        return ProjectGitHubStatus {
-            is_git_repo: false,
-            has_remote: false,
-            github_repo: None,
-            github_url: None,
-        };
-    }
+    // Parse GitHub repo from remote URL (handles HTTPS and SSH)
+    let github_repo = parse_github_repo(&remote_url);
+    let github_repo = match github_repo {
+        Some(repo) => repo,
+        None => {
+            return ProjectGitHubStatus {
+                status: "no-remote".to_string(),
+                github_repo: None,
+                github_url: None,
+            };
+        }
+    };
 
-    // Check for GitHub remote
-    let output = Command::new("git")
-        .args(["remote", "-v"])
-        .current_dir(&project_path)
+    // Verify repo exists on GitHub using gh CLI
+    let gh_output = Command::new("gh")
+        .args(["repo", "view", &github_repo, "--json", "url"])
+        .current_dir(&project)
         .output();
 
-    match output {
-        Ok(output) => {
-            let remotes = String::from_utf8_lossy(&output.stdout);
+    match gh_output {
+        Ok(output) if output.status.success() => {
+            // Parse the URL from JSON response
+            let json_str = String::from_utf8_lossy(&output.stdout);
+            let url = serde_json::from_str::<serde_json::Value>(&json_str)
+                .ok()
+                .and_then(|v| v.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("https://github.com/{}", github_repo));
 
-            // Look for github.com in remotes
-            if remotes.contains("github.com") {
-                // Extract repo name from remote URL
-                // Handles both HTTPS and SSH formats:
-                // https://github.com/user/repo.git
-                // git@github.com:user/repo.git
-                let repo = remotes.lines()
-                    .find(|line| line.contains("github.com") && line.contains("(push)"))
-                    .and_then(|line| {
-                        // Try HTTPS format first
-                        if let Some(start) = line.find("github.com/") {
-                            let rest = &line[start + 11..];
-                            let end = rest.find(".git").unwrap_or(rest.find(' ').unwrap_or(rest.len()));
-                            return Some(rest[..end].to_string());
-                        }
-                        // Try SSH format
-                        if let Some(start) = line.find("github.com:") {
-                            let rest = &line[start + 11..];
-                            let end = rest.find(".git").unwrap_or(rest.find(' ').unwrap_or(rest.len()));
-                            return Some(rest[..end].to_string());
-                        }
-                        None
-                    });
-
-                let github_url = repo.as_ref().map(|r| format!("https://github.com/{}", r));
-
-                ProjectGitHubStatus {
-                    is_git_repo: true,
-                    has_remote: true,
-                    github_repo: repo,
-                    github_url,
-                }
-            } else {
-                ProjectGitHubStatus {
-                    is_git_repo: true,
-                    has_remote: false,
-                    github_repo: None,
-                    github_url: None,
-                }
+            ProjectGitHubStatus {
+                status: "connected".to_string(),
+                github_repo: Some(github_repo),
+                github_url: Some(url),
             }
         }
-        Err(_) => ProjectGitHubStatus {
-            is_git_repo: true,
-            has_remote: false,
-            github_repo: None,
-            github_url: None,
-        },
+        _ => {
+            // Remote configured but repo doesn't exist or no access
+            ProjectGitHubStatus {
+                status: "no-remote".to_string(),
+                github_repo: None,
+                github_url: None,
+            }
+        }
     }
+}
+
+/// Parse "owner/repo" from a GitHub URL (HTTPS or SSH format)
+fn parse_github_repo(url: &str) -> Option<String> {
+    // HTTPS: https://github.com/owner/repo.git
+    if let Some(start) = url.find("github.com/") {
+        let rest = &url[start + 11..];
+        let end = rest.find(".git").unwrap_or(rest.len());
+        return Some(rest[..end].trim_end_matches('/').to_string());
+    }
+    // SSH: git@github.com:owner/repo.git
+    if let Some(start) = url.find("github.com:") {
+        let rest = &url[start + 11..];
+        let end = rest.find(".git").unwrap_or(rest.len());
+        return Some(rest[..end].trim_end_matches('/').to_string());
+    }
+    None
 }
 
 #[tauri::command]
@@ -1594,6 +1777,361 @@ async fn publish_to_github(project_path: String, commit_message: Option<String>)
     Ok(())
 }
 
+// ============ Publish to Staging/Production ============
+
+#[derive(Serialize)]
+struct PublishResult {
+    url: String,
+    state: String,
+}
+
+#[tauri::command]
+async fn publish_to_staging(project_path: String) -> Result<PublishResult, String> {
+    eprintln!("publish_to_staging called with path: {}", project_path);
+    let validated_path = validate_project_path(&project_path)?;
+    let message = "Update from Marketingstack".to_string();
+
+    // Stage all changes
+    Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    // Check if there are changes to commit
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let has_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
+
+    if has_changes {
+        // Commit changes
+        let output = Command::new("git")
+            .args(["commit", "-m", &message])
+            .current_dir(&validated_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+    }
+
+    // Push to staging branch - Vercel auto-deploys via GitHub integration
+    let push_output = Command::new("git")
+        .args(["push", "-f", "origin", "HEAD:staging"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        if !stderr.contains("Everything up-to-date") {
+            return Err(stderr.to_string());
+        }
+    }
+
+    // Return success - Vercel will auto-deploy via GitHub integration
+    // The frontend polls getVercelDeployments to track deployment status
+    Ok(PublishResult {
+        url: String::new(),
+        state: "QUEUED".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn publish_to_production(project_path: String) -> Result<PublishResult, String> {
+    eprintln!("publish_to_production called with path: {}", project_path);
+    let validated_path = validate_project_path(&project_path)?;
+    let message = "Update from Marketingstack".to_string();
+
+    // Stage all changes
+    Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    // Check if there are changes to commit
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let has_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
+
+    if has_changes {
+        // Commit changes
+        let output = Command::new("git")
+            .args(["commit", "-m", &message])
+            .current_dir(&validated_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+    }
+
+    // Push to main branch - Vercel auto-deploys to production via GitHub integration
+    let push_output = Command::new("git")
+        .args(["push", "-u", "origin", "HEAD:main"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        if !stderr.contains("Everything up-to-date") {
+            return Err(stderr.to_string());
+        }
+    }
+
+    // Return success - Vercel will auto-deploy via GitHub integration
+    // The frontend polls getVercelDeployments to track deployment status
+    Ok(PublishResult {
+        url: String::new(),
+        state: "QUEUED".to_string(),
+    })
+}
+
+#[derive(Serialize)]
+struct VercelDeployment {
+    uid: String,
+    url: String,
+    state: String,  // "READY", "BUILDING", "ERROR", "QUEUED", "CANCELED"
+    target: Option<String>,  // "production" or null for preview
+    created_at: u64,  // Unix timestamp in ms
+}
+
+#[derive(Serialize)]
+struct VercelDeploymentStatus {
+    staging: Option<VercelDeployment>,
+    production: Option<VercelDeployment>,
+    preview_url: Option<String>,
+    production_url: Option<String>,
+}
+
+/// Parses a deployment line from `vercel list` output.
+/// Format: "deployment-url  State  Age  Branch"
+fn parse_deployment_line(line: &str) -> Option<(String, String, Option<String>)> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 2 {
+        return None;
+    }
+
+    // First part should be URL (contains .vercel.app or is a domain)
+    let first = parts[0];
+    if !first.contains('.') {
+        return None;
+    }
+
+    let url = if first.starts_with("https://") {
+        first.to_string()
+    } else {
+        format!("https://{}", first)
+    };
+
+    // Find state - usually second column, one of: Ready, Building, Error, Queued, Canceled
+    let state = parts.iter()
+        .find(|&p| {
+            let lower = p.to_lowercase();
+            lower == "ready" || lower == "building" || lower == "error" ||
+            lower == "queued" || lower == "canceled"
+        })
+        .map(|s| s.to_uppercase())
+        .unwrap_or_else(|| "UNKNOWN".to_string());
+
+    // Find branch - look for common branch names
+    let branch = parts.iter()
+        .find(|&p| *p == "main" || *p == "master" || *p == "staging" || *p == "preview")
+        .map(|s| s.to_string());
+
+    Some((url, state, branch))
+}
+
+#[tauri::command]
+async fn get_vercel_deployments(project_path: String) -> Result<VercelDeploymentStatus, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    // Get all deployments (not just --prod) to see staging/preview too
+    let output = get_vercel_command()
+        .args(["list", "--limit", "10"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| format!("Failed to run vercel list: {}", e))?;
+
+    // If not linked or error, return empty status
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("not linked") || stderr.contains("No project found") || stderr.contains("Could not find") {
+            return Ok(VercelDeploymentStatus {
+                staging: None,
+                production: None,
+                preview_url: None,
+                production_url: None,
+            });
+        }
+        eprintln!("vercel list error: {}", stderr);
+        return Ok(VercelDeploymentStatus {
+            staging: None,
+            production: None,
+            preview_url: None,
+            production_url: None,
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let mut staging_deployment: Option<VercelDeployment> = None;
+    let mut production_deployment: Option<VercelDeployment> = None;
+    let mut preview_url: Option<String> = None;
+    let mut production_url: Option<String> = None;
+
+    // Parse each line looking for deployments
+    for line in stdout.lines() {
+        // Skip header lines and empty lines
+        if line.trim().is_empty() ||
+           line.contains("Deployments") ||
+           line.starts_with("─") ||
+           line.contains("Age") && line.contains("Status") {
+            continue;
+        }
+
+        if let Some((url, state, branch)) = parse_deployment_line(line) {
+            let is_production = line.to_lowercase().contains("production") ||
+                               branch.as_ref().map(|b| b == "main" || b == "master").unwrap_or(false);
+            let is_staging = branch.as_ref().map(|b| b == "staging").unwrap_or(false);
+
+            let deployment = VercelDeployment {
+                uid: String::new(),
+                url: url.clone(),
+                state: state.clone(),
+                target: if is_production { Some("production".to_string()) } else { None },
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0),
+            };
+
+            // Take first (most recent) deployment for each target
+            if is_production && production_deployment.is_none() {
+                production_url = Some(url);
+                production_deployment = Some(deployment);
+            } else if is_staging && staging_deployment.is_none() {
+                preview_url = Some(url);
+                staging_deployment = Some(deployment);
+            } else if staging_deployment.is_none() && !is_production {
+                // Treat other deployments as staging/preview
+                preview_url = Some(url);
+                staging_deployment = Some(deployment);
+            }
+        }
+    }
+
+    Ok(VercelDeploymentStatus {
+        staging: staging_deployment,
+        production: production_deployment,
+        preview_url,
+        production_url,
+    })
+}
+
+#[derive(Serialize)]
+struct BranchStatus {
+    local_changes: bool,
+    staging_ahead: i32,   // Commits local is ahead of staging
+    staging_behind: i32,  // Commits local is behind staging
+    main_ahead: i32,      // Commits local is ahead of main
+    main_behind: i32,     // Commits local is behind main
+    staging_exists: bool,
+}
+
+#[tauri::command]
+async fn get_branch_status(project_path: String) -> Result<BranchStatus, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    // Check for local changes
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let local_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
+
+    // Fetch latest from origin (silently)
+    let _ = Command::new("git")
+        .args(["fetch", "origin"])
+        .current_dir(&validated_path)
+        .output();
+
+    // Check if staging branch exists on remote
+    let staging_check = Command::new("git")
+        .args(["ls-remote", "--heads", "origin", "staging"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let staging_exists = !String::from_utf8_lossy(&staging_check.stdout).trim().is_empty();
+
+    // Get commits ahead/behind for staging
+    let (staging_ahead, staging_behind) = if staging_exists {
+        let output = Command::new("git")
+            .args(["rev-list", "--left-right", "--count", "HEAD...origin/staging"])
+            .current_dir(&validated_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let counts = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = counts.trim().split('\t').collect();
+        if parts.len() == 2 {
+            (
+                parts[0].parse().unwrap_or(0),
+                parts[1].parse().unwrap_or(0),
+            )
+        } else {
+            (0, 0)
+        }
+    } else {
+        (0, 0)
+    };
+
+    // Get commits ahead/behind for main
+    let output = Command::new("git")
+        .args(["rev-list", "--left-right", "--count", "HEAD...origin/main"])
+        .current_dir(&validated_path)
+        .output();
+
+    let (main_ahead, main_behind) = if let Ok(output) = output {
+        let counts = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = counts.trim().split('\t').collect();
+        if parts.len() == 2 {
+            (
+                parts[0].parse().unwrap_or(0),
+                parts[1].parse().unwrap_or(0),
+            )
+        } else {
+            (0, 0)
+        }
+    } else {
+        (0, 0)
+    };
+
+    Ok(BranchStatus {
+        local_changes,
+        staging_ahead,
+        staging_behind,
+        main_ahead,
+        main_behind,
+        staging_exists,
+    })
+}
+
 #[derive(Deserialize)]
 struct SpawnPtyOptions {
     cwd: String,
@@ -1726,6 +2264,10 @@ pub fn run() {
             list_projects,
             list_pages,
             check_sanity_installed,
+            check_sanity_env_keys,
+            // Project metadata
+            read_project_metadata,
+            write_project_metadata,
             // Environment variables
             list_env_files,
             read_env_file,
@@ -1761,6 +2303,10 @@ pub fn run() {
             init_git_repo,
             push_to_github,
             publish_to_github,
+            publish_to_staging,
+            publish_to_production,
+            get_vercel_deployments,
+            get_branch_status,
             spawn_pty,
         ])
         .run(tauri::generate_context!())

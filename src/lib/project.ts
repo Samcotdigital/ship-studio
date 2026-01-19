@@ -79,3 +79,51 @@ export async function waitForServer(
   }
   return false;
 }
+
+// ============ Project Metadata (Publish State Persistence) ============
+
+export interface PublishRecord {
+  url: string;
+  state: string;
+  publishedAt: number;
+}
+
+export interface PublishMetadata {
+  staging: PublishRecord | null;
+  production: PublishRecord | null;
+}
+
+export interface ProjectMetadata {
+  _description: string;
+  publish: PublishMetadata;
+}
+
+export async function readProjectMetadata(projectPath: string): Promise<ProjectMetadata | null> {
+  return invoke<ProjectMetadata | null>("read_project_metadata", { projectPath });
+}
+
+export async function writeProjectMetadata(projectPath: string, metadata: ProjectMetadata): Promise<void> {
+  return invoke<void>("write_project_metadata", { projectPath, metadata });
+}
+
+export async function savePublishRecord(
+  projectPath: string,
+  target: "staging" | "production",
+  record: PublishRecord
+): Promise<void> {
+  // Read existing metadata or create new
+  let metadata = await readProjectMetadata(projectPath);
+
+  if (!metadata) {
+    metadata = {
+      _description: "Marketingstack project metadata. Auto-generated - safe to delete if needed, will be recreated.",
+      publish: { staging: null, production: null }
+    };
+  }
+
+  // Update the specific target
+  metadata.publish[target] = record;
+
+  // Write back
+  await writeProjectMetadata(projectPath, metadata);
+}

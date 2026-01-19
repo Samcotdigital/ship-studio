@@ -6,9 +6,11 @@ export interface GitHubCliStatus {
 }
 
 export interface ProjectGitHubStatus {
-  is_git_repo: boolean;
-  has_remote: boolean;
+  /** "not-a-repo" | "no-remote" | "connected" */
+  status: "not-a-repo" | "no-remote" | "connected";
+  /** e.g., "username/repo-name" - only set if connected */
   github_repo: string | null;
+  /** e.g., "https://github.com/username/repo-name" - only set if connected */
   github_url: string | null;
 }
 
@@ -44,4 +46,30 @@ export async function pushToGitHub(options: PushToGitHubOptions): Promise<string
 
 export async function publishToGitHub(projectPath: string, commitMessage?: string): Promise<void> {
   return invoke("publish_to_github", { projectPath, commitMessage });
+}
+
+export interface PublishResult {
+  url: string;
+  state: string;
+}
+
+export async function publishToStaging(projectPath: string): Promise<PublishResult> {
+  return invoke<PublishResult>("publish_to_staging", { projectPath });
+}
+
+export async function publishToProduction(projectPath: string): Promise<PublishResult> {
+  return invoke<PublishResult>("publish_to_production", { projectPath });
+}
+
+export interface BranchStatus {
+  local_changes: boolean;
+  staging_ahead: number;
+  staging_behind: number;
+  main_ahead: number;
+  main_behind: number;
+  staging_exists: boolean;
+}
+
+export async function getBranchStatus(projectPath: string): Promise<BranchStatus> {
+  return invoke<BranchStatus>("get_branch_status", { projectPath });
 }

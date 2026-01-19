@@ -62,6 +62,8 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [currentPage, setCurrentPage] = useState("/");
   const [hasSanity, setHasSanity] = useState(false);
+  const [sanityMissingEnvKeys, setSanityMissingEnvKeys] = useState<string[]>([]);
+  const [showEnvWarning, setShowEnvWarning] = useState(false);
   const [showPageDropdown, setShowPageDropdown] = useState(false);
   const [pageSearch, setPageSearch] = useState("");
   const [showCmsModal, setShowCmsModal] = useState(false);
@@ -83,6 +85,8 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     setCurrentPage("/");
     setPages([]);
     setHasSanity(false);
+    setSanityMissingEnvKeys([]);
+    setShowEnvWarning(false);
     setShowPageDropdown(false);
     setPageSearch("");
     setShowCmsModal(false);
@@ -106,13 +110,28 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
     return () => clearInterval(interval);
   }, [projectPath]);
 
-  // Check for Sanity CMS
+  // Check for Sanity CMS (on interval to detect when added)
   useEffect(() => {
-    if (projectPath) {
-      invoke<boolean>('check_sanity_installed', { projectPath })
-        .then(setHasSanity)
-        .catch(() => setHasSanity(false));
-    }
+    const checkSanity = async () => {
+      if (!projectPath) return;
+      try {
+        const installed = await invoke<boolean>('check_sanity_installed', { projectPath });
+        setHasSanity(installed);
+        if (installed) {
+          const missing = await invoke<string[]>('check_sanity_env_keys', { projectPath });
+          setSanityMissingEnvKeys(missing);
+        } else {
+          setSanityMissingEnvKeys([]);
+        }
+      } catch {
+        setHasSanity(false);
+        setSanityMissingEnvKeys([]);
+      }
+    };
+
+    checkSanity();
+    const interval = setInterval(checkSanity, PAGE_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [projectPath]);
 
   // Close dropdown when clicking outside
@@ -365,16 +384,42 @@ export function Preview({ port = 3000, projectPath, onServerReady, onPageChange 
         </button>
 
         {hasSanity && (
-          <button
-            className="cms-button"
-            onClick={handleOpenCms}
-            title="Open Sanity Studio"
-          >
-            <svg width="14" height="14" viewBox="30 46 195 163" fill="currentColor">
-              <path d="M215.759 152.483L208.799 140.366L175.13 160.88L212.526 113.252L218.179 109.933L216.78 107.831L219.349 104.548L207.549 94.7227L202.147 101.608L93.1263 165.414L133.434 116.925L208.512 75.7566L201.379 61.963L160.486 84.3775L180.623 60.168L169.087 50L123.767 104.513L78.7575 129.206L113.217 83.6335L134.811 72.3909L127.953 58.4438L65.0424 91.2034L82.1978 68.4937L70.2143 58.8926L34 106.839L34.5619 107.288L41.3277 121.07L81.4753 100.155L44.8826 148.539L50.8801 153.345L54.4465 160.242L96.7156 137.06L50.1691 193.061L61.7054 203.229L64.0218 200.442L176.311 134.509L139.031 182.007L139.638 182.515L139.581 182.55L147.31 196.001L196.895 165.781L177.802 196.603L190.6 205L221 155.931L215.759 152.483Z" />
-            </svg>
-            Open Sanity
-          </button>
+          <div className="cms-button-wrapper">
+            <button
+              className={`cms-button ${sanityMissingEnvKeys.length > 0 ? 'cms-button-warning' : ''}`}
+              onClick={() => {
+                if (sanityMissingEnvKeys.length > 0) {
+                  setShowEnvWarning(!showEnvWarning);
+                } else {
+                  handleOpenCms();
+                }
+              }}
+              title={sanityMissingEnvKeys.length > 0 ? "Sanity env vars missing" : "Open Sanity Studio"}
+            >
+              <svg width="14" height="14" viewBox="30 46 195 163" fill="currentColor">
+                <path d="M215.759 152.483L208.799 140.366L175.13 160.88L212.526 113.252L218.179 109.933L216.78 107.831L219.349 104.548L207.549 94.7227L202.147 101.608L93.1263 165.414L133.434 116.925L208.512 75.7566L201.379 61.963L160.486 84.3775L180.623 60.168L169.087 50L123.767 104.513L78.7575 129.206L113.217 83.6335L134.811 72.3909L127.953 58.4438L65.0424 91.2034L82.1978 68.4937L70.2143 58.8926L34 106.839L34.5619 107.288L41.3277 121.07L81.4753 100.155L44.8826 148.539L50.8801 153.345L54.4465 160.242L96.7156 137.06L50.1691 193.061L61.7054 203.229L64.0218 200.442L176.311 134.509L139.031 182.007L139.638 182.515L139.581 182.55L147.31 196.001L196.895 165.781L177.802 196.603L190.6 205L221 155.931L215.759 152.483Z" />
+              </svg>
+              {sanityMissingEnvKeys.length > 0 ? 'Sanity' : 'Open Sanity'}
+              {sanityMissingEnvKeys.length > 0 && (
+                <span className="cms-warning-badge">!</span>
+              )}
+            </button>
+            {showEnvWarning && sanityMissingEnvKeys.length > 0 && (
+              <div className="cms-env-warning">
+                <div className="cms-env-warning-header">
+                  <span>Missing Sanity Environment Variables</span>
+                  <button onClick={() => setShowEnvWarning(false)}>×</button>
+                </div>
+                <p>Add these keys to your environment variables:</p>
+                <ul>
+                  {sanityMissingEnvKeys.map(key => (
+                    <li key={key}><code>{key}</code></li>
+                  ))}
+                </ul>
+                <p className="cms-env-warning-hint">Click the Env Vars button in the sidebar to configure.</p>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="preview-breakpoints">

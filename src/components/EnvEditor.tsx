@@ -464,7 +464,7 @@ export function EnvEditor({ projectPath, isOpen, onClose }: EnvEditorProps) {
                   <button
                     className="env-save-btn"
                     onClick={handleSave}
-                    disabled={!hasChanges || isSaving}
+                    disabled={!hasChanges || isSaving || isLoading}
                   >
                     {isSaving ? "Saving..." : "Save"}
                   </button>
