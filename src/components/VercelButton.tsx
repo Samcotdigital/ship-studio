@@ -251,6 +251,16 @@ export function VercelButton({
     );
   }
 
+  // Still checking Vercel status - show loading state
+  if (projectVercelStatus === null) {
+    return (
+      <button className="vercel-button vercel-checking" disabled title="Checking Vercel status...">
+        <VercelIcon />
+        <span className="checking-text">Connecting...</span>
+      </button>
+    );
+  }
+
   // Not linked yet - show Connect button to set up Vercel project
   return (
     <>
