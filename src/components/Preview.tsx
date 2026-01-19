@@ -89,8 +89,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   useEffect(() => {
     setIsLoading(true);
     setHasError(false);
-    setRetryCount(0);
     setServerReady(false);
+    setRetryCount(-1); // -1 = not checking yet
     setCurrentPage("/");
     setPages([]);
     setHasSanity(false);
@@ -100,6 +100,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     setPageSearch("");
     setShowCmsModal(false);
     setCmsWebviewReady(false);
+
+    // Delay server check to allow old dev server to terminate
+    const timer = setTimeout(() => setRetryCount(0), 1500);
+    return () => clearTimeout(timer);
   }, [projectPath]);
 
   // Proxy disabled for now - using dev server directly
@@ -178,6 +182,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }, [currentPage, onPageChange]);
 
   useEffect(() => {
+    // Skip if not ready to check yet (-1 means waiting for old server to die)
+    if (retryCount < 0) return;
+
     setIsLoading(true);
     setHasError(false);
     setServerReady(false);
@@ -470,6 +477,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           }}
         >
           <iframe
+            key={projectPath}
             ref={iframeRef}
             src={serverReady ? currentUrl : "about:blank"}
             className="preview-iframe"

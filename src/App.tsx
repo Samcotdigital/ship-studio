@@ -621,6 +621,7 @@ function App() {
               </div>
               <div className="terminal-content">
                 <Terminal
+                  key={currentProject?.path || "none"}
                   ref={terminalRef}
                   projectPath={currentProject?.path || ""}
                   onExit={handleTerminalExit}
@@ -631,6 +632,7 @@ function App() {
           right={
             <div className="preview-pane">
               <Preview
+                key={currentProject?.path || "none"}
                 ref={previewRef}
                 port={DEV_SERVER_PORT}
                 projectPath={currentProject?.path || ""}
