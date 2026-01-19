@@ -787,6 +787,202 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     Ok(projects)
 }
 
+/// Enhanced project info for dashboard display
+#[derive(Serialize)]
+struct DashboardProject {
+    name: String,
+    path: String,
+    thumbnail: Option<String>,
+    last_opened: Option<u64>,
+    /// Current git branch name
+    git_branch: Option<String>,
+    /// Number of uncommitted changes (staged + unstaged)
+    uncommitted_count: Option<u32>,
+    /// Production URL from Vercel
+    production_url: Option<String>,
+    /// Relative time string for last deployment (e.g., "2h ago")
+    last_deployed: Option<String>,
+    /// Deployment state: READY, BUILDING, ERROR, QUEUED, CANCELED
+    deployment_state: Option<String>,
+}
+
+/// Helper to get git branch for a project
+fn get_git_branch(project_path: &std::path::Path) -> Option<String> {
+    let git_dir = project_path.join(".git");
+    if !git_dir.exists() {
+        return None;
+    }
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(project_path)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !branch.is_empty() && branch != "HEAD" {
+            return Some(branch);
+        }
+    }
+    None
+}
+
+/// Helper to count uncommitted changes (tracked files only)
+fn get_uncommitted_count(project_path: &std::path::Path) -> Option<u32> {
+    let git_dir = project_path.join(".git");
+    if !git_dir.exists() {
+        return None;
+    }
+
+    // Use -uno to ignore untracked files like .DS_Store
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "-uno"])
+        .current_dir(project_path)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let count = stdout.lines().filter(|l| !l.trim().is_empty()).count() as u32;
+        return Some(count);
+    }
+    None
+}
+
+/// Helper to format relative time
+fn format_relative_time(timestamp_ms: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    let diff_ms = now.saturating_sub(timestamp_ms);
+    let seconds = diff_ms / 1000;
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+    let days = hours / 24;
+
+    if days > 0 {
+        format!("{}d ago", days)
+    } else if hours > 0 {
+        format!("{}h ago", hours)
+    } else if minutes > 0 {
+        format!("{}m ago", minutes)
+    } else {
+        "just now".to_string()
+    }
+}
+
+/// Helper to get Vercel deployment info for a project
+/// Only returns data that was explicitly saved - never guesses or constructs URLs
+fn get_vercel_deployment_info(project_path: &std::path::Path) -> (Option<String>, Option<String>, Option<String>) {
+    // Only read from project metadata where we saved actual publish records
+    let metadata_path = project_path.join(".marketingstack").join("project.json");
+    if metadata_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&metadata_path) {
+            if let Ok(metadata) = serde_json::from_str::<ProjectMetadata>(&contents) {
+                // Try production first, then staging
+                if let Some(prod) = metadata.publish.production {
+                    // Only return if we have a real URL (not empty)
+                    if !prod.url.is_empty() {
+                        return (
+                            Some(prod.url),
+                            Some(format_relative_time(prod.published_at)),
+                            Some(prod.state),
+                        );
+                    }
+                }
+                if let Some(staging) = metadata.publish.staging {
+                    if !staging.url.is_empty() {
+                        return (
+                            Some(staging.url),
+                            Some(format_relative_time(staging.published_at)),
+                            Some(staging.state),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // No reliable data - return nothing rather than guess
+    (None, None, None)
+}
+
+/// Returns enhanced project list for dashboard with git/vercel info
+#[tauri::command]
+async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let marketingstack_dir = home.join("Marketingstack");
+
+    if !marketingstack_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut projects = Vec::new();
+    let entries = std::fs::read_dir(&marketingstack_dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            // Check if it's a valid project (has package.json)
+            if path.join("package.json").exists() {
+                // Check for thumbnail
+                let thumbnail_path = path.join(".marketingstack").join("thumbnail.png");
+                let thumbnail = if thumbnail_path.exists() {
+                    Some(thumbnail_path.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+
+                // Read last_opened from project metadata
+                let metadata_path = path.join(".marketingstack").join("project.json");
+                let last_opened = if metadata_path.exists() {
+                    std::fs::read_to_string(&metadata_path)
+                        .ok()
+                        .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+                        .and_then(|m| m.last_opened)
+                } else {
+                    None
+                };
+
+                // Get git info
+                let git_branch = get_git_branch(&path);
+                let uncommitted_count = get_uncommitted_count(&path);
+
+                // Get Vercel deployment info
+                let (production_url, last_deployed, deployment_state) = get_vercel_deployment_info(&path);
+
+                projects.push(DashboardProject {
+                    name: entry.file_name().to_string_lossy().to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    thumbnail,
+                    last_opened,
+                    git_branch,
+                    uncommitted_count,
+                    production_url,
+                    last_deployed,
+                    deployment_state,
+                });
+            }
+        }
+    }
+
+    // Sort by last_opened (most recent first), then by name for projects never opened
+    projects.sort_by(|a, b| {
+        match (a.last_opened, b.last_opened) {
+            (Some(a_time), Some(b_time)) => b_time.cmp(&a_time),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.name.cmp(&b.name),
+        }
+    });
+
+    Ok(projects)
+}
+
 #[tauri::command]
 async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
     let project = validate_project_path(&project_path)?;
@@ -800,7 +996,30 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
     let thumbnail_path = marketingstack_dir.join("thumbnail.png");
     let thumbnail_path_str = thumbnail_path.to_string_lossy().to_string();
 
-    // Try Chrome first (most common), then Chromium, then Edge
+    // Try using Playwright first (more reliable viewport control)
+    let npx_result = Command::new("npx")
+        .args([
+            "playwright",
+            "screenshot",
+            "--viewport-size=1280,800",
+            "--wait-for-timeout=2000",
+            &url,
+            &thumbnail_path_str,
+        ])
+        .current_dir(&project)
+        .output();
+
+    if let Ok(output) = npx_result {
+        if output.status.success() && thumbnail_path.exists() {
+            // Resize to thumbnail width
+            let _ = Command::new("sips")
+                .args(["--resampleWidth", "640", &thumbnail_path_str])
+                .output();
+            return Ok(thumbnail_path_str);
+        }
+    }
+
+    // Fall back to Chrome CLI if Playwright not available
     let chrome_paths = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -810,18 +1029,24 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
     let chrome_path = chrome_paths.iter().find(|p| std::path::Path::new(p).exists());
 
     if let Some(browser) = chrome_path {
-        let screenshot_arg = format!("--screenshot={}", thumbnail_path_str);
-        // Use exact dimensions for consistent thumbnails
-        // force-device-scale-factor=1 prevents Retina 2x capture
-        // virtual-time-budget gives page time to render (5 seconds)
+        // Use a temp file for raw capture, then process
+        let temp_path = marketingstack_dir.join("thumbnail_raw.png");
+        let temp_path_str = temp_path.to_string_lossy().to_string();
+        let screenshot_arg = format!("--screenshot={}", temp_path_str);
+
+        // Use new headless mode with explicit viewport control
+        // Set background to white so any extra captured area isn't black
         let output = Command::new(browser)
             .args([
                 "--headless=new",
                 "--disable-gpu",
+                "--no-sandbox",
                 "--hide-scrollbars",
                 "--force-device-scale-factor=1",
+                "--default-background-color=FFFFFFFF",
+                "--window-position=0,0",
                 "--window-size=1280,800",
-                "--virtual-time-budget=5000",
+                "--virtual-time-budget=3000",
                 &screenshot_arg,
                 &url,
             ])
@@ -833,16 +1058,59 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
             return Err(format!("Browser screenshot failed: {}", stderr));
         }
 
-        // Crop to exact viewport size from top-left, then resize for thumbnail
-        // --cropOffset sets the crop origin (x, y from top-left)
-        // -c crops to specified height width
+        // Get actual image dimensions
+        let size_output = Command::new("sips")
+            .args(["-g", "pixelWidth", "-g", "pixelHeight", &temp_path_str])
+            .output()
+            .map_err(|e| format!("Failed to get image size: {}", e))?;
+
+        let size_str = String::from_utf8_lossy(&size_output.stdout);
+        let mut width = 1280u32;
+        let mut height = 800u32;
+
+        for line in size_str.lines() {
+            if line.contains("pixelWidth") {
+                if let Some(w) = line.split_whitespace().last() {
+                    width = w.parse().unwrap_or(1280);
+                }
+            } else if line.contains("pixelHeight") {
+                if let Some(h) = line.split_whitespace().last() {
+                    height = h.parse().unwrap_or(800);
+                }
+            }
+        }
+
+        // If captured at 2x (Retina), scale down to 1280x800 first
+        // The content is correct, just at 2x resolution
+        if width >= 2560 && height >= 1600 {
+            // Scale down from 2x to 1x
+            let _ = Command::new("sips")
+                .args([
+                    "--resampleWidth", "1280",
+                    &temp_path_str,
+                    "--out", &thumbnail_path_str,
+                ])
+                .output();
+        } else if width > 1280 || height > 800 {
+            // Unexpected size - resize to fit 1280 width
+            let _ = Command::new("sips")
+                .args([
+                    "--resampleWidth", "1280",
+                    &temp_path_str,
+                    "--out", &thumbnail_path_str,
+                ])
+                .output();
+        } else {
+            // Already correct size, just copy
+            let _ = std::fs::copy(&temp_path, &thumbnail_path);
+        }
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_path);
+
+        // Resize to thumbnail width (640)
         let _ = Command::new("sips")
-            .args([
-                "--cropOffset", "0", "0",
-                "-c", "800", "1280",
-                "--resampleWidth", "640",
-                &thumbnail_path_str,
-            ])
+            .args(["--resampleWidth", "640", &thumbnail_path_str])
             .output();
 
         Ok(thumbnail_path_str)
@@ -1968,9 +2236,10 @@ async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // Check for uncommitted changes (staged or unstaged)
+    // Check for uncommitted changes (staged or unstaged tracked files only)
+    // Use -uno to ignore untracked files like .DS_Store
     let status = Command::new("git")
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "-uno"])
         .current_dir(&project)
         .output()
         .map_err(|e| e.to_string())?;
@@ -2210,7 +2479,6 @@ async fn publish_to_staging(project_path: String) -> Result<PublishResult, Strin
     }
 
     // Return success - Vercel will auto-deploy via GitHub integration
-    // The frontend polls getVercelDeployments to track deployment status
     Ok(PublishResult {
         url: String::new(),
         state: "QUEUED".to_string(),
@@ -2267,7 +2535,6 @@ async fn publish_to_production(project_path: String) -> Result<PublishResult, St
     }
 
     // Return success - Vercel will auto-deploy via GitHub integration
-    // The frontend polls getVercelDeployments to track deployment status
     Ok(PublishResult {
         url: String::new(),
         state: "QUEUED".to_string(),
@@ -2430,9 +2697,10 @@ struct BranchStatus {
 async fn get_branch_status(project_path: String) -> Result<BranchStatus, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    // Check for local changes
+    // Check for local changes - only count modified/staged tracked files, not untracked
+    // Use -uno to ignore untracked files (those are not "changes" to publish)
     let status = Command::new("git")
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "-uno"])
         .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
@@ -2707,6 +2975,7 @@ pub fn run() {
             get_marketingstack_dir,
             ensure_marketingstack_dir,
             list_projects,
+            get_dashboard_projects,
             list_pages,
             check_sanity_installed,
             check_sanity_env_keys,

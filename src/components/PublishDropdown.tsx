@@ -381,16 +381,17 @@ export function PublishDropdown({
                       disabled={isPublishing || !canPushToStaging}
                     />
                     <span className="publish-row-label">Staging</span>
-                    {branchStatus && (branchStatus.staging_ahead > 0 || !branchStatus.staging_exists || hasLocalChanges) ? (
-                      <span className="publish-row-badge">
-                        {!branchStatus.staging_exists ? "new" :
-                         hasLocalChanges && branchStatus.staging_ahead === 0 ? "changes" :
-                         hasLocalChanges ? `${branchStatus.staging_ahead}+ ahead` :
-                         `${branchStatus.staging_ahead} ahead`}
-                      </span>
-                    ) : branchStatus && (
-                      <span className="publish-row-badge publish-row-badge-synced">up to date</span>
-                    )}
+                    {branchStatus && (() => {
+                      // Count uncommitted changes as +1 (will become 1 commit when published)
+                      const pendingCount = branchStatus.staging_ahead + (hasLocalChanges ? 1 : 0);
+                      if (!branchStatus.staging_exists) {
+                        return <span className="publish-row-badge">new</span>;
+                      } else if (pendingCount > 0) {
+                        return <span className="publish-row-badge">{pendingCount} ahead</span>;
+                      } else {
+                        return <span className="publish-row-badge publish-row-badge-synced">up to date</span>;
+                      }
+                    })()}
                   </div>
                   {hasVercel && stagingUrl && (
                     <button
@@ -417,15 +418,15 @@ export function PublishDropdown({
                       disabled={isPublishing || !canPushToProduction}
                     />
                     <span className="publish-row-label">Production</span>
-                    {branchStatus && (branchStatus.main_ahead > 0 || hasLocalChanges) ? (
-                      <span className="publish-row-badge">
-                        {hasLocalChanges && branchStatus.main_ahead === 0 ? "changes" :
-                         hasLocalChanges ? `${branchStatus.main_ahead}+ ahead` :
-                         `${branchStatus.main_ahead} ahead`}
-                      </span>
-                    ) : branchStatus && (
-                      <span className="publish-row-badge publish-row-badge-synced">up to date</span>
-                    )}
+                    {branchStatus && (() => {
+                      // Count uncommitted changes as +1 (will become 1 commit when published)
+                      const pendingCount = branchStatus.main_ahead + (hasLocalChanges ? 1 : 0);
+                      if (pendingCount > 0) {
+                        return <span className="publish-row-badge">{pendingCount} ahead</span>;
+                      } else {
+                        return <span className="publish-row-badge publish-row-badge-synced">up to date</span>;
+                      }
+                    })()}
                   </div>
                   {hasVercel && productionUrl && (
                     <button

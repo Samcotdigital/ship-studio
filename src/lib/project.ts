@@ -7,6 +7,23 @@ export interface Project {
   thumbnail: string | null;
 }
 
+export interface DashboardProject {
+  name: string;
+  path: string;
+  thumbnail: string | null;
+  last_opened: number | null;
+  /** Current git branch name */
+  git_branch: string | null;
+  /** Number of uncommitted changes (staged + unstaged) */
+  uncommitted_count: number | null;
+  /** Production URL from Vercel */
+  production_url: string | null;
+  /** Relative time string for last deployment (e.g., "2h ago") */
+  last_deployed: string | null;
+  /** Deployment state: READY, BUILDING, ERROR, QUEUED, CANCELED */
+  deployment_state: string | null;
+}
+
 export interface Prerequisite {
   name: string;
   available: boolean;
@@ -19,6 +36,10 @@ export async function checkPrerequisites(): Promise<Prerequisite[]> {
 
 export async function listProjects(): Promise<Project[]> {
   return invoke<Project[]>("list_projects");
+}
+
+export async function getDashboardProjects(): Promise<DashboardProject[]> {
+  return invoke<DashboardProject[]>("get_dashboard_projects");
 }
 
 export async function getMarketingstackDir(): Promise<string> {
