@@ -33,8 +33,13 @@
   transition: all 0.15s;
 }
 
-.agent-capture-btn:hover:not(:disabled) {
+.agent-capture-btn:hover:not(:disabled):not(.active) {
   background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.agent-capture-btn.active {
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
 }
 

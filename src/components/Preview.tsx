@@ -51,6 +51,10 @@ interface PreviewProps {
   projectPath: string;
   onServerReady?: () => void;
   onPageChange?: (page: string) => void;
+  isCropMode?: boolean;
+  onCropStart?: () => void;
+  onCropComplete?: (filePath: string | null) => void;
+  onCropCancel?: () => void;
 }
 
 export interface PreviewHandle {
@@ -58,7 +62,7 @@ export interface PreviewHandle {
   isCapturing: () => boolean;
 }
 
-export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview({ port = 3000, projectPath, onServerReady, onPageChange }, ref) {
+export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview({ port = 3000, projectPath, onServerReady, onPageChange, isCropMode, onCropStart, onCropComplete, onCropCancel }, ref) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -74,11 +78,18 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const [showCmsModal, setShowCmsModal] = useState(false);
   const [cmsWebviewReady, setCmsWebviewReady] = useState(false);
   const [isCapturing] = useState(false); // Capture disabled for now
+
+  // Crop selection state
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const iframeWrapperRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cmsModalRef = useRef<HTMLDivElement>(null);
+  const cropOverlayRef = useRef<HTMLDivElement>(null);
 
   // Dev server URL (for health checks and page loading)
   const devServerUrl = `http://localhost:${port}`;
@@ -274,6 +285,137 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       return null;
     }
   }, [projectPath]);
+
+  // Capture a specific region of the preview
+  const captureRegion = useCallback(async (
+    regionX: number,
+    regionY: number,
+    regionWidth: number,
+    regionHeight: number
+  ): Promise<string | null> => {
+    if (!iframeWrapperRef.current) {
+      return null;
+    }
+
+    try {
+      const { getScreenshotableWindows, getWindowScreenshot } = await import("tauri-plugin-screenshots-api");
+
+      const windows = await getScreenshotableWindows();
+      const ourWindow = windows.find(w =>
+        w.title?.toLowerCase().includes("marketingstack") ||
+        w.title?.toLowerCase().includes("tauri")
+      );
+
+      if (!ourWindow) {
+        return null;
+      }
+
+      // Capture the full window
+      const tempPath = await getWindowScreenshot(ourWindow.id);
+
+      // Get the iframe's position relative to the window
+      const iframeRect = iframeWrapperRef.current.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      // Calculate absolute position of the selection within the window
+      const absoluteX = Math.round((iframeRect.left + regionX) * dpr);
+      const absoluteY = Math.round((iframeRect.top + regionY) * dpr);
+      const width = Math.round(regionWidth * dpr);
+      const height = Math.round(regionHeight * dpr);
+
+      // Crop to selection bounds and save
+      const finalPath = await invoke<string>("crop_and_save_screenshot", {
+        projectPath,
+        sourcePath: tempPath,
+        x: absoluteX,
+        y: absoluteY,
+        width,
+        height,
+      });
+
+      return finalPath;
+    } catch (error) {
+      console.error("[Preview] Region capture failed:", error);
+      return null;
+    }
+  }, [projectPath]);
+
+  // Handle crop selection mouse events
+  const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cropOverlayRef.current) return;
+    const rect = cropOverlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setSelectionStart({ x, y });
+    setSelectionEnd({ x, y });
+    setIsSelecting(true);
+  }, []);
+
+  const handleCropMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isSelecting || !cropOverlayRef.current) return;
+    const rect = cropOverlayRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    setSelectionEnd({ x, y });
+  }, [isSelecting]);
+
+  const handleCropMouseUp = useCallback(async () => {
+    if (!isSelecting || !selectionStart || !selectionEnd) return;
+    setIsSelecting(false);
+
+    // Calculate selection bounds
+    const x = Math.min(selectionStart.x, selectionEnd.x);
+    const y = Math.min(selectionStart.y, selectionEnd.y);
+    const width = Math.abs(selectionEnd.x - selectionStart.x);
+    const height = Math.abs(selectionEnd.y - selectionStart.y);
+
+    // Minimum selection size
+    if (width < 10 || height < 10) {
+      setSelectionStart(null);
+      setSelectionEnd(null);
+      return;
+    }
+
+    // Store bounds before resetting state
+    const bounds = { x, y, width, height };
+
+    // Reset selection state and notify parent immediately (hides overlay, shows loading)
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    onCropStart?.();
+
+    // Capture the selected region
+    const filePath = await captureRegion(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    // Notify parent with the result
+    onCropComplete?.(filePath);
+  }, [isSelecting, selectionStart, selectionEnd, captureRegion, onCropStart, onCropComplete]);
+
+  // Handle escape key to cancel crop mode
+  useEffect(() => {
+    if (!isCropMode) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setIsSelecting(false);
+        onCropCancel?.();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCropMode, onCropCancel]);
+
+  // Reset selection when crop mode changes
+  useEffect(() => {
+    if (!isCropMode) {
+      setSelectionStart(null);
+      setSelectionEnd(null);
+      setIsSelecting(false);
+    }
+  }, [isCropMode]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -519,6 +661,42 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             className="preview-iframe"
             title="Preview"
           />
+          {/* Crop selection overlay */}
+          {isCropMode && (
+            <div
+              ref={cropOverlayRef}
+              className="crop-overlay"
+              onMouseDown={handleCropMouseDown}
+              onMouseMove={handleCropMouseMove}
+              onMouseUp={handleCropMouseUp}
+              onMouseLeave={() => {
+                if (isSelecting) {
+                  handleCropMouseUp();
+                }
+              }}
+            >
+              {/* Selection rectangle */}
+              {/* Selection box with box-shadow creating the dark overlay */}
+              {selectionStart && selectionEnd && (
+                <div
+                  className="crop-selection"
+                  style={{
+                    left: Math.min(selectionStart.x, selectionEnd.x),
+                    top: Math.min(selectionStart.y, selectionEnd.y),
+                    width: Math.abs(selectionEnd.x - selectionStart.x),
+                    height: Math.abs(selectionEnd.y - selectionStart.y),
+                  }}
+                />
+              )}
+              {/* Instructions */}
+              {!selectionStart && (
+                <div className="crop-instructions">
+                  Click and drag to select area
+                  <span className="crop-hint">Press Esc to cancel</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

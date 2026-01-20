@@ -114,6 +114,8 @@ function App() {
 
   // Capture state for screenshot button
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isCropMode, setIsCropMode] = useState(false);
+  const [isCropCapturing, setIsCropCapturing] = useState(false);
 
   // Env editor modal
   const [showEnvEditor, setShowEnvEditor] = useState(false);
@@ -280,6 +282,27 @@ function App() {
       setIsCapturing(false);
     }
   }, [isCapturing]);
+
+  // Handle crop mode start - show loading state
+  const handleCropStart = useCallback(() => {
+    setIsCropMode(false);
+    setIsCropCapturing(true);
+  }, []);
+
+  // Handle crop mode completion - paste path into terminal
+  const handleCropComplete = useCallback((filePath: string | null) => {
+    setIsCropCapturing(false);
+    if (filePath) {
+      const quotedPath = filePath.includes(" ") ? `"${filePath}"` : filePath;
+      terminalRef.current?.paste(quotedPath);
+    }
+  }, []);
+
+  // Handle crop mode cancel
+  const handleCropCancel = useCallback(() => {
+    setIsCropMode(false);
+    setIsCropCapturing(false);
+  }, []);
 
   // Handle terminal exit (memoized to prevent re-spawning Claude on every render)
   const handleTerminalExit = useCallback((code: number | null) => {
@@ -608,7 +631,7 @@ function App() {
                   <button
                     className="agent-capture-btn"
                     onClick={handleCaptureForClaude}
-                    disabled={isCapturing}
+                    disabled={isCapturing || isCropMode}
                     title="Screenshot preview for Claude"
                   >
                     {isCapturing ? (
@@ -617,6 +640,21 @@ function App() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                         <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
+                    onClick={() => setIsCropMode(!isCropMode)}
+                    disabled={isCapturing || isCropCapturing}
+                    title="Crop screenshot for Claude"
+                  >
+                    {isCropCapturing ? (
+                      <div className="capture-spinner" />
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 2v4M6 18v4M2 6h4M18 6h4M18 2v4M18 18v4M2 18h4M18 18h4" />
+                        <rect x="6" y="6" width="12" height="12" />
                       </svg>
                     )}
                   </button>
@@ -641,6 +679,10 @@ function App() {
                 projectPath={currentProject?.path || ""}
                 onServerReady={handlePreviewReady}
                 onPageChange={setCurrentPreviewPage}
+                isCropMode={isCropMode}
+                onCropStart={handleCropStart}
+                onCropComplete={handleCropComplete}
+                onCropCancel={handleCropCancel}
               />
             </div>
           }
