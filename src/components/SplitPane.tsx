@@ -1,11 +1,28 @@
+/**
+ * SplitPane component that provides a resizable two-pane layout.
+ *
+ * Creates a horizontal split view with a draggable divider. The divider
+ * can be dragged to resize the panes while respecting minimum size constraints.
+ * Automatically triggers window resize events when dragged so child components
+ * (like terminals) can recalculate their dimensions.
+ *
+ * @module components/SplitPane
+ */
+
 import { useState, useRef, useCallback, ReactNode, useEffect } from "react";
 
+/** Props for the SplitPane component */
 interface SplitPaneProps {
+  /** Content for the left pane */
   left: ReactNode;
+  /** Content for the right pane */
   right: ReactNode;
-  defaultSplit?: number; // percentage for left pane (0-100)
-  minLeft?: number; // minimum percentage for left
-  minRight?: number; // minimum percentage for right
+  /** Initial split position as percentage (0-100, default: 50) */
+  defaultSplit?: number;
+  /** Minimum width for left pane as percentage (default: 20) */
+  minLeft?: number;
+  /** Minimum width for right pane as percentage (default: 20) */
+  minRight?: number;
 }
 
 export function SplitPane({

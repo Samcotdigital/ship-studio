@@ -1,12 +1,29 @@
+/**
+ * ProjectCard component that displays a single project in the dashboard grid.
+ *
+ * Shows project thumbnail (or placeholder), name, git branch, uncommitted changes
+ * count, and deployment status. Provides hover actions for opening the live site
+ * or launching in an IDE.
+ *
+ * @module components/ProjectCard
+ */
+
 import { DashboardProject } from "../lib/project";
 import { BranchIcon, ExternalLinkIcon, CodeIcon } from "./icons";
 
+/** Props for the ProjectCard component */
 interface ProjectCardProps {
+  /** Project data including name, path, git info, and deployment URLs */
   project: DashboardProject;
+  /** Base64-encoded thumbnail image (or null for placeholder) */
   thumbnailData: string | null;
+  /** Callback when the card is clicked to open the project */
   onSelect: () => void;
+  /** Callback when delete button is clicked */
   onDelete: () => void;
+  /** Callback to open the production URL in browser (if deployed) */
   onOpenSite?: () => void;
+  /** Callback to open the project in VS Code or Cursor */
   onOpenIde?: () => void;
 }
 

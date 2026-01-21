@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::io::{BufRead, BufReader};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 /// Counter for generating unique PTY IDs
 static PTY_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -594,7 +594,7 @@ async fn check_ide_availability() -> IdeAvailability {
 // The webview is positioned absolutely over the main window.
 
 use std::sync::Mutex;
-use tauri::{WebviewUrl, Manager, Webview};
+use tauri::{WebviewUrl, Webview};
 
 /// Tracks whether a preview webview currently exists
 static PREVIEW_WEBVIEW_EXISTS: Mutex<bool> = Mutex::new(false);
@@ -2852,6 +2852,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_pty::init())
         .plugin(tauri_plugin_screenshots::init())
+        .plugin(tauri_plugin_fs::init())
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 cleanup_claude_processes();

@@ -1,20 +1,46 @@
+/**
+ * GitHubButton component for GitHub repository management.
+ *
+ * Provides a dropdown button that allows users to:
+ * - Create a new GitHub repository for the project
+ * - Push changes to an existing repository
+ * - View repository status (remote URL, pending changes)
+ * - Auto-connect to Vercel after repo creation
+ *
+ * Uses the GitHub CLI (gh) for all operations via Tauri backend.
+ *
+ * @module components/GitHubButton
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { GitHubState, VercelState } from "../App";
 import { ProjectGitHubStatus, pushToGitHub, getGitHubOrgs } from "../lib/github";
 import { linkToVercel } from "../lib/vercel";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+/** Props for the GitHubButton component */
 interface GitHubButtonProps {
+  /** Global GitHub authentication state */
   githubState: GitHubState;
+  /** Global Vercel authentication state (for auto-connect feature) */
   vercelState?: VercelState;
+  /** Current project's GitHub status (remote, branch, pending changes) */
   projectStatus: ProjectGitHubStatus | null;
+  /** Absolute path to the project directory */
   projectPath: string;
+  /** Project name (used as default repo name) */
   projectName: string;
+  /** Callback to refresh project status after changes */
   onStatusChange: (vercelDeployedUrl?: string) => Promise<void> | void;
+  /** Callback to initiate GitHub CLI authentication */
   onGitHubConnect: () => void;
+  /** Optional callback when modal is closed */
   onModalClose?: () => void;
+  /** Optional callback to show toast notifications */
   onToast?: (message: string, type?: "success" | "error") => void;
+  /** Optional callback when Vercel auto-connect starts */
   onVercelAutoConnectStart?: () => void;
+  /** Optional callback when Vercel auto-connect completes */
   onVercelAutoConnectEnd?: () => void;
 }
 

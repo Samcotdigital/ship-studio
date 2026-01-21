@@ -1,3 +1,17 @@
+/**
+ * VercelButton component for Vercel deployment management.
+ *
+ * Provides a dropdown button that allows users to:
+ * - Install Vercel CLI if not present
+ * - Log in to Vercel via OAuth flow
+ * - Deploy projects to Vercel
+ * - View deployment status and open live site
+ *
+ * Uses the Vercel CLI for deployments and a PTY for the login flow.
+ *
+ * @module components/VercelButton
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { VercelState } from "../App";
 import {
@@ -11,16 +25,27 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** Props for the VercelButton component */
 interface VercelButtonProps {
+  /** Global Vercel CLI authentication state */
   vercelState: VercelState;
+  /** Current project's Vercel status (linked, deployment URLs) */
   projectVercelStatus: ProjectVercelStatus | null;
+  /** Current project's GitHub status (needed for git integration) */
   projectGithubStatus: ProjectGitHubStatus | null;
+  /** Absolute path to the project directory */
   projectPath: string;
+  /** Project name (used as default Vercel project name) */
   projectName: string;
+  /** Callback to refresh project status after deployment */
   onStatusChange: (deployedUrl?: string) => void;
+  /** Callback to initiate Vercel CLI authentication */
   onVercelConnect: () => void;
+  /** Optional callback when modal is closed */
   onModalClose?: () => void;
+  /** Optional callback to show toast notifications */
   onToast?: (message: string, type?: "success" | "error") => void;
+  /** Whether Vercel is being auto-connected after GitHub repo creation */
   isAutoConnecting?: boolean;
 }
 

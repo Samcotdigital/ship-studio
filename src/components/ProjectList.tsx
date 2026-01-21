@@ -1,3 +1,17 @@
+/**
+ * ProjectList component that displays the main dashboard with all projects.
+ *
+ * This is the home screen of the application, showing:
+ * - Grid of project cards with thumbnails and metadata
+ * - Search filtering with Cmd+K keyboard shortcut
+ * - Sorting options (last opened, name, last deployed)
+ * - Integration status bar (GitHub, Vercel, Claude)
+ * - Project creation and deletion
+ * - Vercel CLI login flow with PTY-based modal
+ *
+ * @module components/ProjectList
+ */
+
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -12,26 +26,39 @@ import { IntegrationBar } from "./IntegrationBar";
 import { ChevronIcon, CheckIcon } from "./icons";
 import { useClickOutside } from "../hooks/useClickOutside";
 
+/** Basic project info for selection callback */
 interface Project {
   name: string;
   path: string;
   thumbnail: string | null;
 }
 
+/** Dashboard project with loaded thumbnail data */
 interface ProjectWithThumbnail extends DashboardProject {
+  /** Base64-encoded thumbnail image data */
   thumbnailData: string | null;
 }
 
+/** Available sort options for the project list */
 type SortOption = "last_opened" | "name" | "last_deployed";
 
+/** Props for the ProjectList component */
 interface ProjectListProps {
+  /** Callback when a project is selected to open */
   onSelectProject: (project: Project) => void;
+  /** Callback to open the create project wizard */
   onCreateProject: () => void;
+  /** Current GitHub integration state */
   githubState: GitHubState;
+  /** Current Vercel integration state */
   vercelState: VercelState;
+  /** Current Claude CLI state */
   claudeState: ClaudeState;
+  /** Callback to initiate GitHub connection */
   onGitHubConnect: () => void;
+  /** Callback to initiate Vercel connection */
   onVercelConnect: () => void;
+  /** Callback to initiate Claude installation */
   onClaudeConnect: () => void;
 }
 

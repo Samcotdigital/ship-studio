@@ -1,16 +1,18 @@
-/* JetBrains Mono Nerd Font for terminal */
+/* JetBrains Mono Nerd Font for terminal - using WOFF2 format for better web support */
 @font-face {
   font-family: 'JetBrainsMono NF';
-  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf') format('truetype');
+  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
+  font-display: block;
 }
 
 @font-face {
   font-family: 'JetBrainsMono NF';
-  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf') format('truetype');
+  src: url('../assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2');
   font-weight: bold;
   font-style: normal;
+  font-display: block;
 }
 
 :root {

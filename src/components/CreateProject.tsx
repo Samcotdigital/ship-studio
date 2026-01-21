@@ -1,19 +1,41 @@
+/**
+ * CreateProject component that provides a wizard for creating new projects.
+ *
+ * This is a multi-step wizard that:
+ * 1. Lets user select a project template
+ * 2. Lets user enter a project name
+ * 3. Shows progress while cloning, initializing, and installing dependencies
+ *
+ * Uses Tauri PTY for running git clone and npm install with progress events.
+ *
+ * @module components/CreateProject
+ */
+
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
+/** Props for the CreateProject component */
 interface CreateProjectProps {
+  /** Callback when project creation completes successfully */
   onComplete: (projectPath: string) => void;
+  /** Callback when user cancels the wizard */
   onCancel: () => void;
 }
 
+/** Template definition for project scaffolding */
 interface Template {
+  /** Unique identifier for the template */
   id: string;
+  /** Display name */
   name: string;
+  /** Short description of what the template includes */
   description: string;
+  /** GitHub repository URL to clone */
   repo: string;
 }
 
+/** Available project templates */
 const TEMPLATES: Template[] = [
   {
     id: "nextjs-basic",
@@ -23,9 +45,12 @@ const TEMPLATES: Template[] = [
   },
 ];
 
+/** Form wizard steps before creation starts */
 type FormStep = "select-template" | "enter-name";
+/** Creation progress steps */
 type Step = "clone" | "init" | "install" | "done";
 
+/** Step definitions with display labels */
 const STEPS: { id: Step; label: string }[] = [
   { id: "clone", label: "Clone template" },
   { id: "init", label: "Initialize project" },
@@ -33,7 +58,7 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "done", label: "Done" },
 ];
 
-// Status messages for each step
+/** User-facing status messages for each creation step */
 const STATUS_MESSAGES: Record<Step, string> = {
   clone: "Downloading template...",
   init: "Setting up project...",

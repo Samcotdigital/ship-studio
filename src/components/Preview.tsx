@@ -1,16 +1,37 @@
+/**
+ * Preview component that displays a live preview of the Next.js development server.
+ *
+ * This component provides:
+ * - Live iframe preview of the running dev server
+ * - Responsive breakpoint switching (desktop/tablet/mobile)
+ * - Page navigation with route detection from Next.js app directory
+ * - Screenshot capture functionality for Claude Code integration
+ * - Region selection tool for cropping screenshots
+ * - Sanity CMS integration with native webview modal
+ * - Automatic dev server health checking with retry logic
+ *
+ * @module components/Preview
+ */
+
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useClickOutside } from "../hooks/useClickOutside";
 
-// Constants
+/** How often to refresh the page list (ms) */
 const PAGE_REFRESH_INTERVAL_MS = 5000;
+/** Timeout for dev server health check requests (ms) */
 const SERVER_CHECK_TIMEOUT_MS = 3000;
+/** Maximum retries before showing error state */
 const SERVER_MAX_RETRIES = 60;
 
+/** Responsive breakpoint options */
 type Breakpoint = "desktop" | "tablet" | "mobile";
 
+/** Information about a Next.js page/route */
 interface PageInfo {
+  /** The URL route (e.g., "/", "/about", "/blog/[slug]") */
   route: string;
+  /** Absolute path to the page file */
   file_path: string;
 }
 
@@ -47,19 +68,34 @@ const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
   );
 };
 
+/** Props for the Preview component */
 interface PreviewProps {
+  /** Dev server port (default: 3000) */
   port?: number;
+  /** Absolute path to the project directory */
   projectPath: string;
+  /** Callback fired when dev server becomes reachable */
   onServerReady?: () => void;
+  /** Callback fired when user navigates to a different page */
   onPageChange?: (page: string) => void;
+  /** Whether crop selection mode is active */
   isCropMode?: boolean;
+  /** Callback fired when user starts selecting a crop region */
   onCropStart?: () => void;
+  /** Callback fired when crop capture completes (or fails with null) */
   onCropComplete?: (filePath: string | null) => void;
+  /** Callback fired when user cancels crop mode (Escape key) */
   onCropCancel?: () => void;
 }
 
+/**
+ * Handle exposed to parent components via ref.
+ * Allows programmatic screenshot capture.
+ */
 export interface PreviewHandle {
+  /** Capture the current preview viewport and return the saved file path */
   captureForClaude: () => Promise<string | null>;
+  /** Check if a capture is currently in progress */
   isCapturing: () => boolean;
 }
 

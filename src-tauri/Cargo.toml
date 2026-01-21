@@ -25,5 +25,6 @@ which = "6"
 base64 = "0.22"
 url = "2"
 tauri-plugin-screenshots = "2.2.0"
+tauri-plugin-fs = "2"
 image = "0.25.9"
 

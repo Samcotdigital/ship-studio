@@ -1,12 +1,30 @@
+/**
+ * Vercel CLI integration utilities.
+ *
+ * Provides functions for:
+ * - Checking Vercel CLI installation and authentication
+ * - Installing the Vercel CLI globally
+ * - Linking projects to Vercel via GitHub integration
+ * - Deploying projects and checking deployment status
+ *
+ * All operations use the Vercel CLI via Tauri backend commands.
+ *
+ * @module lib/vercel
+ */
+
 import { invoke } from "@tauri-apps/api/core";
 
+/** Vercel CLI installation and authentication status */
 export interface VercelCliStatus {
+  /** Whether vercel CLI is installed */
   installed: boolean;
+  /** Whether user is logged in to Vercel */
   authenticated: boolean;
 }
 
+/** Project's Vercel connection status */
 export interface ProjectVercelStatus {
-  /** "not-linked" | "not-git-connected" | "connected" */
+  /** Connection state */
   status: "not-linked" | "not-git-connected" | "connected";
   /** Vercel project name */
   project_name: string | null;
@@ -18,56 +36,108 @@ export interface ProjectVercelStatus {
   staging_url: string | null;
 }
 
+/**
+ * Check Vercel CLI installation and authentication status.
+ * @returns CLI status with installed and authenticated flags
+ */
 export async function checkVercelCliStatus(): Promise<VercelCliStatus> {
   return invoke<VercelCliStatus>("check_vercel_cli_status");
 }
 
+/**
+ * Get the authenticated Vercel username.
+ * @returns Vercel username
+ * @throws If not authenticated
+ */
 export async function getVercelUsername(): Promise<string> {
   return invoke<string>("get_vercel_username");
 }
 
+/**
+ * Get a project's Vercel connection status.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Vercel connection status with URLs
+ */
 export async function getProjectVercelStatus(projectPath: string): Promise<ProjectVercelStatus> {
   return invoke<ProjectVercelStatus>("get_project_vercel_status", { projectPath });
 }
 
+/**
+ * Install the Vercel CLI globally via npm.
+ * Runs: npm install -g vercel
+ */
 export async function installVercelCli(): Promise<void> {
   return invoke("install_vercel_cli");
 }
 
+/** Options for linking a project to Vercel */
 export interface LinkToVercelOptions {
+  /** Absolute path to the project directory */
   projectPath: string;
-  githubRepo: string; // e.g., "username/repo-name"
+  /** GitHub repository identifier (e.g., "username/repo-name") */
+  githubRepo: string;
 }
 
+/**
+ * Link a project to Vercel via GitHub integration.
+ * Creates a new Vercel project connected to the GitHub repository.
+ * @param options - Link configuration
+ * @returns Deployment URL
+ */
 export async function linkToVercel(options: LinkToVercelOptions): Promise<string> {
   return invoke<string>("link_to_vercel", { options });
 }
 
+/** Options for deploying a project to Vercel */
 export interface DeployToVercelOptions {
+  /** Absolute path to the project directory */
   projectPath: string;
+  /** Vercel project name */
   projectName: string;
+  /** Optional GitHub repository for git integration */
   githubRepo?: string;
 }
 
+/**
+ * Deploy a project to Vercel.
+ * @param options - Deployment configuration
+ * @returns Deployment URL
+ */
 export async function deployToVercel(options: DeployToVercelOptions): Promise<string> {
   return invoke<string>("deploy_to_vercel", { options });
 }
 
+/** Information about a single Vercel deployment */
 export interface VercelDeployment {
+  /** Unique deployment ID */
   uid: string;
+  /** Deployment URL */
   url: string;
+  /** Deployment state */
   state: "READY" | "BUILDING" | "ERROR" | "QUEUED" | "CANCELED" | string;
+  /** Target environment (production or null for preview) */
   target: "production" | null;
-  created_at: number; // Unix timestamp in ms
+  /** Creation timestamp (Unix ms) */
+  created_at: number;
 }
 
+/** Status of both staging and production deployments */
 export interface VercelDeploymentStatus {
+  /** Latest staging deployment */
   staging: VercelDeployment | null;
+  /** Latest production deployment */
   production: VercelDeployment | null;
+  /** Preview/staging URL */
   preview_url: string | null;
+  /** Production URL */
   production_url: string | null;
 }
 
+/**
+ * Get deployment status for a project.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Status of staging and production deployments
+ */
 export async function getVercelDeployments(projectPath: string): Promise<VercelDeploymentStatus> {
   return invoke<VercelDeploymentStatus>("get_vercel_deployments", { projectPath });
 }

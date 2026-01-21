@@ -1,16 +1,39 @@
+/**
+ * Project management utilities for Tauri backend communication.
+ *
+ * Provides functions for:
+ * - Listing and managing projects in ~/Marketingstack
+ * - Checking system prerequisites (node, npm, git, claude)
+ * - Starting/stopping the Next.js dev server
+ *
+ * @module lib/project
+ */
+
 import { invoke } from "@tauri-apps/api/core";
 import { spawn, IPty } from "tauri-pty";
 
+/** Basic project information */
 export interface Project {
+  /** Project folder name */
   name: string;
+  /** Absolute path to project directory */
   path: string;
+  /** Path to thumbnail image (or null if none) */
   thumbnail: string | null;
 }
 
+/**
+ * Extended project information for the dashboard view.
+ * Includes git status, deployment info, and metadata.
+ */
 export interface DashboardProject {
+  /** Project folder name */
   name: string;
+  /** Absolute path to project directory */
   path: string;
+  /** Path to thumbnail image (or null if none) */
   thumbnail: string | null;
+  /** Unix timestamp of last time project was opened (or null) */
   last_opened: number | null;
   /** Current git branch name */
   git_branch: string | null;
@@ -24,25 +47,49 @@ export interface DashboardProject {
   deployment_state: string | null;
 }
 
+/** System prerequisite check result */
 export interface Prerequisite {
+  /** Tool name (e.g., "node", "git", "claude") */
   name: string;
+  /** Whether the tool is available in PATH */
   available: boolean;
+  /** Path to the tool executable (or null if not found) */
   path: string | null;
 }
 
+/**
+ * Check if required system tools are installed.
+ * @returns Array of prerequisite check results
+ */
 export async function checkPrerequisites(): Promise<Prerequisite[]> {
   return invoke<Prerequisite[]>("check_prerequisites");
 }
 
+/**
+ * Get all projects with dashboard metadata.
+ * Scans ~/Marketingstack for project folders and enriches with git/deployment info.
+ * @returns Array of dashboard projects sorted by last_opened
+ */
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   return invoke<DashboardProject[]>("get_dashboard_projects");
 }
 
+/** Handle for controlling a running dev server */
 export interface DevServerHandle {
+  /** The underlying PTY instance */
   pty: IPty;
+  /** Stop the dev server and clean up */
   stop: () => Promise<void>;
 }
 
+/**
+ * Start the Next.js development server for a project.
+ * Spawns `npm run dev` in a PTY and returns a handle for control.
+ *
+ * @param projectPath - Absolute path to the project directory
+ * @param onOutput - Optional callback for terminal output
+ * @returns Handle with PTY and stop function
+ */
 export async function startDevServer(
   projectPath: string,
   onOutput?: (data: string) => void

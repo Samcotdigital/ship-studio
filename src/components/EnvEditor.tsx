@@ -1,20 +1,44 @@
+/**
+ * EnvEditor component for managing environment variables.
+ *
+ * Provides a modal interface to:
+ * - View and edit .env files (.env, .env.local, .env.example, etc.)
+ * - Add, update, and delete environment variables
+ * - Create new .env files
+ * - Check sync status between .env.local and .env.example
+ * - Toggle value visibility (show/hide sensitive values)
+ *
+ * @module components/EnvEditor
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+/** Represents an environment file in the project */
 interface EnvFile {
+  /** File name (e.g., ".env.local") */
   name: string;
+  /** Absolute path to the file */
   path: string;
 }
 
+/** A single environment variable key-value pair */
 interface EnvVar {
+  /** Variable name (e.g., "DATABASE_URL") */
   key: string;
+  /** Variable value */
   value: string;
 }
 
+/** Props for the EnvEditor component */
 interface EnvEditorProps {
+  /** Absolute path to the project directory */
   projectPath: string;
+  /** Whether the editor modal is open */
   isOpen: boolean;
+  /** Callback to close the editor */
   onClose: () => void;
+  /** Optional callback to show toast notifications */
   onToast?: (message: string, type?: "success" | "error") => void;
 }
 

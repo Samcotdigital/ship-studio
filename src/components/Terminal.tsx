@@ -1,19 +1,44 @@
+/**
+ * Terminal component that embeds Claude Code CLI in an xterm.js terminal.
+ *
+ * This component creates a fully functional terminal emulator using xterm.js,
+ * connected to a PTY (pseudo-terminal) running the Claude Code CLI. It supports:
+ * - Full terminal emulation with ANSI color codes
+ * - File drag-and-drop (paths are pasted into the terminal)
+ * - Automatic font loading (JetBrains Mono Nerd Font)
+ * - Terminal resize handling
+ * - PTY lifecycle management with retry logic
+ *
+ * @module components/Terminal
+ */
+
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { spawn, IPty } from "tauri-pty";
 import { listen } from "@tauri-apps/api/event";
+import { loadNerdFonts } from "../lib/fonts";
 import "@xterm/xterm/css/xterm.css";
 
+/** Props for the Terminal component */
 interface TerminalProps {
+  /** Absolute path to the project directory where Claude Code will run */
   projectPath: string;
+  /** Callback fired when the Claude Code process exits */
   onExit?: (code: number | null) => void;
 }
 
+/**
+ * Handle exposed to parent components via ref.
+ * Allows programmatic control of the terminal.
+ */
 export interface TerminalHandle {
+  /** Focus the terminal input */
   focus: () => void;
+  /** Write data directly to the PTY (as if typed) */
   write: (data: string) => void;
+  /** Paste text into the terminal */
   paste: (data: string) => void;
 }
 
@@ -47,15 +72,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     }
   }, []);
 
-  // Initialize terminal after mount
+  // Initialize terminal after mount and fonts are loaded
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Wait for container to have dimensions
-    const checkReady = () => {
+    // Wait for container to have dimensions AND fonts to load
+    const checkReady = async () => {
       const rect = container.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
+        // Load Nerd Fonts before initializing terminal
+        await loadNerdFonts();
         setIsReady(true);
       } else {
         requestAnimationFrame(checkReady);
@@ -123,7 +150,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     const container = containerRef.current;
 
-    // Create terminal with Nerd Font for proper glyph rendering
+    // Create terminal with JetBrains Mono Nerd Font (fallback to system monospace)
     const term = new XTerm({
       fontFamily: '"JetBrainsMono NF", Menlo, Monaco, "Courier New", monospace',
       fontSize: 13,

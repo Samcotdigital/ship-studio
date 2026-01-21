@@ -11,6 +11,13 @@
     "shell:allow-spawn",
     "shell:allow-execute",
     "pty:default",
-    "screenshots:default"
+    "screenshots:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "$RESOURCE/**" }
+      ]
+    }
   ]
 }

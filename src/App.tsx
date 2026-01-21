@@ -1,3 +1,20 @@
+/**
+ * Main application component and state management.
+ *
+ * This is the root component that orchestrates:
+ * - Application views (loading, setup, projects, workspace)
+ * - Integration state (GitHub, Vercel, Claude CLI status)
+ * - Project management (opening, creating, dev server lifecycle)
+ * - Terminal and preview panel coordination
+ * - Periodic screenshot capture for thumbnails
+ * - Toast notifications
+ *
+ * State is managed via React's useReducer for atomic integration updates
+ * and useState for simpler local state.
+ *
+ * @module App
+ */
+
 import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import { Terminal, TerminalHandle } from "./components/Terminal";
 import { Preview, PreviewHandle } from "./components/Preview";
@@ -39,33 +56,52 @@ import { checkClaudeCliStatus, ClaudeCliStatus } from "./lib/claude";
 import { invoke } from "@tauri-apps/api/core";
 import "./styles/index.css";
 
-// Constants
-const SCREENSHOT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const SCREENSHOT_DELAY_MS = 2000; // Wait for page to render
+/** Interval between automatic screenshot captures (5 minutes) */
+const SCREENSHOT_INTERVAL_MS = 5 * 60 * 1000;
+/** Delay after page load before capturing screenshot (2 seconds) */
+const SCREENSHOT_DELAY_MS = 2000;
+/** Default port for Next.js dev server */
 const DEV_SERVER_PORT = 3000;
 
+/** Current application view/screen */
 type AppView = "loading" | "setup" | "projects" | "project-loading" | "workspace";
 
+/** Global GitHub CLI and authentication state */
 export interface GitHubState {
+  /** CLI installation and auth status */
   cliStatus: GitHubCliStatus;
+  /** Authenticated username or null */
   username: string | null;
 }
 
+/** Global Vercel CLI and authentication state */
 export interface VercelState {
+  /** CLI installation and auth status */
   cliStatus: VercelCliStatus;
+  /** Authenticated username or null */
   username: string | null;
 }
 
+/** Global Claude CLI state */
 export interface ClaudeState {
+  /** CLI installation status and version */
   cliStatus: ClaudeCliStatus;
 }
 
-// Consolidated integration state managed by reducer for atomic updates
+/**
+ * Consolidated integration state for all external services.
+ * Managed via useReducer for atomic updates to prevent race conditions.
+ */
 interface IntegrationState {
+  /** GitHub CLI and auth state */
   github: GitHubState;
+  /** Current project's GitHub repo status */
   projectGithub: ProjectGitHubStatus | null;
+  /** Vercel CLI and auth state */
   vercel: VercelState;
+  /** Current project's Vercel deployment status */
   projectVercel: ProjectVercelStatus | null;
+  /** Claude CLI state */
   claude: ClaudeState;
 }
 
