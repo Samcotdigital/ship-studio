@@ -15,8 +15,10 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            arch: 'aarch64'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
+            arch: 'x86_64'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -42,7 +44,6 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          # Create temp keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
@@ -50,7 +51,6 @@ jobs:
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-          # Import certificate
           echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
           security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -59,9 +59,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Build Tauri app
+      - name: Build Tauri app (sign only, no notarization)
         uses: tauri-apps/tauri-action@v0
-        timeout-minutes: 30
+        timeout-minutes: 20
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -69,14 +69,37 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: "Developer ID Application"
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CI: true
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Marketingstack v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }} --verbose
+          args: ${{ matrix.args }}
+
+      - name: Notarize app
+        timeout-minutes: 15
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_PATH="src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/macos/Marketingstack.app"
+
+          # Create zip for notarization
+          ditto -c -k --keepParent "$APP_PATH" "Marketingstack.zip"
+
+          # Submit for notarization
+          echo "Submitting for notarization..."
+          xcrun notarytool submit "Marketingstack.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 10m
+
+          # Staple the notarization ticket
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$APP_PATH"
+
+          echo "Notarization complete!"
