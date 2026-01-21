@@ -78,7 +78,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Notarize app
-        timeout-minutes: 15
+        timeout-minutes: 65
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -96,7 +96,7 @@ jobs:
             --password "$APPLE_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait \
-            --timeout 10m
+            --timeout 60m
 
           # Staple the notarization ticket
           echo "Stapling notarization ticket..."
