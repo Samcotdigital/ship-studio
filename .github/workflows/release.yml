@@ -77,29 +77,30 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: Notarize app
-        timeout-minutes: 65
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          APP_PATH="src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/macos/Marketingstack.app"
-
-          # Create zip for notarization
-          ditto -c -k --keepParent "$APP_PATH" "Marketingstack.zip"
-
-          # Submit for notarization
-          echo "Submitting for notarization..."
-          xcrun notarytool submit "Marketingstack.zip" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait \
-            --timeout 60m
-
-          # Staple the notarization ticket
-          echo "Stapling notarization ticket..."
-          xcrun stapler staple "$APP_PATH"
-
-          echo "Notarization complete!"
+      # TODO: Re-enable notarization when Apple's service is stable
+      # - name: Notarize app
+      #   timeout-minutes: 65
+      #   env:
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #   run: |
+      #     APP_PATH="src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/macos/Marketingstack.app"
+      #
+      #     # Create zip for notarization
+      #     ditto -c -k --keepParent "$APP_PATH" "Marketingstack.zip"
+      #
+      #     # Submit for notarization
+      #     echo "Submitting for notarization..."
+      #     xcrun notarytool submit "Marketingstack.zip" \
+      #       --apple-id "$APPLE_ID" \
+      #       --password "$APPLE_PASSWORD" \
+      #       --team-id "$APPLE_TEAM_ID" \
+      #       --wait \
+      #       --timeout 60m
+      #
+      #     # Staple the notarization ticket
+      #     echo "Stapling notarization ticket..."
+      #     xcrun stapler staple "$APP_PATH"
+      #
+      #     echo "Notarization complete!"
