@@ -3348,6 +3348,68 @@ async fn publish_branch(project_path: String, commit_message: Option<String>) ->
     })
 }
 
+/// Deployment status from Vercel
+#[derive(Serialize)]
+struct DeploymentStatus {
+    state: String,
+    url: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: Option<u64>,
+    #[serde(rename = "readyAt")]
+    ready_at: Option<u64>,
+}
+
+/// Get the latest deployment status for a project from Vercel
+#[tauri::command]
+async fn get_deployment_status(project_path: String) -> Result<Option<DeploymentStatus>, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    // Run vercel ls --json to get recent deployments
+    let output = Command::new("vercel")
+        .args(["ls", "--json", "-n", "1"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| format!("Failed to run vercel ls: {}", e))?;
+
+    if !output.status.success() {
+        // Vercel CLI not available or not logged in - not an error, just no status
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse JSON output - it's an array of deployments
+    let deployments: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse vercel output: {}", e))?;
+
+    // Get the most recent deployment
+    if let Some(deployment) = deployments.first() {
+        let state = deployment.get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("UNKNOWN")
+            .to_string();
+
+        let url = deployment.get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("https://{}", s));
+
+        let created_at = deployment.get("createdAt")
+            .and_then(|v| v.as_u64());
+
+        let ready_at = deployment.get("ready")
+            .and_then(|v| v.as_u64());
+
+        return Ok(Some(DeploymentStatus {
+            state,
+            url,
+            created_at,
+            ready_at,
+        }));
+    }
+
+    Ok(None)
+}
+
 /// Delete a branch (local and optionally remote)
 #[tauri::command]
 async fn delete_branch(project_path: String, branch_name: String, delete_remote: bool) -> Result<(), String> {
@@ -4708,6 +4770,7 @@ pub fn run() {
             git_pull,
             pull_and_merge,
             publish_branch,
+            get_deployment_status,
             delete_branch,
             // Pull requests
             list_pull_requests,

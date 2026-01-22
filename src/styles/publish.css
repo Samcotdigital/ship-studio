@@ -375,6 +375,67 @@
   line-height: 1.5;
 }
 
+.publish-elapsed {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Deploying State */
+.publish-deploying {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  color: #3b82f6;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.publish-deploying svg {
+  flex-shrink: 0;
+}
+
+.publish-deploying-message {
+  padding: 0 16px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Deployed URL */
+.publish-deployed-url {
+  padding: 0 16px 16px;
+}
+
+.publish-url-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: monospace;
+}
+
+.publish-url-button:hover {
+  background: var(--border);
+  color: #3b82f6;
+}
+
+.publish-url-button svg {
+  opacity: 0.5;
+}
+
 .publish-success-vercel {
   padding: 0 16px 12px;
 }

@@ -160,6 +160,29 @@ export async function publishBranch(
   return invoke<PublishResult>("publish_branch", { projectPath, commitMessage });
 }
 
+/** Deployment status from Vercel */
+export interface DeploymentStatus {
+  /** Deployment state: BUILDING, READY, ERROR, QUEUED, CANCELED */
+  state: string;
+  /** Deployment URL */
+  url: string | null;
+  /** Unix timestamp (ms) when deployment was created */
+  createdAt: number | null;
+  /** Unix timestamp (ms) when deployment became ready */
+  readyAt: number | null;
+}
+
+/**
+ * Get the latest deployment status from Vercel.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Deployment status or null if unavailable
+ */
+export async function getDeploymentStatus(
+  projectPath: string
+): Promise<DeploymentStatus | null> {
+  return invoke<DeploymentStatus | null>("get_deployment_status", { projectPath });
+}
+
 /**
  * Delete a branch.
  * @param projectPath - Absolute path to the project directory
