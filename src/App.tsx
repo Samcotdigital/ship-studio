@@ -423,30 +423,72 @@ function App() {
     }
   }, []);
 
-  // Check for uncommitted changes (called periodically)
-  const checkUncommittedChanges = useCallback(async (projectPath: string) => {
+  // Check git status (called periodically to sync with CLI changes)
+  const checkGitStatus = useCallback(async (projectPath: string) => {
     try {
-      const hasChanges = await invoke<boolean>("check_git_has_changes", { projectPath });
+      const [branch, hasChanges] = await Promise.all([
+        getCurrentBranch(projectPath).catch(() => null),
+        invoke<boolean>("check_git_has_changes", { projectPath }).catch(() => false),
+      ]);
+
+      // Update branch if changed (e.g., user switched via CLI)
+      if (branch && branch !== currentBranch) {
+        setCurrentBranch(branch);
+        // Refresh full branch list when branch changes
+        listBranches(projectPath)
+          .then(setBranches)
+          .catch(() => {});
+      }
+
       setHasUncommittedChanges(hasChanges);
     } catch {
       // Silently ignore errors during periodic checks
     }
-  }, []);
+  }, [currentBranch]);
 
-  // Periodically check for uncommitted changes when a project is open
+  // Periodically check git status when a project is open and window is focused
   useEffect(() => {
     if (!currentProject?.path) return;
 
-    // Check immediately
-    checkUncommittedChanges(currentProject.path);
+    let interval: ReturnType<typeof setInterval> | null = null;
 
-    // Then check every 3 seconds
-    const interval = setInterval(() => {
-      checkUncommittedChanges(currentProject.path);
-    }, 3000);
+    const startPolling = () => {
+      // Check immediately when starting/resuming
+      checkGitStatus(currentProject.path);
+      // Then check every 3 seconds
+      interval = setInterval(() => {
+        checkGitStatus(currentProject.path);
+      }, 3000);
+    };
 
-    return () => clearInterval(interval);
-  }, [currentProject?.path, checkUncommittedChanges]);
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    // Start polling if window is visible
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    // Listen for visibility changes
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [currentProject?.path, checkGitStatus]);
 
   // Handle branch switch
   const handleBranchSwitch = useCallback(async (branchName: string) => {
@@ -456,8 +498,6 @@ function App() {
     setHasUncommittedChanges(false);
     if (currentProject) {
       await fetchBranchInfo(currentProject.path);
-      // Double-check uncommitted changes after branch switch
-      checkUncommittedChanges(currentProject.path);
     }
     // Refresh preview after Next.js has time to detect file changes and rebuild
     setTimeout(() => previewRef.current?.refresh(), 300);
@@ -465,7 +505,7 @@ function App() {
       previewRef.current?.refresh();
       setIsBranchSwitching(false);
     }, 2500);
-  }, [currentProject, fetchBranchInfo, checkUncommittedChanges]);
+  }, [currentProject, fetchBranchInfo]);
 
   // Handle publish error
   const handlePublishError = useCallback((error: string, errorType: "push_rejected" | "auth_error" | "merge_conflict" | "generic") => {
