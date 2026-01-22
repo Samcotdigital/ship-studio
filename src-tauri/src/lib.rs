@@ -2918,6 +2918,7 @@ async fn kill_port(port: u32) -> Result<(), String> {
 /// Individual setup item status
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // Error variant reserved for future use
 enum SetupItemStatus {
     Ready,
     NotInstalled,
