@@ -15,7 +15,7 @@ import {
   abortMerge,
   completeMerge,
 } from "../lib/conflicts";
-import { WarningIcon, CopyIcon, ChevronIcon } from "./icons";
+import { WarningIcon, CopyIcon, ChevronIcon, InfoIcon } from "./icons";
 
 interface ConflictResolutionModalProps {
   projectPath: string;
@@ -324,13 +324,19 @@ Please help me understand what each version does and recommend which one to keep
               </button>
             </div>
 
-            {/* Callout tip */}
+            {/* Callout tip with Copy for Claude */}
             <div className="conflict-callout">
-              <span className="conflict-callout-icon">💡</span>
+              <span className="conflict-callout-icon">
+                <InfoIcon size={16} />
+              </span>
               <span>
                 If this is a more complicated conflict and you need both changes,
-                copy the details below and ask Claude to help merge them manually.
+                copy the details and ask Claude to help merge them manually.
               </span>
+              <button className="conflict-copy-btn" onClick={handleCopyForClaude}>
+                <CopyIcon size={12} />
+                Copy for Claude
+              </button>
             </div>
 
             {/* More information section */}
@@ -347,11 +353,6 @@ Please help me understand what each version does and recommend which one to keep
 
               {showMoreInfo && (
                 <div className="conflict-more-content">
-                  <button className="conflict-copy-btn" onClick={handleCopyForClaude}>
-                    <CopyIcon size={12} />
-                    Copy for Claude
-                  </button>
-
                   {currentConflict.contextBefore && (
                     <div className="conflict-context">
                       <div className="conflict-context-label">Context before:</div>
