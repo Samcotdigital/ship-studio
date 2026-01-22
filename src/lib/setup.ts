@@ -176,9 +176,10 @@ export async function installGh(): Promise<void> {
 
 /**
  * Start GitHub authentication flow (opens browser).
+ * Returns a message to display to the user.
  */
-export async function startGitHubAuth(): Promise<void> {
-  return invoke("start_github_auth");
+export async function startGitHubAuth(): Promise<string> {
+  return invoke<string>("start_github_auth");
 }
 
 /**
@@ -190,10 +191,10 @@ export async function installClaude(): Promise<void> {
 
 /**
  * Start Claude authentication flow.
- * Returns a PTY ID for the interactive auth process.
+ * Returns a message to display to the user.
  */
-export async function startClaudeAuth(): Promise<number> {
-  return invoke<number>("start_claude_auth");
+export async function startClaudeAuth(): Promise<string> {
+  return invoke<string>("start_claude_auth");
 }
 
 /**
@@ -212,7 +213,8 @@ export async function installVercel(): Promise<void> {
 
 /**
  * Start Vercel authentication flow (opens browser).
+ * Returns a message to display to the user.
  */
-export async function startVercelAuth(): Promise<void> {
-  return invoke("start_vercel_auth");
+export async function startVercelAuth(): Promise<string> {
+  return invoke<string>("start_vercel_auth");
 }

@@ -1436,6 +1436,12 @@ async fn check_claude_cli_status() -> ClaudeCliStatus {
 
 #[tauri::command]
 async fn install_claude_cli() -> Result<(), String> {
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("claude");
+        return Ok(());
+    }
+
     // Install Claude Code via official installer script
     let output = Command::new("bash")
         .args(["-c", "curl -fsSL https://claude.ai/install.sh | bash"])
@@ -1514,6 +1520,12 @@ fn get_vercel_command() -> Command {
 
 #[tauri::command]
 async fn install_vercel_cli() -> Result<(), String> {
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("vercel");
+        return Ok(());
+    }
+
     // Install Vercel CLI globally via npm
     let output = Command::new("npm")
         .args(["install", "-g", "vercel"])
@@ -2915,6 +2927,30 @@ async fn kill_port(port: u32) -> Result<(), String> {
 
 // ============ Setup/Onboarding ============
 
+use std::collections::HashSet;
+
+// Mock state for testing - tracks which items have been "installed" in debug mode
+lazy_static::lazy_static! {
+    static ref MOCK_INSTALLED: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+}
+
+/// Check if we're in mock/debug mode
+fn is_mock_mode() -> bool {
+    std::env::var("MARKETINGSTACK_FORCE_SETUP").is_ok()
+}
+
+/// Mark an item as mock-installed (for testing)
+fn mock_install(item_id: &str) {
+    if let Ok(mut set) = MOCK_INSTALLED.lock() {
+        set.insert(item_id.to_string());
+    }
+}
+
+/// Check if an item is mock-installed
+fn is_mock_installed(item_id: &str) -> bool {
+    MOCK_INSTALLED.lock().map(|set| set.contains(item_id)).unwrap_or(false)
+}
+
 /// Individual setup item status
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -2986,22 +3022,45 @@ fn get_brew_command() -> Option<std::path::PathBuf> {
 /// Get full setup status for all items
 #[tauri::command]
 async fn get_full_setup_status() -> FullSetupStatus {
-    // Debug mode: return all items as not installed for testing onboarding flow
-    if std::env::var("MARKETINGSTACK_FORCE_SETUP").is_ok() {
-        return FullSetupStatus {
-            all_ready: false,
-            items: vec![
-                SetupItemInfo { id: "homebrew".to_string(), friendly_name: "Package Manager".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "node".to_string(), friendly_name: "Node.js".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "git".to_string(), friendly_name: "Git".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "gh".to_string(), friendly_name: "GitHub CLI".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "gh_auth".to_string(), friendly_name: "GitHub Account".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "claude".to_string(), friendly_name: "Claude Code".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "claude_auth".to_string(), friendly_name: "Claude Account".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "vercel".to_string(), friendly_name: "Vercel CLI".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-                SetupItemInfo { id: "vercel_auth".to_string(), friendly_name: "Vercel Account".to_string(), status: SetupItemStatus::NotInstalled, version: None, username: None, error_message: None },
-            ],
-        };
+    // Debug/mock mode: return mock state for testing onboarding flow
+    if is_mock_mode() {
+        let items = vec![
+            ("homebrew", "Package Manager", None),
+            ("node", "Node.js", Some("homebrew")),
+            ("git", "Git", Some("homebrew")),
+            ("gh", "GitHub CLI", Some("homebrew")),
+            ("gh_auth", "GitHub Account", Some("gh")),
+            ("claude", "Claude Code", None),
+            ("claude_auth", "Claude Account", Some("claude")),
+            ("vercel", "Vercel CLI", Some("node")),
+            ("vercel_auth", "Vercel Account", Some("vercel")),
+        ];
+
+        let mock_items: Vec<SetupItemInfo> = items.iter().map(|(id, name, dep)| {
+            let is_ready = is_mock_installed(id);
+            let dep_ready = dep.map(|d| is_mock_installed(d)).unwrap_or(true);
+            let is_auth = id.ends_with("_auth");
+
+            SetupItemInfo {
+                id: id.to_string(),
+                friendly_name: name.to_string(),
+                status: if is_ready {
+                    SetupItemStatus::Ready
+                } else if !dep_ready {
+                    SetupItemStatus::NotInstalled // Will show as blocked by frontend
+                } else if is_auth {
+                    SetupItemStatus::NotAuthenticated
+                } else {
+                    SetupItemStatus::NotInstalled
+                },
+                version: if is_ready && !is_auth { Some("mock-1.0.0".to_string()) } else { None },
+                username: if is_ready && is_auth { Some("mock-user".to_string()) } else { None },
+                error_message: None,
+            }
+        }).collect();
+
+        let all_ready = mock_items.iter().all(|i| matches!(i.status, SetupItemStatus::Ready));
+        return FullSetupStatus { all_ready, items: mock_items };
     }
 
     let mut items = Vec::new();
@@ -3240,6 +3299,13 @@ async fn install_homebrew(app: tauri::AppHandle) -> Result<(), String> {
         "message": "Installing package manager..."
     }));
 
+    // Mock mode: simulate installation
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("homebrew");
+        return Ok(());
+    }
+
     // Run the Homebrew installer
     let output = Command::new("bash")
         .args(["-c", "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""])
@@ -3262,6 +3328,12 @@ async fn install_node_via_brew(app: tauri::AppHandle) -> Result<(), String> {
         "itemId": "node",
         "message": "Installing Node.js..."
     }));
+
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("node");
+        return Ok(());
+    }
 
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
@@ -3286,6 +3358,12 @@ async fn install_git_via_brew(app: tauri::AppHandle) -> Result<(), String> {
         "message": "Installing Git..."
     }));
 
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("git");
+        return Ok(());
+    }
+
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
     let output = Command::new(&brew)
@@ -3309,6 +3387,12 @@ async fn install_gh_via_brew(app: tauri::AppHandle) -> Result<(), String> {
         "message": "Installing GitHub CLI..."
     }));
 
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        mock_install("gh");
+        return Ok(());
+    }
+
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
     let output = Command::new(&brew)
@@ -3325,54 +3409,75 @@ async fn install_gh_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// Start GitHub authentication (opens browser)
+/// Returns a message to display to the user about the clipboard code
 #[tauri::command]
-async fn start_github_auth(app: tauri::AppHandle) -> Result<(), String> {
+async fn start_github_auth(app: tauri::AppHandle) -> Result<String, String> {
     let _ = app.emit("setup-progress", serde_json::json!({
         "itemId": "gh_auth",
-        "message": "Connecting to GitHub..."
+        "message": "Opening browser..."
     }));
+
+    if is_mock_mode() {
+        // Mock: simulate auth completing after 3 seconds
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        mock_install("gh_auth");
+        return Ok("Mock auth completed".to_string());
+    }
 
     // Start gh auth login in the background - it will open the browser
     let gh_path = find_executable("gh").ok_or("GitHub CLI not installed")?;
 
-    // Use --web to open browser for auth
+    // Use --web to open browser for auth, --clipboard to copy the one-time code
     let child = Command::new(&gh_path)
-        .args(["auth", "login", "--web", "--git-protocol", "https"])
+        .args(["auth", "login", "--web", "--git-protocol", "https", "--clipboard"])
         .spawn()
         .map_err(|e| format!("Failed to start GitHub auth: {}", e))?;
 
     // Don't wait for the child - it runs in background and frontend will poll
     std::mem::forget(child);
 
-    Ok(())
+    Ok("A code has been copied to your clipboard. Paste it in the browser to connect.".to_string())
 }
 
 /// Start Claude authentication
+/// Claude Code opens browser for OAuth when run without authentication
 #[tauri::command]
-async fn start_claude_auth(app: tauri::AppHandle) -> Result<u32, String> {
+async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> {
     let _ = app.emit("setup-progress", serde_json::json!({
         "itemId": "claude_auth",
-        "message": "Connecting to Claude..."
+        "message": "Opening browser..."
     }));
+
+    if is_mock_mode() {
+        // Mock: simulate auth completing after 3 seconds
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        mock_install("claude_auth");
+        return Ok("Mock auth completed".to_string());
+    }
 
     let claude_path = find_claude_binary().ok_or("Claude Code not installed")?;
 
-    // Spawn the auth process - it will open the browser
+    // Run claude --print with a simple prompt - if not authenticated,
+    // it will open browser for OAuth. We run this in background and poll for auth.
     let child = Command::new(&claude_path)
-        .args(["auth", "login"])
+        .args(["--print", "hello"])
         .spawn()
         .map_err(|e| format!("Failed to start Claude auth: {}", e))?;
 
-    let pid = child.id();
     std::mem::forget(child);
 
-    Ok(pid)
+    Ok("Browser opened. Log in to your Anthropic account to continue.".to_string())
 }
 
 /// Check if Claude is authenticated
 /// Claude Code stores session data in ~/.claude after OAuth login
 #[tauri::command]
 async fn check_claude_auth_status() -> bool {
+    // Mock mode: check mock state
+    if is_mock_mode() {
+        return is_mock_installed("claude_auth");
+    }
+
     // First check if Claude is installed
     if find_claude_binary().is_none() {
         return false;
@@ -3389,11 +3494,18 @@ async fn check_claude_auth_status() -> bool {
 
 /// Start Vercel authentication (opens browser)
 #[tauri::command]
-async fn start_vercel_auth(app: tauri::AppHandle) -> Result<(), String> {
+async fn start_vercel_auth(app: tauri::AppHandle) -> Result<String, String> {
     let _ = app.emit("setup-progress", serde_json::json!({
         "itemId": "vercel_auth",
-        "message": "Connecting to Vercel..."
+        "message": "Opening browser..."
     }));
+
+    if is_mock_mode() {
+        // Mock: simulate auth completing after 3 seconds
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        mock_install("vercel_auth");
+        return Ok("Mock auth completed".to_string());
+    }
 
     // Start vercel login - it opens browser for auth
     let child = get_vercel_command()
@@ -3403,7 +3515,7 @@ async fn start_vercel_auth(app: tauri::AppHandle) -> Result<(), String> {
 
     std::mem::forget(child);
 
-    Ok(())
+    Ok("Browser opened. Log in to your Vercel account to continue.".to_string())
 }
 
 // Kill orphaned Claude processes spawned by this app

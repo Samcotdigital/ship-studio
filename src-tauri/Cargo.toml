@@ -1,6 +1,6 @@
 [package]
 name = "marketingstack"
-version = "0.1.1"
+version = "0.1.2"
 description = "Marketingstack - Launch Claude Code for marketing sites"
 authors = ["Julian Galluzzo"]
 edition = "2021"
@@ -29,4 +29,5 @@ tauri-plugin-fs = "2"
 image = "0.25.9"
 tauri-plugin-updater = "2.9.0"
 tauri-plugin-process = "2.3.1"
+lazy_static = "1.4"
 

@@ -47,6 +47,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [items, setItems] = useState<SetupItem[]>([]);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
 
   // Track polling timers for cleanup
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -140,11 +141,13 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         const status = await checkGitHubCliStatus();
         if (status.authenticated) {
           cleanupPolling();
+          setAuthMessage(null);
           // Refresh full status to get username
           await fetchStatus();
           setActiveItemId(null);
         } else if (Date.now() - startTime > AUTH_TIMEOUT) {
           cleanupPolling();
+          setAuthMessage(null);
           updateItemStatus("gh_auth", {
             status: "error",
             errorMessage: "Authentication timed out. Click to try again.",
@@ -159,6 +162,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     // Set timeout
     timeoutRef.current = setTimeout(() => {
       cleanupPolling();
+      setAuthMessage(null);
       updateItemStatus("gh_auth", {
         status: "error",
         errorMessage: "Authentication timed out. Click to try again.",
@@ -176,10 +180,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         const isAuthed = await checkClaudeAuthStatus();
         if (isAuthed) {
           cleanupPolling();
+          setAuthMessage(null);
           await fetchStatus();
           setActiveItemId(null);
         } else if (Date.now() - startTime > AUTH_TIMEOUT) {
           cleanupPolling();
+          setAuthMessage(null);
           updateItemStatus("claude_auth", {
             status: "error",
             errorMessage: "Authentication timed out. Click to try again.",
@@ -193,6 +199,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
     timeoutRef.current = setTimeout(() => {
       cleanupPolling();
+      setAuthMessage(null);
       updateItemStatus("claude_auth", {
         status: "error",
         errorMessage: "Authentication timed out. Click to try again.",
@@ -210,10 +217,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         const status = await checkVercelCliStatus();
         if (status.authenticated) {
           cleanupPolling();
+          setAuthMessage(null);
           await fetchStatus();
           setActiveItemId(null);
         } else if (Date.now() - startTime > AUTH_TIMEOUT) {
           cleanupPolling();
+          setAuthMessage(null);
           updateItemStatus("vercel_auth", {
             status: "error",
             errorMessage: "Authentication timed out. Click to try again.",
@@ -227,6 +236,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
     timeoutRef.current = setTimeout(() => {
       cleanupPolling();
+      setAuthMessage(null);
       updateItemStatus("vercel_auth", {
         status: "error",
         errorMessage: "Authentication timed out. Click to try again.",
@@ -257,25 +267,31 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           case "gh":
             await installGh();
             break;
-          case "gh_auth":
-            await startGitHubAuth();
+          case "gh_auth": {
+            const ghMsg = await startGitHubAuth();
+            setAuthMessage(ghMsg);
             // Start polling for auth completion
             pollGitHubAuth();
             return; // Don't refresh yet, polling will handle it
+          }
           case "claude":
             await installClaude();
             break;
-          case "claude_auth":
-            await startClaudeAuth();
+          case "claude_auth": {
+            const claudeMsg = await startClaudeAuth();
+            setAuthMessage(claudeMsg);
             pollClaudeAuth();
             return; // Polling will handle it
+          }
           case "vercel":
             await installVercel();
             break;
-          case "vercel_auth":
-            await startVercelAuth();
+          case "vercel_auth": {
+            const vercelMsg = await startVercelAuth();
+            setAuthMessage(vercelMsg);
             pollVercelAuth();
             return; // Polling will handle it
+          }
           default:
             console.warn("Unknown item:", itemId);
         }
@@ -351,6 +367,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           items={items}
           onItemAction={handleItemAction}
           activeItemId={activeItemId}
+          authMessage={authMessage}
         />
 
         <div className="onboarding-progress">

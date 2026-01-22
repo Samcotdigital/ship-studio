@@ -19,6 +19,8 @@ interface SetupItemProps {
   onAction?: () => void;
   /** Whether action is currently in progress */
   isActionInProgress?: boolean;
+  /** Auth-specific message to display (e.g., clipboard instructions) */
+  authMessage?: string | null;
 }
 
 /** Checkmark icon for ready items */
@@ -135,7 +137,8 @@ function getActionButton(
   item: SetupItemType,
   blockedBy: string[] | undefined,
   onAction: (() => void) | undefined,
-  isActionInProgress: boolean | undefined
+  isActionInProgress: boolean | undefined,
+  authMessage: string | null | undefined
 ): React.ReactNode {
   // Ready items show version/username
   if (item.status === "ready") {
@@ -155,11 +158,11 @@ function getActionButton(
     );
   }
 
-  // In-progress items show the progress message
+  // In-progress items show the progress message (or auth message if present)
   if (item.status === "in_progress") {
     return (
       <span className="setup-item-progress-text">
-        {SETUP_PROGRESS_MESSAGES[item.id] || "Working..."}
+        {authMessage || SETUP_PROGRESS_MESSAGES[item.id] || "Working..."}
       </span>
     );
   }
@@ -216,6 +219,7 @@ export function SetupItem({
   blockedBy,
   onAction,
   isActionInProgress,
+  authMessage,
 }: SetupItemProps) {
   const statusClass = `setup-item-status-${item.status.replace("_", "-")}`;
 
@@ -226,7 +230,7 @@ export function SetupItem({
       </div>
       <div className="setup-item-name">{item.friendlyName}</div>
       <div className="setup-item-action">
-        {getActionButton(item, blockedBy, onAction, isActionInProgress)}
+        {getActionButton(item, blockedBy, onAction, isActionInProgress, authMessage)}
       </div>
     </div>
   );

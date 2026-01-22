@@ -18,12 +18,15 @@ interface SetupChecklistProps {
   onItemAction: (itemId: string) => void;
   /** ID of item currently being processed */
   activeItemId?: string | null;
+  /** Message to show for auth items (e.g., clipboard instructions) */
+  authMessage?: string | null;
 }
 
 export function SetupChecklist({
   items,
   onItemAction,
   activeItemId,
+  authMessage,
 }: SetupChecklistProps) {
   // Sort items according to display order
   const sortedItems = [...items].sort((a, b) => {
@@ -50,6 +53,7 @@ export function SetupChecklist({
             blockedBy={blockedBy}
             onAction={() => onItemAction(item.id)}
             isActionInProgress={activeItemId === item.id}
+            authMessage={activeItemId === item.id ? authMessage : undefined}
           />
         );
       })}
