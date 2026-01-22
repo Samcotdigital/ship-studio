@@ -100,6 +100,16 @@ export function PublishBranchDropdown({
     // Poll deployment status every 3 seconds
     const pollStatus = async () => {
       try {
+        // Timeout after 5 minutes - give up and show success without URL
+        const elapsed = Date.now() - startTime;
+        if (elapsed > 5 * 60 * 1000) {
+          const duration = Math.floor(elapsed / 1000);
+          setPublishState({ status: "deployed", url: null, duration });
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          if (timerRef.current) clearInterval(timerRef.current);
+          return;
+        }
+
         const status = await getDeploymentStatus(projectPath);
         if (status) {
           if (status.state === "READY") {
