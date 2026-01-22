@@ -72,7 +72,7 @@ export function SubmitReviewModal({
   };
 
   return (
-    <div className="submit-review-modal" onKeyDown={handleKeyDown}>
+    <div className="submit-review-modal" onKeyDown={handleKeyDown} onClick={onClose}>
       <div className="submit-review-content" onClick={(e) => e.stopPropagation()}>
         <div className="submit-review-header">
           <h2>Submit for Review</h2>
@@ -108,6 +108,10 @@ export function SubmitReviewModal({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What did you change?"
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
           </div>
 
@@ -118,6 +122,10 @@ export function SubmitReviewModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add any additional context..."
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
           </div>
 

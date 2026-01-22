@@ -343,6 +343,10 @@ export function VercelButton({
                   }
                   placeholder="my-project"
                   autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                 />
               </label>
 

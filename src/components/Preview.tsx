@@ -624,6 +624,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
                     setPageSearch("");
                   }
                 }}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <div className="page-list">
                 {filteredPages.length === 0 ? (
@@ -768,8 +772,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
       {/* CMS Modal with native webview */}
       {showCmsModal && (
-        <div className="cms-modal-overlay">
-          <div className="cms-modal">
+        <div className="cms-modal-overlay" onClick={handleCloseCms}>
+          <div className="cms-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cms-modal-header">
               <span className="cms-modal-title">Sanity Studio</span>
               <button className="cms-modal-close" onClick={handleCloseCms}>

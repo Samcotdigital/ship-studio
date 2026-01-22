@@ -3039,6 +3039,38 @@ async fn switch_branch(project_path: String, branch_name: String, auto_stash: bo
     })
 }
 
+/// Discard all uncommitted changes in the working directory
+#[tauri::command]
+async fn discard_changes(project_path: String) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    // Discard changes to tracked files
+    let checkout_output = Command::new("git")
+        .args(["checkout", "."])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !checkout_output.status.success() {
+        let stderr = String::from_utf8_lossy(&checkout_output.stderr);
+        return Err(format!("Failed to discard changes: {}", stderr));
+    }
+
+    // Remove untracked files
+    let clean_output = Command::new("git")
+        .args(["clean", "-fd"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !clean_output.status.success() {
+        let stderr = String::from_utf8_lossy(&clean_output.stderr);
+        return Err(format!("Failed to clean untracked files: {}", stderr));
+    }
+
+    Ok(())
+}
+
 /// Create a new branch from a base branch
 #[tauri::command]
 async fn create_branch(project_path: String, branch_name: String, from_branch: String) -> Result<(), String> {
@@ -3119,6 +3151,25 @@ async fn fetch_all_branches(project_path: String) -> Result<(), String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Failed to fetch: {}", stderr));
+    }
+
+    Ok(())
+}
+
+/// Pull latest changes from remote for current branch
+#[tauri::command]
+async fn git_pull(project_path: String) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let output = Command::new("git")
+        .args(["pull", "--ff-only"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to pull: {}", stderr));
     }
 
     Ok(())
@@ -3323,13 +3374,9 @@ async fn create_pull_request(
 ) -> Result<String, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let mut args = vec!["pr", "create", "--title", &title, "--base", &base];
-
-    let body_str;
-    if let Some(ref b) = body {
-        body_str = b.clone();
-        args.extend(["--body", &body_str]);
-    }
+    // --body is required when running non-interactively
+    let body_str = body.unwrap_or_default();
+    let args = vec!["pr", "create", "--title", &title, "--body", &body_str, "--base", &base];
 
     let output = get_gh_command()
         .args(&args)
@@ -4205,8 +4252,10 @@ pub fn run() {
             list_branches,
             get_current_branch,
             switch_branch,
+            discard_changes,
             create_branch,
             fetch_all_branches,
+            git_pull,
             publish_branch,
             delete_branch,
             // Pull requests

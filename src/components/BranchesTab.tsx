@@ -2,10 +2,14 @@
  * Branches tab for workspace.
  *
  * Shows all branches organized by:
- * - Current branch
+ * - Current branch (with Revert action)
  * - User's branches
  * - Team branches
  * - Main branches (main, staging)
+ *
+ * Also includes:
+ * - Create new branch functionality
+ * - Unsaved changes modal when switching with uncommitted changes
  *
  * @module components/BranchesTab
  */
@@ -15,9 +19,13 @@ import {
   BranchInfo,
   switchBranch,
   deleteBranch,
+  createBranch,
+  discardChanges,
   formatRelativeTime,
 } from "../lib/branches";
-import { BranchIcon } from "./icons";
+import { invoke } from "@tauri-apps/api/core";
+import { BranchIcon, PlusIcon } from "./icons";
+import { UnsavedChangesModal } from "./UnsavedChangesModal";
 
 interface BranchesTabProps {
   /** List of all branches */
@@ -40,7 +48,7 @@ interface BranchesTabProps {
 
 export function BranchesTab({
   branches,
-  currentBranch: _currentBranch,
+  currentBranch,
   projectPath,
   githubUsername,
   onBranchSwitch,
@@ -51,6 +59,14 @@ export function BranchesTab({
   const [switchingBranch, setSwitchingBranch] = useState<string | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<string | null>(null);
   const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const [isReverting, setIsReverting] = useState(false);
+  const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+
+  // New branch creation state
+  const [showNewBranch, setShowNewBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
 
   // Group branches
   const currentBranchInfo = branches.find(b => b.isCurrent);
@@ -67,14 +83,14 @@ export function BranchesTab({
   const handleSwitch = async (branchName: string) => {
     setSwitchingBranch(branchName);
     try {
-      const result = await switchBranch(projectPath, branchName, true);
+      // Try to switch without auto-stash - backend will tell us if there are uncommitted changes
+      const result = await switchBranch(projectPath, branchName, false);
       if (result.success) {
         onBranchSwitch(branchName);
-        if (result.stashedChanges) {
-          onToast?.("Switched branch (changes stashed)", "success");
-        } else {
-          onToast?.(`Switched to ${branchName}`, "success");
-        }
+        onToast?.(`Switched to ${branchName}`, "success");
+      } else if (result.error?.includes("Uncommitted changes")) {
+        // Show the unsaved changes modal
+        setPendingSwitch(branchName);
       } else {
         onToast?.(result.error || "Failed to switch branch", "error");
       }
@@ -103,24 +119,150 @@ export function BranchesTab({
     }
   };
 
+  const handleRevertToGitHub = async () => {
+    setIsReverting(true);
+    setShowRevertConfirm(false);
+    try {
+      // Discard all local changes
+      await discardChanges(projectPath);
+
+      // Pull latest from remote
+      await invoke("git_pull", { projectPath });
+
+      onToast?.(`Reverted to GitHub version`, "success");
+      onRefresh();
+    } catch (e) {
+      onToast?.(`Failed to revert: ${e}`, "error");
+    } finally {
+      setIsReverting(false);
+    }
+  };
+
+  const handleCreateBranch = async () => {
+    if (!newBranchName.trim()) return;
+
+    setIsCreatingBranch(true);
+    try {
+      // Auto-prefix with username if available and not already prefixed
+      let branchName = newBranchName.trim();
+      if (githubUsername && !branchName.includes("/")) {
+        branchName = `${githubUsername}/${branchName}`;
+      }
+
+      // Create from main by default
+      const baseBranch = branches.find(b => b.isDefault)?.name || "main";
+      await createBranch(projectPath, branchName, baseBranch);
+
+      // Switch to the new branch
+      const result = await switchBranch(projectPath, branchName, false);
+      if (result.success) {
+        onBranchSwitch(branchName);
+        onToast?.(`Created and switched to ${branchName}`, "success");
+      }
+
+      setNewBranchName("");
+      setShowNewBranch(false);
+      onRefresh();
+    } catch (e) {
+      onToast?.(`Failed to create branch: ${e}`, "error");
+    } finally {
+      setIsCreatingBranch(false);
+    }
+  };
+
   return (
     <div className="branches-tab">
       {/* Current Branch */}
       {currentBranchInfo && (
         <div className="branches-tab-section">
           <div className="branches-tab-section-header">Current Branch</div>
-          <BranchCard
-            branch={currentBranchInfo}
-            isCurrent={true}
-            onSwitch={() => {}}
-            onDelete={() => {}}
-            onSubmitForReview={() => onSubmitForReview(currentBranchInfo.name)}
-            isSwitching={false}
-            isDeleting={false}
-            showSubmitForReview={!currentBranchInfo.isDefault && currentBranchInfo.name !== "staging"}
-          />
+          <div className="branch-card current">
+            <div className="branch-card-info">
+              <div className="branch-card-name">
+                <BranchIcon size={14} />
+                {currentBranchInfo.name}
+                {currentBranchInfo.isDefault && <span className="branch-live-badge">Live</span>}
+                <span className="branch-card-current-label">you are here</span>
+              </div>
+              <div className="branch-card-meta">
+                {formatRelativeTime(currentBranchInfo.lastCommitDate)}
+                {currentBranchInfo.lastCommitAuthor && ` · ${currentBranchInfo.lastCommitAuthor}`}
+              </div>
+            </div>
+            <div className="branch-card-actions">
+              {!currentBranchInfo.isDefault && currentBranchInfo.name !== "staging" && (
+                <button
+                  className="branch-card-action primary"
+                  onClick={() => onSubmitForReview(currentBranchInfo.name)}
+                >
+                  Submit for Review
+                </button>
+              )}
+              <button
+                className="branch-card-action danger-outline"
+                onClick={() => setShowRevertConfirm(true)}
+                disabled={isReverting}
+                title="Discard local changes and pull from GitHub"
+              >
+                {isReverting ? "Reverting..." : "Revert to GitHub"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* New Branch */}
+      <div className="branches-tab-section">
+        {!showNewBranch ? (
+          <button
+            className="branches-new-branch-btn"
+            onClick={() => setShowNewBranch(true)}
+          >
+            <PlusIcon size={14} />
+            New Branch
+          </button>
+        ) : (
+          <div className="branches-new-branch-form">
+            <input
+              type="text"
+              className="branches-new-branch-input"
+              placeholder={githubUsername ? `${githubUsername}/branch-name` : "branch-name"}
+              value={newBranchName}
+              onChange={(e) => setNewBranchName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateBranch();
+                if (e.key === "Escape") {
+                  setShowNewBranch(false);
+                  setNewBranchName("");
+                }
+              }}
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+            <div className="branches-new-branch-actions">
+              <button
+                className="branch-card-action"
+                onClick={() => {
+                  setShowNewBranch(false);
+                  setNewBranchName("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="branch-card-action primary"
+                onClick={handleCreateBranch}
+                disabled={!newBranchName.trim() || isCreatingBranch}
+              >
+                {isCreatingBranch ? "Creating..." : "Create"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* User's Branches */}
       {userBranches.length > 0 && (
@@ -187,8 +329,8 @@ export function BranchesTab({
 
       {/* Delete confirmation modal */}
       {branchToDelete && (
-        <div className="post-merge-modal">
-          <div className="post-merge-content">
+        <div className="post-merge-modal" onClick={() => !deletingBranch && setBranchToDelete(null)}>
+          <div className="post-merge-content" onClick={(e) => e.stopPropagation()}>
             <div className="post-merge-header">
               <h3>Delete Branch?</h3>
             </div>
@@ -216,6 +358,54 @@ export function BranchesTab({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Revert confirmation modal */}
+      {showRevertConfirm && (
+        <div className="post-merge-modal" onClick={() => !isReverting && setShowRevertConfirm(false)}>
+          <div className="post-merge-content" onClick={(e) => e.stopPropagation()}>
+            <div className="post-merge-header">
+              <h3>Revert to GitHub?</h3>
+            </div>
+            <div className="post-merge-body">
+              <p>
+                This will discard all local changes on <strong>{currentBranch}</strong> and pull the latest version from GitHub.
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="post-merge-footer">
+              <button
+                className="post-merge-btn secondary"
+                onClick={() => setShowRevertConfirm(false)}
+                disabled={isReverting}
+              >
+                Cancel
+              </button>
+              <button
+                className="post-merge-btn danger"
+                onClick={handleRevertToGitHub}
+                disabled={isReverting}
+              >
+                {isReverting ? "Reverting..." : "Revert"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved changes modal */}
+      {pendingSwitch && (
+        <UnsavedChangesModal
+          currentBranch={currentBranch}
+          targetBranch={pendingSwitch}
+          projectPath={projectPath}
+          onSwitchComplete={(branchName) => {
+            onBranchSwitch(branchName);
+            setPendingSwitch(null);
+          }}
+          onClose={() => setPendingSwitch(null)}
+          onToast={onToast}
+        />
       )}
     </div>
   );

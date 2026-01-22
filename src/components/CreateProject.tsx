@@ -339,6 +339,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="my-awesome-site"
               autoFocus
+              autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}

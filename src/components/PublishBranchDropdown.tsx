@@ -32,8 +32,6 @@ interface PublishBranchDropdownProps {
   projectVercelStatus: ProjectVercelStatus | null;
   /** Absolute path to the project */
   projectPath: string;
-  /** Whether there are uncommitted changes */
-  hasUncommittedChanges: boolean;
   /** Callback when publish completes successfully */
   onStatusChange: () => void;
   /** Callback when modal closes */
@@ -59,7 +57,6 @@ export function PublishBranchDropdown({
   projectGithubStatus,
   projectVercelStatus,
   projectPath,
-  hasUncommittedChanges,
   onStatusChange,
   onModalClose,
   onToast,
@@ -305,12 +302,6 @@ export function PublishBranchDropdown({
                   <div className="publish-branch-url">
                     <div className="publish-branch-url-label">Preview URL:</div>
                     <div className="publish-branch-url-value">{previewUrl.replace("https://", "")}</div>
-                  </div>
-                )}
-
-                {hasUncommittedChanges && (
-                  <div className="publish-branch-changes-note">
-                    Your uncommitted changes will be committed.
                   </div>
                 )}
               </div>

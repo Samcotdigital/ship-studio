@@ -27,7 +27,6 @@ import { VercelButton } from "./components/VercelButton";
 import { PublishBranchDropdown } from "./components/PublishBranchDropdown";
 import { EnvEditor } from "./components/EnvEditor";
 import { BranchIndicator } from "./components/BranchIndicator";
-import { BranchSelectorModal } from "./components/BranchSelectorModal";
 import { BranchesTab } from "./components/BranchesTab";
 import { PullRequestsTab } from "./components/PullRequestsTab";
 import { GitErrorHandler } from "./components/GitErrorHandler";
@@ -36,8 +35,6 @@ import {
   BranchInfo,
   listBranches,
   getCurrentBranch,
-  switchBranch,
-  createBranch,
 } from "./lib/branches";
 import {
   CodeIcon,
@@ -209,8 +206,6 @@ function App() {
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
-  const [showBranchSelector, setShowBranchSelector] = useState(false);
-  const [branchSelectorCreateMode, setBranchSelectorCreateMode] = useState(false);
   const [showSubmitReview, setShowSubmitReview] = useState<string | null>(null);
   const [isBranchSwitching, setIsBranchSwitching] = useState(false);
   const [gitError, setGitError] = useState<{
@@ -414,12 +409,41 @@ function App() {
     }
   }, []);
 
+  // Check for uncommitted changes (called periodically)
+  const checkUncommittedChanges = useCallback(async (projectPath: string) => {
+    try {
+      const hasChanges = await invoke<boolean>("check_git_has_changes", { projectPath });
+      setHasUncommittedChanges(hasChanges);
+    } catch {
+      // Silently ignore errors during periodic checks
+    }
+  }, []);
+
+  // Periodically check for uncommitted changes when a project is open
+  useEffect(() => {
+    if (!currentProject?.path) return;
+
+    // Check immediately
+    checkUncommittedChanges(currentProject.path);
+
+    // Then check every 3 seconds
+    const interval = setInterval(() => {
+      checkUncommittedChanges(currentProject.path);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentProject?.path, checkUncommittedChanges]);
+
   // Handle branch switch
   const handleBranchSwitch = useCallback(async (branchName: string) => {
     setIsBranchSwitching(true);
     setCurrentBranch(branchName);
+    // Reset uncommitted changes immediately - will be updated by fetchBranchInfo
+    setHasUncommittedChanges(false);
     if (currentProject) {
       await fetchBranchInfo(currentProject.path);
+      // Double-check uncommitted changes after branch switch
+      checkUncommittedChanges(currentProject.path);
     }
     // Refresh preview after Next.js has time to detect file changes and rebuild
     setTimeout(() => previewRef.current?.refresh(), 300);
@@ -427,22 +451,7 @@ function App() {
       previewRef.current?.refresh();
       setIsBranchSwitching(false);
     }, 2500);
-  }, [currentProject, fetchBranchInfo]);
-
-  // Handle creating a new branch
-  const handleCreateBranch = useCallback(async (branchName: string, fromBranch: string) => {
-    if (!currentProject) return;
-    setIsBranchSwitching(true);
-    await createBranch(currentProject.path, branchName, fromBranch);
-    setCurrentBranch(branchName);
-    await fetchBranchInfo(currentProject.path);
-    // Refresh preview after Next.js has time to detect file changes and rebuild
-    setTimeout(() => previewRef.current?.refresh(), 300);
-    setTimeout(() => {
-      previewRef.current?.refresh();
-      setIsBranchSwitching(false);
-    }, 2500);
-  }, [currentProject, fetchBranchInfo]);
+  }, [currentProject, fetchBranchInfo, checkUncommittedChanges]);
 
   // Handle publish error
   const handlePublishError = useCallback((error: string, errorType: "push_rejected" | "auth_error" | "generic") => {
@@ -772,7 +781,6 @@ function App() {
             projectGithubStatus={integrations.projectGithub}
             projectVercelStatus={integrations.projectVercel}
             projectPath={currentProject?.path || ""}
-            hasUncommittedChanges={hasUncommittedChanges}
             onStatusChange={() => {
               handleGitHubStatusChange();
               if (currentProject) fetchBranchInfo(currentProject.path);
@@ -840,23 +848,15 @@ function App() {
               {/* Preview/Branches/PRs Tabs - only show branch tabs when GitHub repo exists */}
               {integrations.projectGithub?.status === "connected" ? (
                 <div className="preview-tabs-bar">
-                  {/* Branch Indicator */}
+                  {/* Branch Indicator - click to toggle between Branches tab and Preview */}
                   {currentBranch && (
                     <BranchIndicator
                       currentBranch={currentBranch}
                       hasUncommittedChanges={hasUncommittedChanges}
-                      branches={branches}
-                      projectPath={currentProject?.path || ""}
-                      onBranchSwitch={handleBranchSwitch}
-                      onOpenBranchSelector={() => {
-                        setBranchSelectorCreateMode(false);
-                        setShowBranchSelector(true);
-                      }}
-                      onCreateBranch={() => {
-                        setBranchSelectorCreateMode(true);
-                        setShowBranchSelector(true);
-                      }}
-                      onToast={showToast}
+                      isOnBranchesTab={workspaceTab === "branches" || workspaceTab === "prs"}
+                      onClick={() => setWorkspaceTab(
+                        workspaceTab === "branches" || workspaceTab === "prs" ? "preview" : "branches"
+                      )}
                     />
                   )}
                   <div className="workspace-tabs">
@@ -911,19 +911,7 @@ function App() {
                   currentBranch={currentBranch || ""}
                   projectPath={currentProject.path}
                   githubUsername={integrations.github.username}
-                  onBranchSwitch={async (branchName) => {
-                    const result = await switchBranch(currentProject.path, branchName, true);
-                    if (result.success) {
-                      await handleBranchSwitch(branchName);
-                      if (result.stashedChanges) {
-                        showToast("Switched branch (changes stashed)", "success");
-                      } else {
-                        showToast(`Switched to ${branchName}`, "success");
-                      }
-                    } else {
-                      showToast(result.error || "Failed to switch branch", "error");
-                    }
-                  }}
+                  onBranchSwitch={(branchName) => handleBranchSwitch(branchName)}
                   onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
                   onRefresh={() => fetchBranchInfo(currentProject.path)}
                   onToast={showToast}
@@ -936,6 +924,7 @@ function App() {
                   onRefresh={() => fetchBranchInfo(currentProject.path)}
                   onToast={showToast}
                   onBranchSwitch={handleBranchSwitch}
+                  onNavigateToBranches={() => setWorkspaceTab("branches")}
                 />
               )}
             </div>
@@ -974,37 +963,6 @@ function App() {
         </div>
       )}
 
-      {/* Branch Selector Modal */}
-      {showBranchSelector && (
-        <BranchSelectorModal
-          projectPath={currentProject?.path || ""}
-          projectName={currentProject?.name || ""}
-          branches={branches}
-          currentBranch={currentBranch}
-          githubUsername={integrations.github.username}
-          createMode={branchSelectorCreateMode}
-          onSelectBranch={async (branchName) => {
-            if (!currentProject) return;
-            const result = await switchBranch(currentProject.path, branchName, true);
-            if (result.success) {
-              await handleBranchSwitch(branchName);
-              if (result.stashedChanges) {
-                showToast("Switched branch (changes stashed)", "success");
-              }
-            } else {
-              showToast(result.error || "Failed to switch branch", "error");
-              throw new Error(result.error || "Failed to switch branch");
-            }
-          }}
-          onCreateBranch={handleCreateBranch}
-          onClose={() => {
-            setShowBranchSelector(false);
-            setBranchSelectorCreateMode(false);
-            focusTerminal();
-          }}
-        />
-      )}
-
       {/* Submit for Review Modal */}
       {showSubmitReview && (
         <SubmitReviewModal
@@ -1034,6 +992,7 @@ function App() {
           onToast={showToast}
         />
       )}
+
     </div>
   );
 }

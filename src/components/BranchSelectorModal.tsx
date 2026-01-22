@@ -112,8 +112,8 @@ export function BranchSelectorModal({
     : selectedBranch.length > 0;
 
   return (
-    <div className="branch-selector-modal" onKeyDown={handleKeyDown}>
-      <div className="branch-selector-content">
+    <div className="branch-selector-modal" onKeyDown={handleKeyDown} onClick={onClose}>
+      <div className="branch-selector-content" onClick={(e) => e.stopPropagation()}>
         <div className="branch-selector-header">
           <h2>Choose where to work</h2>
           <p>Select a branch to start editing {projectName}</p>
@@ -208,6 +208,10 @@ export function BranchSelectorModal({
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
                 autoFocus
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <div className="branch-create-from">
                 <span>from</span>

@@ -40,6 +40,10 @@ export function DashboardHeader({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="dashboard-search-input"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
         />
         <span className="dashboard-search-shortcut">⌘K</span>
       </div>

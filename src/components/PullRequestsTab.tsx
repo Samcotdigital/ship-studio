@@ -15,7 +15,7 @@ import {
   deleteBranch,
   switchBranch,
 } from "../lib/branches";
-import { ExternalLinkIcon, WarningIcon } from "./icons";
+import { ExternalLinkIcon, WarningIcon, BranchIcon } from "./icons";
 
 interface PullRequestsTabProps {
   /** Project path for PR operations */
@@ -28,6 +28,8 @@ interface PullRequestsTabProps {
   onToast?: (message: string, type?: "success" | "error") => void;
   /** Callback when switching branches */
   onBranchSwitch?: (branchName: string) => void;
+  /** Callback to navigate to branches tab */
+  onNavigateToBranches?: () => void;
 }
 
 export function PullRequestsTab({
@@ -36,6 +38,7 @@ export function PullRequestsTab({
   onRefresh,
   onToast,
   onBranchSwitch,
+  onNavigateToBranches,
 }: PullRequestsTabProps) {
   const [pullRequests, setPullRequests] = useState<PullRequestInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,7 +136,24 @@ export function PullRequestsTab({
       <div className="prs-tab-section">
         <div className="prs-tab-section-header">Open</div>
         {openPrs.length === 0 ? (
-          <div className="prs-tab-empty">No open pull requests</div>
+          <div className="prs-tab-empty-state">
+            <div className="prs-tab-empty-icon">
+              <BranchIcon size={32} />
+            </div>
+            <h3 className="prs-tab-empty-title">No open pull requests</h3>
+            <p className="prs-tab-empty-description">
+              Pull requests let you propose changes and get feedback before merging into the main branch.
+              Create a branch, make your changes, then submit it for review.
+            </p>
+            {onNavigateToBranches && (
+              <button
+                className="prs-tab-empty-action"
+                onClick={onNavigateToBranches}
+              >
+                Go to Branches
+              </button>
+            )}
+          </div>
         ) : (
           openPrs.map(pr => (
             <PrCard
@@ -164,8 +184,8 @@ export function PullRequestsTab({
 
       {/* Post-merge cleanup modal */}
       {postMergeInfo && (
-        <div className="post-merge-modal">
-          <div className="post-merge-content">
+        <div className="post-merge-modal" onClick={() => !isCleaningUp && setPostMergeInfo(null)}>
+          <div className="post-merge-content" onClick={(e) => e.stopPropagation()}>
             <div className="post-merge-header">
               <h3>Branch Merged!</h3>
             </div>
@@ -264,8 +284,7 @@ function PrCard({ pr, isOwn, isMerging, onMerge }: PrCardProps) {
             className="branch-card-action"
             onClick={() => openUrl(pr.url)}
           >
-            View on GitHub
-            <ExternalLinkIcon size={10} />
+            View on GitHub <ExternalLinkIcon size={10} />
           </button>
           {onMerge && (
             <button

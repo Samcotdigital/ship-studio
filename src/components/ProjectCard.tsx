@@ -35,7 +35,7 @@ export function ProjectCard({
   onOpenSite,
   onOpenIde,
 }: ProjectCardProps) {
-  const hasChanges = project.uncommitted_count && project.uncommitted_count > 0;
+  const hasChanges = project.uncommitted_count !== null && project.uncommitted_count > 0;
 
   return (
     <div className="project-card">
@@ -95,7 +95,7 @@ export function ProjectCard({
             {project.git_branch && (
               <span className="project-card-branch">
                 <BranchIcon />
-                {project.git_branch}
+                <span className="project-card-branch-name">{project.git_branch}</span>
               </span>
             )}
             {hasChanges && (

@@ -227,20 +227,36 @@
 .project-card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 2px;
+  min-width: 0;
 }
 
 .project-card-branch {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-card-branch svg {
+  flex-shrink: 0;
+}
+
+.project-card-branch-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .project-card-changes {
   color: var(--warning-color, #f59e0b);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .project-card-deployment {

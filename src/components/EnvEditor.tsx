@@ -355,6 +355,10 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
                   }}
                   placeholder=".env.local"
                   autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                 />
                 <button onClick={handleCreateFile} title="Create">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -441,6 +445,10 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
                         autoFocus={editingKey === v.key}
                         onFocus={() => setEditingKey(v.key)}
                         onBlur={() => setEditingKey(null)}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                       <span className="env-var-equals">=</span>
                       <input
@@ -449,6 +457,10 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
                         value={v.value}
                         onChange={(e) => handleUpdateVar(index, "value", e.target.value)}
                         placeholder="value"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                       <button
                         className="env-var-visibility"

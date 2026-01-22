@@ -210,6 +210,10 @@ export function GitHubButton({
                     onChange={(e) => setRepoName(e.target.value.replace(/[^a-zA-Z0-9-_]/g, "-"))}
                     placeholder="my-project"
                     autoFocus
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                   />
                 </div>
               </label>

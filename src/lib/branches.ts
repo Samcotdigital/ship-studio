@@ -116,6 +116,15 @@ export async function switchBranch(
 }
 
 /**
+ * Discard all uncommitted changes in the working directory.
+ * This removes changes to tracked files and deletes untracked files.
+ * @param projectPath - Absolute path to the project directory
+ */
+export async function discardChanges(projectPath: string): Promise<void> {
+  return invoke("discard_changes", { projectPath });
+}
+
+/**
  * Create a new branch from a base branch.
  * @param projectPath - Absolute path to the project directory
  * @param branchName - Name for the new branch
