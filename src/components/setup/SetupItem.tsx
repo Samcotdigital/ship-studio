@@ -17,10 +17,10 @@ interface SetupItemProps {
   blockedBy?: string[];
   /** Called when user clicks Install or Connect */
   onAction?: () => void;
-  /** Whether action is currently in progress */
+  /** Whether this specific action is currently in progress */
   isActionInProgress?: boolean;
-  /** Auth-specific message to display (e.g., clipboard instructions) */
-  authMessage?: string | null;
+  /** Whether any action across all items is in progress (disables all buttons) */
+  isAnyActionInProgress?: boolean;
 }
 
 /** Checkmark icon for ready items */
@@ -137,8 +137,7 @@ function getActionButton(
   item: SetupItemType,
   blockedBy: string[] | undefined,
   onAction: (() => void) | undefined,
-  isActionInProgress: boolean | undefined,
-  authMessage: string | null | undefined
+  isAnyActionInProgress: boolean | undefined
 ): React.ReactNode {
   // Ready items show version/username
   if (item.status === "ready") {
@@ -158,11 +157,11 @@ function getActionButton(
     );
   }
 
-  // In-progress items show the progress message (or auth message if present)
+  // In-progress items show the progress message
   if (item.status === "in_progress") {
     return (
       <span className="setup-item-progress-text">
-        {authMessage || SETUP_PROGRESS_MESSAGES[item.id] || "Working..."}
+        {SETUP_PROGRESS_MESSAGES[item.id] || "Working..."}
       </span>
     );
   }
@@ -177,7 +176,7 @@ function getActionButton(
         <button
           className="setup-item-btn setup-item-btn-retry"
           onClick={onAction}
-          disabled={isActionInProgress}
+          disabled={isAnyActionInProgress}
         >
           Retry
         </button>
@@ -191,7 +190,7 @@ function getActionButton(
       <button
         className="setup-item-btn setup-item-btn-install"
         onClick={onAction}
-        disabled={isActionInProgress}
+        disabled={isAnyActionInProgress}
       >
         Install
       </button>
@@ -204,7 +203,7 @@ function getActionButton(
       <button
         className="setup-item-btn setup-item-btn-connect"
         onClick={onAction}
-        disabled={isActionInProgress}
+        disabled={isAnyActionInProgress}
       >
         Connect
       </button>
@@ -218,8 +217,7 @@ export function SetupItem({
   item,
   blockedBy,
   onAction,
-  isActionInProgress,
-  authMessage,
+  isAnyActionInProgress,
 }: SetupItemProps) {
   const statusClass = `setup-item-status-${item.status.replace("_", "-")}`;
 
@@ -230,7 +228,7 @@ export function SetupItem({
       </div>
       <div className="setup-item-name">{item.friendlyName}</div>
       <div className="setup-item-action">
-        {getActionButton(item, blockedBy, onAction, isActionInProgress, authMessage)}
+        {getActionButton(item, blockedBy, onAction, isAnyActionInProgress)}
       </div>
     </div>
   );

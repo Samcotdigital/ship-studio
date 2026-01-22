@@ -1,36 +1,50 @@
-import { useState } from "react";
-import { GitHubState, VercelState, ClaudeState } from "../App";
+import { useState, useEffect } from "react";
 import { CheckIcon, WarningIcon, ChevronIcon, ClaudeIcon, GitHubIcon, VercelIcon } from "./icons";
+import { getFullSetupStatus, SetupItem, SETUP_ITEM_ORDER } from "../lib/setup";
 
-interface IntegrationBarProps {
-  githubState: GitHubState;
-  vercelState: VercelState;
-  claudeState: ClaudeState;
-  onGitHubConnect: () => void;
-  onVercelConnect: () => void;
-  onClaudeConnect: () => void;
-  isInstallingClaude?: boolean;
-  isInstallingVercel?: boolean;
-}
-
-export function IntegrationBar({
-  githubState,
-  vercelState,
-  claudeState,
-  onGitHubConnect,
-  onVercelConnect,
-  onClaudeConnect,
-  isInstallingClaude = false,
-  isInstallingVercel = false,
-}: IntegrationBarProps) {
+export function IntegrationBar() {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [setupItems, setSetupItems] = useState<SetupItem[]>([]);
 
-  const claudeConnected = claudeState.cliStatus.installed;
-  const githubConnected = githubState.cliStatus.authenticated;
-  const vercelConnected = vercelState.cliStatus.authenticated;
+  // Fetch full setup status on mount
+  useEffect(() => {
+    getFullSetupStatus().then((status) => {
+      // Sort by display order
+      const sorted = [...status.items].sort((a, b) => {
+        return SETUP_ITEM_ORDER.indexOf(a.id) - SETUP_ITEM_ORDER.indexOf(b.id);
+      });
+      setSetupItems(sorted);
+    }).catch(console.error);
+  }, []);
 
-  const allConnected = claudeConnected && githubConnected && vercelConnected;
-  const connectedCount = [claudeConnected, githubConnected, vercelConnected].filter(Boolean).length;
+  const readyCount = setupItems.filter((item) => item.status === "ready").length;
+  const totalCount = setupItems.length;
+  const allConnected = totalCount > 0 && readyCount === totalCount;
+
+  // Get icon for item
+  const getItemIcon = (itemId: string) => {
+    switch (itemId) {
+      case "claude":
+      case "claude_auth":
+        return <ClaudeIcon />;
+      case "gh":
+      case "gh_auth":
+        return <GitHubIcon />;
+      case "vercel":
+      case "vercel_auth":
+        return <VercelIcon size={16} />;
+      default:
+        return <CheckIcon size={16} />;
+    }
+  };
+
+  // Get status text for item
+  const getStatusText = (item: SetupItem) => {
+    if (item.status === "ready") {
+      return item.username || item.version || "Ready";
+    }
+    return item.status === "not_installed" ? "Not installed" : "Not connected";
+  };
 
   return (
     <div className={`integration-bar ${isExpanded ? "expanded" : ""}`}>
@@ -46,7 +60,7 @@ export function IntegrationBar({
         ) : (
           <>
             <WarningIcon size={16} className="integration-bar-icon warning" />
-            <span>{connectedCount}/3 integrations connected</span>
+            <span>{readyCount}/{totalCount} integrations ready</span>
           </>
         )}
         <ChevronIcon size={16} className={`integration-bar-chevron ${isExpanded ? "up" : "down"}`} />
@@ -54,102 +68,22 @@ export function IntegrationBar({
 
       {isExpanded && (
         <div className="integration-bar-content">
-          {/* Claude */}
-          <div className={`integration-bar-item ${claudeConnected ? "connected" : ""}`}>
-            <div className="integration-bar-item-icon">
-              <ClaudeIcon />
-            </div>
-            <div className="integration-bar-item-info">
-              <span className="integration-bar-item-name">Claude</span>
-              {claudeConnected ? (
-                <span className="integration-bar-item-status success">
-                  {claudeState.cliStatus.version || "Connected"}
+          {setupItems.map((item) => (
+            <div
+              key={item.id}
+              className={`integration-bar-item ${item.status === "ready" ? "connected" : ""}`}
+            >
+              <div className="integration-bar-item-icon">
+                {getItemIcon(item.id)}
+              </div>
+              <div className="integration-bar-item-info">
+                <span className="integration-bar-item-name">{item.friendlyName}</span>
+                <span className={`integration-bar-item-status ${item.status === "ready" ? "success" : ""}`}>
+                  {getStatusText(item)}
                 </span>
-              ) : (
-                <span className="integration-bar-item-status">Not installed</span>
-              )}
+              </div>
             </div>
-            {!claudeConnected && (
-              <button
-                className="integration-bar-item-action"
-                onClick={onClaudeConnect}
-                disabled={isInstallingClaude}
-              >
-                {isInstallingClaude ? "Installing..." : "Install"}
-              </button>
-            )}
-          </div>
-
-          {/* GitHub */}
-          <div className={`integration-bar-item ${githubConnected ? "connected" : ""}`}>
-            <div className="integration-bar-item-icon">
-              <GitHubIcon />
-            </div>
-            <div className="integration-bar-item-info">
-              <span className="integration-bar-item-name">GitHub</span>
-              {!githubState.cliStatus.installed ? (
-                <span className="integration-bar-item-status">CLI not installed</span>
-              ) : !githubState.cliStatus.authenticated ? (
-                <span className="integration-bar-item-status">Not connected</span>
-              ) : (
-                <span className="integration-bar-item-status success">
-                  {githubState.username}
-                </span>
-              )}
-            </div>
-            {!githubState.cliStatus.installed ? (
-              <a
-                href="https://cli.github.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="integration-bar-item-action"
-              >
-                Install
-              </a>
-            ) : !githubState.cliStatus.authenticated ? (
-              <button
-                className="integration-bar-item-action"
-                onClick={onGitHubConnect}
-              >
-                Connect
-              </button>
-            ) : null}
-          </div>
-
-          {/* Vercel */}
-          <div className={`integration-bar-item ${vercelConnected ? "connected" : ""}`}>
-            <div className="integration-bar-item-icon">
-              <VercelIcon size={16} />
-            </div>
-            <div className="integration-bar-item-info">
-              <span className="integration-bar-item-name">Vercel</span>
-              {!vercelState.cliStatus.installed ? (
-                <span className="integration-bar-item-status">CLI not installed</span>
-              ) : !vercelState.cliStatus.authenticated ? (
-                <span className="integration-bar-item-status">Not connected</span>
-              ) : (
-                <span className="integration-bar-item-status success">
-                  {vercelState.username || "Connected"}
-                </span>
-              )}
-            </div>
-            {!vercelState.cliStatus.installed ? (
-              <button
-                className="integration-bar-item-action"
-                onClick={onVercelConnect}
-                disabled={isInstallingVercel}
-              >
-                {isInstallingVercel ? "Installing..." : "Install"}
-              </button>
-            ) : !vercelState.cliStatus.authenticated ? (
-              <button
-                className="integration-bar-item-action"
-                onClick={onVercelConnect}
-              >
-                Connect
-              </button>
-            ) : null}
-          </div>
+          ))}
         </div>
       )}
     </div>

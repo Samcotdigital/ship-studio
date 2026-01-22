@@ -218,3 +218,44 @@ export async function installVercel(): Promise<void> {
 export async function startVercelAuth(): Promise<string> {
   return invoke<string>("start_vercel_auth");
 }
+
+// ============ Terminal Commands ============
+
+/** Terminal command configuration */
+export interface TerminalCommand {
+  command: string;
+  args: string[];
+}
+
+/** Terminal commands for interactive installations/auth */
+export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = {
+  homebrew: {
+    command: "/bin/bash",
+    args: ["-c", "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash"],
+  },
+  gh_auth: {
+    command: "gh",
+    args: ["auth", "login", "--web", "--git-protocol", "https"],
+  },
+  claude: {
+    command: "bash",
+    args: ["-c", "curl -fsSL https://claude.ai/install.sh | bash"],
+  },
+  claude_auth: {
+    command: "claude",
+    args: [],
+  },
+  vercel_auth: {
+    command: "vercel",
+    args: ["login"],
+  },
+};
+
+/** Set of item IDs that require interactive terminal */
+export const USES_TERMINAL = new Set([
+  "homebrew",
+  "gh_auth",
+  "claude",
+  "claude_auth",
+  "vercel_auth",
+]);

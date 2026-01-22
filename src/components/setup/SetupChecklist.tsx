@@ -18,15 +18,15 @@ interface SetupChecklistProps {
   onItemAction: (itemId: string) => void;
   /** ID of item currently being processed */
   activeItemId?: string | null;
-  /** Message to show for auth items (e.g., clipboard instructions) */
-  authMessage?: string | null;
+  /** Whether a terminal is currently active */
+  terminalActive?: boolean;
 }
 
 export function SetupChecklist({
   items,
   onItemAction,
   activeItemId,
-  authMessage,
+  terminalActive,
 }: SetupChecklistProps) {
   // Sort items according to display order
   const sortedItems = [...items].sort((a, b) => {
@@ -34,6 +34,9 @@ export function SetupChecklist({
     const bIndex = SETUP_ITEM_ORDER.indexOf(b.id);
     return aIndex - bIndex;
   });
+
+  // Disable all buttons if any action is in progress or terminal is active
+  const isAnyActionInProgress = activeItemId !== null || terminalActive === true;
 
   return (
     <div className="setup-checklist">
@@ -53,7 +56,7 @@ export function SetupChecklist({
             blockedBy={blockedBy}
             onAction={() => onItemAction(item.id)}
             isActionInProgress={activeItemId === item.id}
-            authMessage={activeItemId === item.id ? authMessage : undefined}
+            isAnyActionInProgress={isAnyActionInProgress}
           />
         );
       })}

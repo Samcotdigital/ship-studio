@@ -6,9 +6,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   min-height: 100vh;
   padding: 40px 24px;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.onboarding-screen::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
 }
 
 .onboarding-loading {
@@ -35,6 +42,13 @@
 .onboarding-header p {
   color: var(--text-secondary);
   font-size: 15px;
+}
+
+.onboarding-header .onboarding-reassurance {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  font-style: italic;
 }
 
 .onboarding-error {
@@ -374,4 +388,88 @@
 .setup-actions p {
   color: var(--text-secondary);
   margin-bottom: 16px;
+}
+
+/* ============ Onboarding Terminal Modal ============ */
+
+.onboarding-terminal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.onboarding-terminal-modal {
+  width: 90%;
+  max-width: 700px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.onboarding-terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+
+.onboarding-terminal-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.onboarding-terminal-cancel {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.onboarding-terminal-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.onboarding-terminal-container {
+  height: 350px;
+  background: #1e1e1e;
 }

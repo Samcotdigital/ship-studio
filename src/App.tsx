@@ -310,11 +310,6 @@ function App() {
   const refreshVercelStatus = () =>
     refreshAuthenticatedIntegration(checkVercelCliStatus, getVercelUsername, 'SET_VERCEL');
 
-  const refreshClaudeStatus = async () => {
-    const status = await checkClaudeCliStatus();
-    dispatch({ type: 'SET_CLAUDE', payload: { cliStatus: status } });
-  };
-
   // Focus terminal (called after modals close)
   const focusTerminal = useCallback(() => {
     terminalRef.current?.focus();
@@ -559,12 +554,6 @@ function App() {
         <ProjectList
           onSelectProject={handleSelectProject}
           onCreateProject={handleCreateProject}
-          githubState={integrations.github}
-          vercelState={integrations.vercel}
-          claudeState={integrations.claude}
-          onGitHubConnect={refreshGitHubStatus}
-          onVercelConnect={refreshVercelStatus}
-          onClaudeConnect={refreshClaudeStatus}
         />
         {showCreateModal && (
           <CreateProject

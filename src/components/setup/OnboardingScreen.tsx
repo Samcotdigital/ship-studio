@@ -4,7 +4,7 @@
  * Handles:
  * - Fetching and displaying setup status
  * - Triggering installations and authentications
- * - Polling for auth completion
+ * - Embedded terminal for interactive CLI commands
  * - Transitioning to celebration screen when complete
  */
 
@@ -12,69 +12,54 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { SetupChecklist } from "./SetupChecklist";
 import { CelebrationScreen } from "./CelebrationScreen";
+import { OnboardingTerminal } from "./OnboardingTerminal";
 import {
   SetupItem,
   FullSetupStatus,
   getFullSetupStatus,
-  installHomebrew,
   installNode,
   installGit,
   installGh,
-  startGitHubAuth,
-  installClaude,
-  startClaudeAuth,
   checkClaudeAuthStatus,
   installVercel,
-  startVercelAuth,
+  TERMINAL_COMMANDS,
+  USES_TERMINAL,
+  SETUP_FRIENDLY_NAMES,
 } from "../../lib/setup";
 import { checkGitHubCliStatus } from "../../lib/github";
 import { checkVercelCliStatus } from "../../lib/vercel";
 
 type OnboardingState = "loading" | "setup" | "complete";
 
+/** Configuration for the active terminal command */
+interface TerminalConfig {
+  itemId: string;
+  command: string;
+  args: string[];
+}
+
 interface OnboardingScreenProps {
   /** Called when setup is complete and user continues */
   onComplete: () => void;
 }
-
-/** Auth polling interval in ms */
-const AUTH_POLL_INTERVAL = 2000;
-/** Auth timeout in ms (3 minutes) */
-const AUTH_TIMEOUT = 180000;
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [state, setState] = useState<OnboardingState>("loading");
   const [items, setItems] = useState<SetupItem[]>([]);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [terminalConfig, setTerminalConfig] = useState<TerminalConfig | null>(null);
 
-  // Track polling timers for cleanup
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
-
-  // Cleanup function for polling
-  const cleanupPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      cleanupPolling();
       if (unlistenRef.current) {
         unlistenRef.current();
       }
     };
-  }, [cleanupPolling]);
+  }, []);
 
   // Fetch initial status
   const fetchStatus = useCallback(async () => {
@@ -132,132 +117,100 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     []
   );
 
-  // Handle GitHub auth polling
-  const pollGitHubAuth = useCallback(async () => {
-    const startTime = Date.now();
+  // Handle terminal exit - process exit codes and check auth status
+  const handleTerminalExit = useCallback(
+    async (exitCode: number | null) => {
+      const itemId = terminalConfig?.itemId;
+      if (!itemId) return;
 
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const status = await checkGitHubCliStatus();
-        if (status.authenticated) {
-          cleanupPolling();
-          setAuthMessage(null);
-          // Refresh full status to get username
-          await fetchStatus();
-          setActiveItemId(null);
-        } else if (Date.now() - startTime > AUTH_TIMEOUT) {
-          cleanupPolling();
-          setAuthMessage(null);
-          updateItemStatus("gh_auth", {
-            status: "error",
-            errorMessage: "Authentication timed out. Click to try again.",
-          });
-          setActiveItemId(null);
+      // Hide terminal
+      setTerminalConfig(null);
+
+      if (exitCode === 0 || exitCode === null) {
+        // Success (or process ended without explicit code) - refresh status
+        // Success - for auth items, verify the auth status
+        if (itemId === "gh_auth") {
+          const status = await checkGitHubCliStatus();
+          if (!status.authenticated) {
+            updateItemStatus(itemId, {
+              status: "error",
+              errorMessage: "Authentication not completed. Click to try again.",
+            });
+            setActiveItemId(null);
+            return;
+          }
+        } else if (itemId === "claude_auth") {
+          const isAuthed = await checkClaudeAuthStatus();
+          if (!isAuthed) {
+            updateItemStatus(itemId, {
+              status: "error",
+              errorMessage: "Authentication not completed. Click to try again.",
+            });
+            setActiveItemId(null);
+            return;
+          }
+        } else if (itemId === "vercel_auth") {
+          const status = await checkVercelCliStatus();
+          if (!status.authenticated) {
+            updateItemStatus(itemId, {
+              status: "error",
+              errorMessage: "Authentication not completed. Click to try again.",
+            });
+            setActiveItemId(null);
+            return;
+          }
         }
-      } catch (err) {
-        console.error("GitHub auth poll error:", err);
+
+        // Refresh full status
+        await fetchStatus();
+      } else {
+        // Non-zero exit code - show error
+        updateItemStatus(itemId, {
+          status: "error",
+          errorMessage: "Command failed. Click to try again.",
+        });
       }
-    }, AUTH_POLL_INTERVAL);
 
-    // Set timeout
-    timeoutRef.current = setTimeout(() => {
-      cleanupPolling();
-      setAuthMessage(null);
-      updateItemStatus("gh_auth", {
-        status: "error",
-        errorMessage: "Authentication timed out. Click to try again.",
-      });
       setActiveItemId(null);
-    }, AUTH_TIMEOUT);
-  }, [cleanupPolling, fetchStatus, updateItemStatus]);
+    },
+    [terminalConfig, fetchStatus, updateItemStatus]
+  );
 
-  // Handle Claude auth polling
-  const pollClaudeAuth = useCallback(async () => {
-    const startTime = Date.now();
-
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const isAuthed = await checkClaudeAuthStatus();
-        if (isAuthed) {
-          cleanupPolling();
-          setAuthMessage(null);
-          await fetchStatus();
-          setActiveItemId(null);
-        } else if (Date.now() - startTime > AUTH_TIMEOUT) {
-          cleanupPolling();
-          setAuthMessage(null);
-          updateItemStatus("claude_auth", {
-            status: "error",
-            errorMessage: "Authentication timed out. Click to try again.",
-          });
-          setActiveItemId(null);
-        }
-      } catch (err) {
-        console.error("Claude auth poll error:", err);
-      }
-    }, AUTH_POLL_INTERVAL);
-
-    timeoutRef.current = setTimeout(() => {
-      cleanupPolling();
-      setAuthMessage(null);
-      updateItemStatus("claude_auth", {
-        status: "error",
-        errorMessage: "Authentication timed out. Click to try again.",
-      });
-      setActiveItemId(null);
-    }, AUTH_TIMEOUT);
-  }, [cleanupPolling, fetchStatus, updateItemStatus]);
-
-  // Handle Vercel auth polling
-  const pollVercelAuth = useCallback(async () => {
-    const startTime = Date.now();
-
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const status = await checkVercelCliStatus();
-        if (status.authenticated) {
-          cleanupPolling();
-          setAuthMessage(null);
-          await fetchStatus();
-          setActiveItemId(null);
-        } else if (Date.now() - startTime > AUTH_TIMEOUT) {
-          cleanupPolling();
-          setAuthMessage(null);
-          updateItemStatus("vercel_auth", {
-            status: "error",
-            errorMessage: "Authentication timed out. Click to try again.",
-          });
-          setActiveItemId(null);
-        }
-      } catch (err) {
-        console.error("Vercel auth poll error:", err);
-      }
-    }, AUTH_POLL_INTERVAL);
-
-    timeoutRef.current = setTimeout(() => {
-      cleanupPolling();
-      setAuthMessage(null);
-      updateItemStatus("vercel_auth", {
-        status: "error",
-        errorMessage: "Authentication timed out. Click to try again.",
-      });
-      setActiveItemId(null);
-    }, AUTH_TIMEOUT);
-  }, [cleanupPolling, fetchStatus, updateItemStatus]);
+  // Handle terminal cancel
+  const handleTerminalCancel = useCallback(() => {
+    const itemId = terminalConfig?.itemId;
+    if (itemId) {
+      // Reset item status back to what it was
+      fetchStatus();
+    }
+    setTerminalConfig(null);
+    setActiveItemId(null);
+  }, [terminalConfig, fetchStatus]);
 
   // Handle item action (install or connect)
   const handleItemAction = useCallback(
     async (itemId: string) => {
-      if (activeItemId) return; // Already processing something
+      if (activeItemId || terminalConfig) return; // Already processing something
 
       setActiveItemId(itemId);
       updateItemStatus(itemId, { status: "in_progress", errorMessage: undefined });
 
+      // Check if this item uses terminal
+      if (USES_TERMINAL.has(itemId)) {
+        const cmd = TERMINAL_COMMANDS[itemId];
+        if (cmd) {
+          setTerminalConfig({
+            itemId,
+            command: cmd.command,
+            args: cmd.args,
+          });
+          return; // Terminal will handle the rest
+        }
+      }
+
+      // Non-terminal items - run via backend
       try {
         switch (itemId) {
-          case "homebrew":
-            await installHomebrew();
-            break;
           case "node":
             await installNode();
             break;
@@ -267,31 +220,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           case "gh":
             await installGh();
             break;
-          case "gh_auth": {
-            const ghMsg = await startGitHubAuth();
-            setAuthMessage(ghMsg);
-            // Start polling for auth completion
-            pollGitHubAuth();
-            return; // Don't refresh yet, polling will handle it
-          }
-          case "claude":
-            await installClaude();
-            break;
-          case "claude_auth": {
-            const claudeMsg = await startClaudeAuth();
-            setAuthMessage(claudeMsg);
-            pollClaudeAuth();
-            return; // Polling will handle it
-          }
           case "vercel":
             await installVercel();
             break;
-          case "vercel_auth": {
-            const vercelMsg = await startVercelAuth();
-            setAuthMessage(vercelMsg);
-            pollVercelAuth();
-            return; // Polling will handle it
-          }
           default:
             console.warn("Unknown item:", itemId);
         }
@@ -312,14 +243,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         setActiveItemId(null);
       }
     },
-    [
-      activeItemId,
-      updateItemStatus,
-      fetchStatus,
-      pollGitHubAuth,
-      pollClaudeAuth,
-      pollVercelAuth,
-    ]
+    [activeItemId, terminalConfig, updateItemStatus, fetchStatus]
   );
 
   // Check if all items are ready
@@ -352,6 +276,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         <div className="onboarding-header">
           <h1>Welcome to Marketingstack</h1>
           <p>Let's get your development environment set up</p>
+          <p className="onboarding-reassurance">Yeah, we know it's a pain, but once you do it once — you're good to go!</p>
         </div>
 
         {error && (
@@ -367,8 +292,32 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           items={items}
           onItemAction={handleItemAction}
           activeItemId={activeItemId}
-          authMessage={authMessage}
+          terminalActive={terminalConfig !== null}
         />
+
+        {/* Terminal modal for interactive commands */}
+        {terminalConfig && (
+          <div className="onboarding-terminal-overlay">
+            <div className="onboarding-terminal-modal">
+              <div className="onboarding-terminal-header">
+                <span className="onboarding-terminal-title">
+                  {SETUP_FRIENDLY_NAMES[terminalConfig.itemId] || terminalConfig.itemId}
+                </span>
+                <button
+                  className="onboarding-terminal-cancel"
+                  onClick={handleTerminalCancel}
+                >
+                  Cancel
+                </button>
+              </div>
+              <OnboardingTerminal
+                command={terminalConfig.command}
+                args={terminalConfig.args}
+                onExit={handleTerminalExit}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="onboarding-progress">
           <div className="onboarding-progress-bar">
