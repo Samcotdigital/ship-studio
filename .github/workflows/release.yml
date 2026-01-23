@@ -150,24 +150,22 @@ jobs:
           echo "aarch64 signature: $AARCH64_SIG"
           echo "x86_64 signature: $X86_64_SIG"
 
-          # Create the manifest (no indentation to avoid JSON issues)
-          cat > latest.json << EOF
-{
-  "version": "${VERSION}",
-  "notes": "See the release notes on GitHub for details.",
-  "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "platforms": {
-    "darwin-aarch64": {
-      "signature": "${AARCH64_SIG}",
-      "url": "https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-aarch64.app.tar.gz"
-    },
-    "darwin-x86_64": {
-      "signature": "${X86_64_SIG}",
-      "url": "https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-x86_64.app.tar.gz"
-    }
-  }
-}
-EOF
+          # Create the manifest using printf to avoid YAML parsing issues
+          printf '%s\n' '{' \
+            "  \"version\": \"${VERSION}\"," \
+            '  "notes": "See the release notes on GitHub for details.",' \
+            "  \"pub_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," \
+            '  "platforms": {' \
+            '    "darwin-aarch64": {' \
+            "      \"signature\": \"${AARCH64_SIG}\"," \
+            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-aarch64.app.tar.gz\"" \
+            '    },' \
+            '    "darwin-x86_64": {' \
+            "      \"signature\": \"${X86_64_SIG}\"," \
+            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-x86_64.app.tar.gz\"" \
+            '    }' \
+            '  }' \
+            '}' > latest.json
 
           echo "Generated latest.json:"
           cat latest.json
