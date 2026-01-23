@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::Emitter;
 use crate::types::SpawnPtyOptions;
+use crate::utils::get_extended_path;
 
 /// Counter for generating unique PTY IDs
 static PTY_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -33,6 +34,7 @@ pub async fn spawn_pty(app: tauri::AppHandle, options: SpawnPtyOptions) -> Resul
             let mut child = Command::new(&options.command)
                 .args(&options.args)
                 .current_dir(&options.cwd)
+                .env("PATH", get_extended_path())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
