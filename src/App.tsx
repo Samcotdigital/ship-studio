@@ -678,8 +678,8 @@ function App() {
     // Mark project as opened (for sorting by last opened)
     invoke("mark_project_opened", { projectPath: project.path }).catch(() => {});
 
-    // Ensure .marketingstack/ is gitignored (backwards compat for existing projects)
-    invoke("ensure_gitignore_has_marketingstack", { projectPath: project.path }).catch(() => {});
+    // Ensure .shipstudio/ is gitignored (backwards compat for existing projects)
+    invoke("ensure_gitignore_has_shipstudio", { projectPath: project.path }).catch(() => {});
 
     // Check project's GitHub and Vercel status in parallel
     try {
@@ -815,7 +815,7 @@ function App() {
     return (
       <div className="app loading">
         <div className="spinner" />
-        <p>Loading Marketingstack...</p>
+        <p>Loading Ship Studio...</p>
       </div>
     );
   }

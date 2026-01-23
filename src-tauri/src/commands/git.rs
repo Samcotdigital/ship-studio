@@ -112,25 +112,25 @@ pub async fn check_prerequisites() -> Vec<PrerequisiteCheck> {
     results
 }
 
-/// Returns the path to ~/Marketingstack directory
+/// Returns the path to ~/ShipStudio directory
 #[tauri::command]
-pub async fn get_marketingstack_dir() -> Result<String, String> {
+pub async fn get_shipstudio_dir() -> Result<String, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
-    Ok(marketingstack_dir.to_string_lossy().to_string())
+    let shipstudio_dir = home.join("ShipStudio");
+    Ok(shipstudio_dir.to_string_lossy().to_string())
 }
 
-/// Creates ~/Marketingstack directory if it doesn't exist
+/// Creates ~/ShipStudio directory if it doesn't exist
 #[tauri::command]
-pub async fn ensure_marketingstack_dir() -> Result<String, String> {
+pub async fn ensure_shipstudio_dir() -> Result<String, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
-    if !marketingstack_dir.exists() {
-        std::fs::create_dir_all(&marketingstack_dir).map_err(|e| e.to_string())?;
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir).map_err(|e| e.to_string())?;
     }
 
-    Ok(marketingstack_dir.to_string_lossy().to_string())
+    Ok(shipstudio_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -149,7 +149,7 @@ pub async fn init_git_repo(project_path: String) -> Result<(), String> {
     }
 
     // Stage and commit all files
-    git_stage_and_commit(&validated_path, "Initial commit from Marketingstack")?;
+    git_stage_and_commit(&validated_path, "Initial commit from Ship Studio")?;
 
     Ok(())
 }
@@ -435,7 +435,7 @@ pub async fn switch_branch(project_path: String, branch_name: String, auto_stash
 
     if has_changes && auto_stash {
         let stash_output = Command::new("git")
-            .args(["stash", "push", "-m", "Auto-stash by Marketingstack"])
+            .args(["stash", "push", "-m", "Auto-stash by Ship Studio"])
             .current_dir(&validated_path)
             .output()
             .map_err(|e| e.to_string())?;

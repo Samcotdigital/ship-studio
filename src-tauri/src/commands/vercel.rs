@@ -361,10 +361,10 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
         }
     }
 
-    // Cache URLs to .marketingstack/project.json
+    // Cache URLs to .shipstudio/project.json
     if production_url.is_some() || staging_url.is_some() {
-        let marketingstack_dir = project.join(".marketingstack");
-        let metadata_path = marketingstack_dir.join("project.json");
+        let shipstudio_dir = project.join(".shipstudio");
+        let metadata_path = shipstudio_dir.join("project.json");
 
         let mut metadata = if metadata_path.exists() {
             std::fs::read_to_string(&metadata_path)
@@ -396,7 +396,7 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
             });
         }
 
-        let _ = std::fs::create_dir_all(&marketingstack_dir);
+        let _ = std::fs::create_dir_all(&shipstudio_dir);
         if let Ok(contents) = serde_json::to_string_pretty(&metadata) {
             let _ = std::fs::write(&metadata_path, contents);
         }
@@ -471,8 +471,8 @@ pub async fn link_to_vercel(options: LinkToVercelOptions) -> Result<String, Stri
 
     // Save the URL to project metadata
     let project = std::path::Path::new(project_path);
-    let marketingstack_dir = project.join(".marketingstack");
-    let metadata_path = marketingstack_dir.join("project.json");
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
 
     let mut metadata: ProjectMetadata = if metadata_path.exists() {
         std::fs::read_to_string(&metadata_path)
@@ -494,7 +494,7 @@ pub async fn link_to_vercel(options: LinkToVercelOptions) -> Result<String, Stri
         published_at: now,
     });
 
-    let _ = std::fs::create_dir_all(&marketingstack_dir);
+    let _ = std::fs::create_dir_all(&shipstudio_dir);
     if let Ok(contents) = serde_json::to_string_pretty(&metadata) {
         let _ = std::fs::write(&metadata_path, contents);
     }
@@ -711,7 +711,7 @@ pub async fn get_deployment_status(project_path: String, _since_timestamp: Optio
 
 /// Helper to get Vercel deployment info for a project (used by get_dashboard_projects)
 pub fn get_vercel_deployment_info(project_path: &std::path::Path) -> (Option<String>, Option<String>, Option<String>) {
-    let metadata_path = project_path.join(".marketingstack").join("project.json");
+    let metadata_path = project_path.join(".shipstudio").join("project.json");
     if metadata_path.exists() {
         if let Ok(contents) = std::fs::read_to_string(&metadata_path) {
             if let Ok(metadata) = serde_json::from_str::<ProjectMetadata>(&contents) {

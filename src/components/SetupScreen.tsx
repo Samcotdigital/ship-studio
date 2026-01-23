@@ -56,7 +56,7 @@ export function SetupScreen({ prerequisites, onRetry }: SetupScreenProps) {
   return (
     <div className="setup-screen">
       <h1>Setup Required</h1>
-      <p>Marketingstack requires the following tools to be installed:</p>
+      <p>Ship Studio requires the following tools to be installed:</p>
 
       <div className="prerequisites-list">
         {prerequisites.map((prereq) => (

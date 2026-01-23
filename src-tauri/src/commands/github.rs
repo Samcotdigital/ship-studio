@@ -194,7 +194,7 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Stri
         init_git_repo(options.project_path.clone()).await?;
     } else {
         // Make sure all changes are committed
-        let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
+        let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
     }
 
     // Create GitHub repo and push

@@ -102,10 +102,10 @@ pub async fn write_env_file(file_path: String, vars: Vec<EnvVar>) -> Result<(), 
 }
 
 /// Creates a new .env file in the project directory.
-/// Validates both project path (must be in Marketingstack) and filename.
+/// Validates both project path (must be in ShipStudio) and filename.
 #[tauri::command]
 pub async fn create_env_file(project_path: String, file_name: String) -> Result<String, String> {
-    // Validate project path is inside Marketingstack directory
+    // Validate project path is inside ShipStudio directory
     let project = validate_project_path(&project_path)?;
 
     // Validate filename to prevent path traversal attacks
@@ -133,14 +133,14 @@ pub async fn create_env_file(project_path: String, file_name: String) -> Result<
 
 #[tauri::command]
 pub async fn delete_env_file(file_path: String) -> Result<(), String> {
-    // Validate the file is inside Marketingstack directory
+    // Validate the file is inside ShipStudio directory
     let path = std::path::Path::new(&file_path);
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
     let canonical = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
-    if !canonical.starts_with(&marketingstack_dir) {
-        return Err("Security error: cannot delete files outside Marketingstack directory".to_string());
+    if !canonical.starts_with(&shipstudio_dir) {
+        return Err("Security error: cannot delete files outside ShipStudio directory".to_string());
     }
 
     std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;

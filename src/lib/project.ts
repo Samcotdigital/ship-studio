@@ -2,7 +2,7 @@
  * Project management utilities for Tauri backend communication.
  *
  * Provides functions for:
- * - Listing and managing projects in ~/Marketingstack
+ * - Listing and managing projects in ~/ShipStudio
  * - Checking system prerequisites (node, npm, git, claude)
  * - Starting/stopping the Next.js dev server
  *
@@ -68,7 +68,7 @@ export async function checkPrerequisites(): Promise<Prerequisite[]> {
 
 /**
  * Get all projects with dashboard metadata.
- * Scans ~/Marketingstack for project folders and enriches with git/deployment info.
+ * Scans ~/ShipStudio for project folders and enriches with git/deployment info.
  * @returns Array of dashboard projects sorted by last_opened
  */
 export async function getDashboardProjects(): Promise<DashboardProject[]> {

@@ -313,7 +313,7 @@ pub async fn complete_merge(project_path: String) -> Result<(), String> {
 
     // Create the merge commit
     let commit_output = Command::new("git")
-        .args(["commit", "-m", "Resolved merge conflicts via Marketingstack"])
+        .args(["commit", "-m", "Resolved merge conflicts via Ship Studio"])
         .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;

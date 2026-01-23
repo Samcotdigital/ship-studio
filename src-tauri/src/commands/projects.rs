@@ -53,10 +53,10 @@ fn get_uncommitted_count(project_path: &std::path::Path) -> Option<u32> {
     None
 }
 
-/// Sync helper for ensuring .marketingstack/ is in gitignore
-fn ensure_gitignore_has_marketingstack_sync(project: &std::path::Path) -> Result<(), String> {
+/// Sync helper for ensuring .shipstudio/ is in gitignore
+fn ensure_gitignore_has_shipstudio_sync(project: &std::path::Path) -> Result<(), String> {
     let gitignore_path = project.join(".gitignore");
-    let entry = ".marketingstack/";
+    let entry = ".shipstudio/";
 
     let content = if gitignore_path.exists() {
         std::fs::read_to_string(&gitignore_path).unwrap_or_default()
@@ -66,7 +66,7 @@ fn ensure_gitignore_has_marketingstack_sync(project: &std::path::Path) -> Result
 
     let already_ignored = content.lines().any(|line| {
         let trimmed = line.trim();
-        trimmed == entry || trimmed == ".marketingstack" || trimmed == "/.marketingstack/" || trimmed == "/.marketingstack"
+        trimmed == entry || trimmed == ".shipstudio" || trimmed == "/.shipstudio/" || trimmed == "/.shipstudio"
     });
 
     if already_ignored {
@@ -74,11 +74,11 @@ fn ensure_gitignore_has_marketingstack_sync(project: &std::path::Path) -> Result
     }
 
     let new_content = if content.is_empty() {
-        format!("# Marketingstack metadata\n{}\n", entry)
+        format!("# ShipStudio metadata\n{}\n", entry)
     } else if content.ends_with('\n') {
-        format!("{}\n# Marketingstack metadata\n{}\n", content, entry)
+        format!("{}\n# ShipStudio metadata\n{}\n", content, entry)
     } else {
-        format!("{}\n\n# Marketingstack metadata\n{}\n", content, entry)
+        format!("{}\n\n# ShipStudio metadata\n{}\n", content, entry)
     };
 
     std::fs::write(&gitignore_path, new_content).ok();
@@ -143,28 +143,28 @@ fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<P
 #[tauri::command]
 pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
-    if !marketingstack_dir.exists() {
+    if !shipstudio_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut projects = Vec::new();
-    let entries = std::fs::read_dir(&marketingstack_dir).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(&shipstudio_dir).map_err(|e| e.to_string())?;
 
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.is_dir() {
             if path.join("package.json").exists() {
-                let thumbnail_path = path.join(".marketingstack").join("thumbnail.png");
+                let thumbnail_path = path.join(".shipstudio").join("thumbnail.png");
                 let thumbnail = if thumbnail_path.exists() {
                     Some(thumbnail_path.to_string_lossy().to_string())
                 } else {
                     None
                 };
 
-                let metadata_path = path.join(".marketingstack").join("project.json");
+                let metadata_path = path.join(".shipstudio").join("project.json");
                 let last_opened = if metadata_path.exists() {
                     std::fs::read_to_string(&metadata_path)
                         .ok()
@@ -200,28 +200,28 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
 #[tauri::command]
 pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
-    if !marketingstack_dir.exists() {
+    if !shipstudio_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut projects = Vec::new();
-    let entries = std::fs::read_dir(&marketingstack_dir).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(&shipstudio_dir).map_err(|e| e.to_string())?;
 
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.is_dir() {
             if path.join("package.json").exists() {
-                let thumbnail_path = path.join(".marketingstack").join("thumbnail.png");
+                let thumbnail_path = path.join(".shipstudio").join("thumbnail.png");
                 let thumbnail = if thumbnail_path.exists() {
                     Some(thumbnail_path.to_string_lossy().to_string())
                 } else {
                     None
                 };
 
-                let metadata_path = path.join(".marketingstack").join("project.json");
+                let metadata_path = path.join(".shipstudio").join("project.json");
                 let last_opened = if metadata_path.exists() {
                     std::fs::read_to_string(&metadata_path)
                         .ok()
@@ -231,8 +231,8 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                     None
                 };
 
-                // Ensure .marketingstack/ is gitignored
-                let _ = ensure_gitignore_has_marketingstack_sync(&path);
+                // Ensure .shipstudio/ is gitignored
+                let _ = ensure_gitignore_has_shipstudio_sync(&path);
 
                 // Get git info
                 let git_branch = get_git_branch(&path);
@@ -305,11 +305,11 @@ pub async fn check_sanity_installed(project_path: String) -> Result<bool, String
     Ok(false)
 }
 
-/// Reads project metadata from .marketingstack/project.json
+/// Reads project metadata from .shipstudio/project.json
 #[tauri::command]
 pub async fn read_project_metadata(project_path: String) -> Result<Option<ProjectMetadata>, String> {
     let project = validate_project_path(&project_path)?;
-    let metadata_path = project.join(".marketingstack").join("project.json");
+    let metadata_path = project.join(".shipstudio").join("project.json");
 
     if !metadata_path.exists() {
         return Ok(None);
@@ -324,18 +324,18 @@ pub async fn read_project_metadata(project_path: String) -> Result<Option<Projec
     Ok(Some(metadata))
 }
 
-/// Writes project metadata to .marketingstack/project.json
+/// Writes project metadata to .shipstudio/project.json
 #[tauri::command]
 pub async fn write_project_metadata(project_path: String, metadata: ProjectMetadata) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
-    let marketingstack_dir = project.join(".marketingstack");
+    let shipstudio_dir = project.join(".shipstudio");
 
-    if !marketingstack_dir.exists() {
-        std::fs::create_dir_all(&marketingstack_dir)
-            .map_err(|e| format!("Failed to create .marketingstack directory: {}", e))?;
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
     }
 
-    let metadata_path = marketingstack_dir.join("project.json");
+    let metadata_path = shipstudio_dir.join("project.json");
     let contents = serde_json::to_string_pretty(&metadata)
         .map_err(|e| format!("Failed to serialize project metadata: {}", e))?;
 
@@ -349,8 +349,8 @@ pub async fn write_project_metadata(project_path: String, metadata: ProjectMetad
 #[tauri::command]
 pub async fn mark_project_opened(project_path: String) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
-    let marketingstack_dir = project.join(".marketingstack");
-    let metadata_path = marketingstack_dir.join("project.json");
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
 
     let mut metadata = if metadata_path.exists() {
         std::fs::read_to_string(&metadata_path)
@@ -367,9 +367,9 @@ pub async fn mark_project_opened(project_path: String) -> Result<(), String> {
         .unwrap_or(0);
     metadata.last_opened = Some(now);
 
-    if !marketingstack_dir.exists() {
-        std::fs::create_dir_all(&marketingstack_dir)
-            .map_err(|e| format!("Failed to create .marketingstack directory: {}", e))?;
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
     }
 
     let contents = serde_json::to_string_pretty(&metadata)
@@ -384,7 +384,7 @@ pub async fn mark_project_opened(project_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_branch_prefix_preference(project_path: String) -> Result<bool, String> {
     let project = validate_project_path(&project_path)?;
-    let metadata_path = project.join(".marketingstack").join("project.json");
+    let metadata_path = project.join(".shipstudio").join("project.json");
 
     if !metadata_path.exists() {
         return Ok(true);
@@ -402,8 +402,8 @@ pub async fn get_branch_prefix_preference(project_path: String) -> Result<bool, 
 #[tauri::command]
 pub async fn set_branch_prefix_preference(project_path: String, prefix: bool) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
-    let marketingstack_dir = project.join(".marketingstack");
-    let metadata_path = marketingstack_dir.join("project.json");
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
 
     let mut metadata = if metadata_path.exists() {
         std::fs::read_to_string(&metadata_path)
@@ -416,9 +416,9 @@ pub async fn set_branch_prefix_preference(project_path: String, prefix: bool) ->
 
     metadata.branch_prefix_username = Some(prefix);
 
-    if !marketingstack_dir.exists() {
-        std::fs::create_dir_all(&marketingstack_dir)
-            .map_err(|e| format!("Failed to create .marketingstack directory: {}", e))?;
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
     }
 
     let contents = serde_json::to_string_pretty(&metadata)
@@ -429,13 +429,13 @@ pub async fn set_branch_prefix_preference(project_path: String, prefix: bool) ->
     Ok(())
 }
 
-/// Ensures .marketingstack/ is in the project's .gitignore
+/// Ensures .shipstudio/ is in the project's .gitignore
 #[tauri::command]
-pub async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result<(), String> {
+pub async fn ensure_gitignore_has_shipstudio(project_path: String) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
     let gitignore_path = project.join(".gitignore");
 
-    let entry = ".marketingstack/";
+    let entry = ".shipstudio/";
 
     let content = if gitignore_path.exists() {
         std::fs::read_to_string(&gitignore_path)
@@ -446,7 +446,7 @@ pub async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result
 
     let already_ignored = content.lines().any(|line| {
         let trimmed = line.trim();
-        trimmed == entry || trimmed == ".marketingstack" || trimmed == "/.marketingstack/" || trimmed == "/.marketingstack"
+        trimmed == entry || trimmed == ".shipstudio" || trimmed == "/.shipstudio/" || trimmed == "/.shipstudio"
     });
 
     if already_ignored {
@@ -454,11 +454,11 @@ pub async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result
     }
 
     let new_content = if content.is_empty() {
-        format!("# Marketingstack metadata\n{}\n", entry)
+        format!("# ShipStudio metadata\n{}\n", entry)
     } else if content.ends_with('\n') {
-        format!("{}\n# Marketingstack metadata\n{}\n", content, entry)
+        format!("{}\n# ShipStudio metadata\n{}\n", content, entry)
     } else {
-        format!("{}\n\n# Marketingstack metadata\n{}\n", content, entry)
+        format!("{}\n\n# ShipStudio metadata\n{}\n", content, entry)
     };
 
     std::fs::write(&gitignore_path, new_content)
@@ -467,16 +467,16 @@ pub async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result
     Ok(())
 }
 
-/// Deletes a project directory. Only allows deletion from ~/Marketingstack.
+/// Deletes a project directory. Only allows deletion from ~/ShipStudio.
 #[tauri::command]
 pub async fn delete_project(path: String) -> Result<(), String> {
     let project_path = std::path::Path::new(&path);
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
-    if !project_path.starts_with(&marketingstack_dir) {
-        return Err("Can only delete projects from Marketingstack directory".to_string());
+    if !project_path.starts_with(&shipstudio_dir) {
+        return Err("Can only delete projects from ShipStudio directory".to_string());
     }
 
     if !project_path.exists() {

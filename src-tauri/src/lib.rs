@@ -1,9 +1,9 @@
-//! # Marketingstack Backend
+//! # Ship Studio Backend
 //!
-//! This module contains all Tauri commands for the Marketingstack desktop app.
+//! This module contains all Tauri commands for the Ship Studio desktop app.
 //! Commands are organized into these categories:
 //!
-//! - **Project Management**: Create, list, delete projects in ~/Marketingstack
+//! - **Project Management**: Create, list, delete projects in ~/ShipStudio
 //! - **Dev Server & Terminal**: PTY management for Claude Code terminal
 //! - **GitHub Integration**: Check status, create repos, commit and push
 //! - **Vercel Integration**: Check status, deploy projects
@@ -74,8 +74,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Git & Prerequisites
             commands::git::check_prerequisites,
-            commands::git::get_marketingstack_dir,
-            commands::git::ensure_marketingstack_dir,
+            commands::git::get_shipstudio_dir,
+            commands::git::ensure_shipstudio_dir,
             commands::git::init_git_repo,
             commands::git::check_git_has_changes,
             commands::git::get_branch_status,
@@ -99,7 +99,7 @@ pub fn run() {
             commands::projects::mark_project_opened,
             commands::projects::get_branch_prefix_preference,
             commands::projects::set_branch_prefix_preference,
-            commands::projects::ensure_gitignore_has_marketingstack,
+            commands::projects::ensure_gitignore_has_shipstudio,
             commands::projects::delete_project,
             // Environment variables
             commands::env::list_env_files,

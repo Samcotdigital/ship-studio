@@ -92,7 +92,7 @@ export async function abortMerge(projectPath: string): Promise<void> {
 
 /**
  * Complete the merge after all conflicts have been resolved.
- * Creates a commit with message "Resolved merge conflicts via Marketingstack".
+ * Creates a commit with message "Resolved merge conflicts via Ship Studio".
  */
 export async function completeMerge(projectPath: string): Promise<void> {
   await invoke("complete_merge", { projectPath });

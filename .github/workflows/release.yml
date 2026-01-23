@@ -74,7 +74,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: "Developer ID Application"
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Marketingstack v__VERSION__'
+          releaseName: 'Ship Studio v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
@@ -98,8 +98,8 @@ jobs:
 
             # Create artifacts directory with target-specific names
             mkdir -p artifacts
-            cp "$TAR_FILE" "artifacts/Marketingstack_${{ matrix.updater_target }}.app.tar.gz"
-            cp "$SIG_FILE" "artifacts/Marketingstack_${{ matrix.updater_target }}.app.tar.gz.sig"
+            cp "$TAR_FILE" "artifacts/ShipStudio_${{ matrix.updater_target }}.app.tar.gz"
+            cp "$SIG_FILE" "artifacts/ShipStudio_${{ matrix.updater_target }}.app.tar.gz.sig"
 
             # Also save just the signature content
             cat "$SIG_FILE" > "artifacts/signature.txt"
@@ -158,11 +158,11 @@ jobs:
             '  "platforms": {' \
             '    "darwin-aarch64": {' \
             "      \"signature\": \"${AARCH64_SIG}\"," \
-            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-aarch64.app.tar.gz\"" \
+            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/ShipStudio_darwin-aarch64.app.tar.gz\"" \
             '    },' \
             '    "darwin-x86_64": {' \
             "      \"signature\": \"${X86_64_SIG}\"," \
-            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-x86_64.app.tar.gz\"" \
+            "      \"url\": \"https://github.com/${REPO}/releases/download/${TAG}/ShipStudio_darwin-x86_64.app.tar.gz\"" \
             '    }' \
             '  }' \
             '}' > latest.json
@@ -178,7 +178,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            artifacts/updater-darwin-aarch64/Marketingstack_darwin-aarch64.app.tar.gz
-            artifacts/updater-darwin-x86_64/Marketingstack_darwin-x86_64.app.tar.gz
+            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.app.tar.gz
+            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.app.tar.gz
             latest.json
           draft: true

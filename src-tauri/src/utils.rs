@@ -1,6 +1,6 @@
 //! # Shared Utilities
 //!
-//! This module contains shared utility functions used across the Marketingstack backend.
+//! This module contains shared utility functions used across the Ship Studio backend.
 
 use std::process::Command;
 
@@ -93,18 +93,18 @@ pub fn find_executable(cmd: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Validates that a project path is inside the ~/Marketingstack directory.
+/// Validates that a project path is inside the ~/ShipStudio directory.
 /// Prevents path traversal attacks where frontend could pass arbitrary paths.
 pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(project_path);
     let canonical = path.canonicalize().map_err(|e| format!("Invalid path: {}", e))?;
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let marketingstack_dir = home.join("Marketingstack");
+    let shipstudio_dir = home.join("ShipStudio");
 
-    if !canonical.starts_with(&marketingstack_dir) {
+    if !canonical.starts_with(&shipstudio_dir) {
         return Err(format!(
-            "Security error: path '{}' is outside Marketingstack directory",
+            "Security error: path '{}' is outside ShipStudio directory",
             project_path
         ));
     }

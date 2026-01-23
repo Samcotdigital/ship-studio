@@ -123,8 +123,8 @@ export function VercelButton({
     setError(null);
 
     try {
-      const homeDir = await invoke<string>("get_marketingstack_dir");
-      const parentDir = homeDir.replace("/Marketingstack", "");
+      const homeDir = await invoke<string>("get_shipstudio_dir");
+      const parentDir = homeDir.replace("/ShipStudio", "");
 
       const ptyId = await invoke<number>("spawn_pty", {
         cwd: parentDir,

@@ -2373,30 +2373,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
-name = "marketingstack"
-version = "0.1.4"
-dependencies = [
- "base64 0.22.1",
- "dirs 5.0.1",
- "image",
- "lazy_static",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-fs",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-pty",
- "tauri-plugin-screenshots",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tokio",
- "url",
- "which",
-]
-
-[[package]]
 name = "markup5ever"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4243,6 +4219,30 @@ name = "shell-words"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
+
+[[package]]
+name = "ship-studio"
+version = "0.1.5"
+dependencies = [
+ "base64 0.22.1",
+ "dirs 5.0.1",
+ "image",
+ "lazy_static",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-fs",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-pty",
+ "tauri-plugin-screenshots",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tokio",
+ "url",
+ "which",
+]
 
 [[package]]
 name = "shlex"

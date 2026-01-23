@@ -10,7 +10,7 @@ use crate::commands::git::git_stage_and_commit;
 #[tauri::command]
 pub async fn publish_to_github(project_path: String, commit_message: Option<String>) -> Result<(), String> {
     let validated_path = validate_project_path(&project_path)?;
-    let message = commit_message.unwrap_or_else(|| "Update from Marketingstack".to_string());
+    let message = commit_message.unwrap_or_else(|| "Update from Ship Studio".to_string());
 
     // Get current branch name
     let branch_output = Command::new("git")
@@ -95,7 +95,7 @@ pub async fn publish_to_staging(project_path: String) -> Result<PublishResult, S
     let validated_path = validate_project_path(&project_path)?;
 
     // Stage and commit any changes
-    let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
+    let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
 
     // Push to staging branch - Vercel auto-deploys via GitHub integration
     let push_output = Command::new("git")
@@ -122,7 +122,7 @@ pub async fn publish_to_production(project_path: String) -> Result<PublishResult
     let validated_path = validate_project_path(&project_path)?;
 
     // Stage and commit any changes
-    let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
+    let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
 
     // Push to main branch - Vercel auto-deploys to production via GitHub integration
     let push_output = Command::new("git")
@@ -148,7 +148,7 @@ pub async fn publish_to_production(project_path: String) -> Result<PublishResult
 #[tauri::command]
 pub async fn publish_branch(project_path: String, commit_message: Option<String>) -> Result<PublishResult, String> {
     let validated_path = validate_project_path(&project_path)?;
-    let message = commit_message.unwrap_or_else(|| "Updates from Marketingstack".to_string());
+    let message = commit_message.unwrap_or_else(|| "Updates from Ship Studio".to_string());
 
     // Get current branch name
     let branch_output = Command::new("git")

@@ -1,8 +1,8 @@
-# Marketingstack
+# Ship Studio
 
 Build AI-native marketing sites easily with SOTA technology.
 
-Marketingstack is a desktop application that combines Claude Code's AI capabilities with a streamlined development environment for creating Next.js marketing websites. It provides an integrated terminal, live preview, and seamless GitHub integration—all in one native app.
+Ship Studio is a desktop application that combines Claude Code's AI capabilities with a streamlined development environment for creating Next.js marketing websites. It provides an integrated terminal, live preview, and seamless GitHub integration—all in one native app.
 
 ## Features
 
@@ -19,7 +19,7 @@ Marketingstack is a desktop application that combines Claude Code's AI capabilit
 
 ## Prerequisites
 
-Before running Marketingstack, make sure you have the following installed:
+Before running Ship Studio, make sure you have the following installed:
 
 | Tool | Required | Installation |
 |------|----------|--------------|
@@ -38,8 +38,8 @@ Before running Marketingstack, make sure you have the following installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Memberstack/marketingstack.git
-cd marketingstack
+git clone https://github.com/ship-studio/ship-studio.git
+cd ship-studio
 
 # Install dependencies
 pnpm install
@@ -59,13 +59,13 @@ pnpm tauri build
 
 ## Releases and Auto-Updates
 
-Marketingstack includes built-in auto-update functionality. When a new version is available, users see a banner at the top of the app with the option to update and restart.
+Ship Studio includes built-in auto-update functionality. When a new version is available, users see a banner at the top of the app with the option to update and restart.
 
 ### Setting Up GitHub Secrets
 
 Before creating releases, add these secrets to your GitHub repository (Settings → Secrets → Actions):
 
-1. **`TAURI_SIGNING_PRIVATE_KEY`** - The private key for signing update artifacts. Located at `~/.tauri/marketingstack.key`
+1. **`TAURI_SIGNING_PRIVATE_KEY`** - The private key for signing update artifacts. Located at `~/.tauri/ship-studio.key`
 2. **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`** - Password for the key (can be empty if none was set)
 
 ### Creating a Release
@@ -132,7 +132,7 @@ This will start both the Vite dev server and the Tauri application.
 ## Project Structure
 
 ```
-marketingstack/
+ship-studio/
 ├── src/                      # React frontend
 │   ├── components/           # UI components
 │   │   ├── Terminal.tsx      # Claude Code terminal with PTY
@@ -162,12 +162,12 @@ marketingstack/
 
 1. Click **"+ New Project"** on the home screen
 2. Enter a project name
-3. Marketingstack clones the Next.js template and installs dependencies
+3. Ship Studio clones the Next.js template and installs dependencies
 4. You're dropped into the workspace with Claude Code ready to go
 
 ### GitHub Integration
 
-Marketingstack integrates with GitHub CLI for seamless version control:
+Ship Studio integrates with GitHub CLI for seamless version control:
 
 1. **No Repo** → Shows "Create Repo" button
 2. **Create Repo** → Opens modal to name your repo (public/private)
@@ -191,7 +191,7 @@ Auto-deploys are enabled when connected to GitHub—every push triggers a new de
 
 Projects using Sanity CMS get a dedicated "Open Sanity" button in the preview toolbar:
 
-1. **Auto-Detection** → Marketingstack detects `sanity.config.ts` or Sanity dependencies
+1. **Auto-Detection** → Ship Studio detects `sanity.config.ts` or Sanity dependencies
 2. **Native Webview** → Opens Sanity Studio in a native webview (not iframe) for full OAuth support
 3. **Full Features** → Google OAuth, image uploads, and all Sanity features work correctly
 
@@ -216,11 +216,11 @@ Open projects in your preferred code editor:
 
 ### Project Thumbnails
 
-When you open a project, Marketingstack automatically captures a screenshot of your site using Chrome/Chromium/Edge in headless mode. Thumbnails are:
+When you open a project, Ship Studio automatically captures a screenshot of your site using Chrome/Chromium/Edge in headless mode. Thumbnails are:
 - Captured once the dev server is ready
 - Standardized to 640px wide with 16:10 aspect ratio
 - Updated every 5 minutes while the project is open
-- Stored in `.marketingstack/thumbnail.png` in each project
+- Stored in `.shipstudio/thumbnail.png` in each project
 
 **Note:** Requires Chrome, Chromium, or Edge installed for thumbnail capture.
 
@@ -239,8 +239,8 @@ The Rust backend (`src-tauri/src/lib.rs`) exposes these commands to the frontend
 ### Project Management
 | Command | Description |
 |---------|-------------|
-| `get_marketingstack_dir` | Returns `~/Marketingstack` path |
-| `list_projects` | Lists all projects in Marketingstack directory |
+| `get_shipstudio_dir` | Returns `~/ShipStudio` path |
+| `list_projects` | Lists all projects in Ship Studio directory |
 | `create_project` | Clones template and installs dependencies |
 | `delete_project` | Removes a project directory |
 | `list_pages` | Scans Next.js app directory for routes |
@@ -308,7 +308,7 @@ Edit `src-tauri/tauri.conf.json` to modify:
 
 The Next.js template is cloned from:
 ```
-https://github.com/julianmemberstack/marketingstack-boilerplate-next-1
+https://github.com/ship-studio/ship-studio-boilerplate
 ```
 
 To use a different template, update `TEMPLATE_REPO` in `src/components/CreateProject.tsx`.
@@ -323,7 +323,7 @@ The page selector dropdown shows available routes and lets you navigate to them.
 
 ### Vercel Detection for External Deployments
 
-Projects deployed to Vercel outside of Marketingstack (e.g., via CLI directly) may show "Deploy" instead of "Live" until redeployed through the app. This is because Marketingstack uses a marker file to track deployment status.
+Projects deployed to Vercel outside of Ship Studio (e.g., via CLI directly) may show "Deploy" instead of "Live" until redeployed through the app. This is because Ship Studio uses a marker file to track deployment status.
 
 ## Troubleshooting
 

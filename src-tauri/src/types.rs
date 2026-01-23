@@ -1,6 +1,6 @@
 //! # Shared Types
 //!
-//! This module contains all shared structs and types used across the Marketingstack backend.
+//! This module contains all shared structs and types used across the Ship Studio backend.
 
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +73,7 @@ pub struct PublishMetadata {
     pub production: Option<PublishRecord>,
 }
 
-/// Project metadata stored in .marketingstack/project.json
+/// Project metadata stored in .shipstudio/project.json
 #[derive(Serialize, Deserialize)]
 pub struct ProjectMetadata {
     #[serde(rename = "_description")]
@@ -90,7 +90,7 @@ pub struct ProjectMetadata {
 impl Default for ProjectMetadata {
     fn default() -> Self {
         ProjectMetadata {
-            description: "Marketingstack project metadata. Auto-generated - safe to delete if needed, will be recreated.".to_string(),
+            description: "Ship Studio project metadata. Auto-generated - safe to delete if needed, will be recreated.".to_string(),
             publish: PublishMetadata::default(),
             last_opened: None,
             branch_prefix_username: None,

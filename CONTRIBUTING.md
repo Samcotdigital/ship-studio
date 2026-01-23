@@ -1,6 +1,6 @@
-# Contributing to Marketingstack
+# Contributing to Ship Studio
 
-Thanks for your interest in contributing to Marketingstack! This guide will help you get started.
+Thanks for your interest in contributing to Ship Studio! This guide will help you get started.
 
 ## Development Setup
 
@@ -14,8 +14,8 @@ Thanks for your interest in contributing to Marketingstack! This guide will help
 
 ```bash
 # Clone the repo
-git clone https://github.com/Memberstack/marketingstack.git
-cd marketingstack
+git clone https://github.com/ship-studio/ship-studio.git
+cd ship-studio
 
 # Install dependencies
 pnpm install
@@ -113,7 +113,7 @@ Add screenshot capture for project thumbnails
 
 - Implement headless Chrome screenshot capture
 - Add fallback for missing browsers
-- Store thumbnails in .marketingstack/thumbnail.png
+- Store thumbnails in .shipstudio/thumbnail.png
 ```
 
 ### Pull Request Process

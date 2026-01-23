@@ -1,8 +1,8 @@
 {
-  "name": "marketingstack",
+  "name": "ship-studio",
   "private": true,
   "version": "0.1.5",
-  "description": "Marketingstack - Launch Claude Code for marketing sites",
+  "description": "Ship Studio - Launch Claude Code for marketing sites",
   "type": "module",
   "scripts": {
     "dev": "vite",

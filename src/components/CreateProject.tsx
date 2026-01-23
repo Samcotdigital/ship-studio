@@ -41,7 +41,7 @@ const TEMPLATES: Template[] = [
     id: "nextjs-basic",
     name: "Next.js Basic",
     description: "A minimal Next.js starter with Tailwind CSS",
-    repo: "https://github.com/marketingstack/marketingstack-boilerplate",
+    repo: "https://github.com/ship-studio/ship-studio-boilerplate",
   },
 ];
 
@@ -132,14 +132,14 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     setCurrentStep("clone");
 
     try {
-      // Ensure Marketingstack directory exists
-      const marketingstackDir = await invoke<string>("ensure_marketingstack_dir");
-      const projectPath = `${marketingstackDir}/${safeName}`;
+      // Ensure ShipStudio directory exists
+      const shipstudioDir = await invoke<string>("ensure_shipstudio_dir");
+      const projectPath = `${shipstudioDir}/${safeName}`;
 
       // Clone template
       const cloneId = await invoke<number>("spawn_pty", {
         options: {
-          cwd: marketingstackDir,
+          cwd: shipstudioDir,
           command: "git",
           args: ["clone", selectedTemplate.repo, safeName],
           rows: 10,
@@ -163,8 +163,8 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
 
       await waitForPtyExit(rmGitId);
 
-      // Ensure .marketingstack/ is gitignored to prevent phantom changes
-      await invoke("ensure_gitignore_has_marketingstack", { projectPath: projectPath });
+      // Ensure .shipstudio/ is gitignored to prevent phantom changes
+      await invoke("ensure_gitignore_has_shipstudio", { projectPath: projectPath });
 
       // Install dependencies
       setCurrentStep("install");

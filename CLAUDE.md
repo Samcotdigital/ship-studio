@@ -1,4 +1,4 @@
-# Marketingstack Development Guidelines
+# Ship Studio Development Guidelines
 
 ## Core Principles
 
@@ -12,7 +12,7 @@
 - This prevents confusing users with incorrect information
 
 ### Data Storage
-- Project metadata is stored in `.marketingstack/project.json` within each project
+- Project metadata is stored in `.shipstudio/project.json` within each project
 - This file stores: last_opened timestamp, publish records (staging/production with URL, state, publishedAt)
 - Vercel project linking info is in `.vercel/project.json` (managed by Vercel CLI)
 - Only trust data that was explicitly saved - don't infer state from file existence alone
@@ -21,7 +21,7 @@
 
 ### Backend (Rust/Tauri)
 - All Tauri commands are in `src-tauri/src/lib.rs`
-- Commands validate paths to ensure they're within `~/Marketingstack` directory
+- Commands validate paths to ensure they're within `~/ShipStudio` directory
 - Git operations use the `git` CLI directly
 - Vercel operations use the `vercel` CLI
 
@@ -36,7 +36,7 @@
 1. User clicks Publish in PublishDropdown
 2. Backend pushes to GitHub (staging or main branch)
 3. Vercel auto-deploys via GitHub integration
-4. Result (URL, state, timestamp) is saved to `.marketingstack/project.json`
+4. Result (URL, state, timestamp) is saved to `.shipstudio/project.json`
 
 ### Integration Status
 - GitHub: Check via `gh auth status`

@@ -284,7 +284,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
     const windows = await getScreenshotableWindows();
     const ourWindow = windows.find(w =>
-      w.title?.toLowerCase().includes("marketingstack") ||
+      w.title?.toLowerCase().includes("ship studio") ||
       w.title?.toLowerCase().includes("tauri")
     );
 
