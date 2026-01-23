@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  build:
     permissions:
       contents: write
     strategy:
@@ -15,10 +15,12 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
-            arch: 'aarch64'
+            target: 'aarch64-apple-darwin'
+            updater_target: 'darwin-aarch64'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
-            arch: 'x86_64'
+            target: 'x86_64-apple-darwin'
+            updater_target: 'darwin-x86_64'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -59,8 +61,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Build Tauri app (sign only, no notarization)
+      - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
+        id: tauri
         timeout-minutes: 20
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,30 +80,107 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-      # TODO: Re-enable notarization when Apple's service is stable
-      # - name: Notarize app
-      #   timeout-minutes: 65
-      #   env:
-      #     APPLE_ID: ${{ secrets.APPLE_ID }}
-      #     APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      #   run: |
-      #     APP_PATH="src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/macos/Marketingstack.app"
-      #
-      #     # Create zip for notarization
-      #     ditto -c -k --keepParent "$APP_PATH" "Marketingstack.zip"
-      #
-      #     # Submit for notarization
-      #     echo "Submitting for notarization..."
-      #     xcrun notarytool submit "Marketingstack.zip" \
-      #       --apple-id "$APPLE_ID" \
-      #       --password "$APPLE_PASSWORD" \
-      #       --team-id "$APPLE_TEAM_ID" \
-      #       --wait \
-      #       --timeout 60m
-      #
-      #     # Staple the notarization ticket
-      #     echo "Stapling notarization ticket..."
-      #     xcrun stapler staple "$APP_PATH"
-      #
-      #     echo "Notarization complete!"
+      - name: Find and upload updater artifacts
+        run: |
+          # Find the .tar.gz and .sig files
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+
+          echo "Looking in $BUNDLE_DIR"
+          ls -la "$BUNDLE_DIR" || true
+
+          # Find the tar.gz file
+          TAR_FILE=$(find "$BUNDLE_DIR" -name "*.tar.gz" -type f | head -1)
+          SIG_FILE=$(find "$BUNDLE_DIR" -name "*.sig" -type f | head -1)
+
+          if [ -n "$TAR_FILE" ] && [ -n "$SIG_FILE" ]; then
+            echo "Found tar: $TAR_FILE"
+            echo "Found sig: $SIG_FILE"
+
+            # Create artifacts directory with target-specific names
+            mkdir -p artifacts
+            cp "$TAR_FILE" "artifacts/Marketingstack_${{ matrix.updater_target }}.app.tar.gz"
+            cp "$SIG_FILE" "artifacts/Marketingstack_${{ matrix.updater_target }}.app.tar.gz.sig"
+
+            # Also save just the signature content
+            cat "$SIG_FILE" > "artifacts/signature.txt"
+
+            ls -la artifacts/
+          else
+            echo "Warning: Could not find updater artifacts"
+            exit 1
+          fi
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.updater_target }}
+          path: artifacts/
+          if-no-files-found: error
+
+  create-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create latest.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+
+          # Read signatures
+          AARCH64_SIG=$(cat artifacts/updater-darwin-aarch64/signature.txt)
+          X86_64_SIG=$(cat artifacts/updater-darwin-x86_64/signature.txt)
+
+          echo "aarch64 signature: $AARCH64_SIG"
+          echo "x86_64 signature: $X86_64_SIG"
+
+          # Create the manifest (no indentation to avoid JSON issues)
+          cat > latest.json << EOF
+{
+  "version": "${VERSION}",
+  "notes": "See the release notes on GitHub for details.",
+  "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "${AARCH64_SIG}",
+      "url": "https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-aarch64.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "${X86_64_SIG}",
+      "url": "https://github.com/${REPO}/releases/download/${TAG}/Marketingstack_darwin-x86_64.app.tar.gz"
+    }
+  }
+}
+EOF
+
+          echo "Generated latest.json:"
+          cat latest.json
+
+          # Validate JSON
+          python3 -c "import json; json.load(open('latest.json'))" && echo "JSON is valid"
+
+      - name: Upload updater tarballs to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            artifacts/updater-darwin-aarch64/Marketingstack_darwin-aarch64.app.tar.gz
+            artifacts/updater-darwin-x86_64/Marketingstack_darwin-x86_64.app.tar.gz
+            latest.json
+          draft: true

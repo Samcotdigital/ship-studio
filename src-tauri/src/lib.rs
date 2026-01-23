@@ -2968,7 +2968,12 @@ async fn list_branches(project_path: String) -> Result<Vec<BranchInfo>, String> 
     Ok(branches)
 }
 
-/// Helper to get ahead/behind count between two refs
+/// Calculates how many commits `branch` is ahead/behind compared to `compare_to`.
+///
+/// Uses `git rev-list --left-right --count branch...compare_to` which outputs
+/// two tab-separated numbers: commits unique to left side, commits unique to right side.
+///
+/// Returns: (ahead, behind) - commits ahead is how many `branch` has that `compare_to` doesn't
 fn get_ahead_behind(path: &std::path::Path, branch: &str, compare_to: &str) -> (i32, i32) {
     let output = Command::new("git")
         .args(["rev-list", "--left-right", "--count", &format!("{}...{}", branch, compare_to)])
@@ -3608,7 +3613,16 @@ struct ConflictedFile {
     theirs_branch: String,
 }
 
-/// Parse conflict markers from file content
+/// Parse git merge conflict markers from file content.
+///
+/// Extracts conflict blocks delimited by `<<<<<<<`, `=======`, and `>>>>>>>` markers.
+/// For each conflict, captures:
+/// - The "current" content (between `<<<<<<<` and `=======`)
+/// - The "incoming" content (between `=======` and `>>>>>>>`)
+/// - 3 lines of context before and after for display purposes
+/// - Branch names from the conflict markers
+///
+/// Returns: (conflicts, ours_branch_name, theirs_branch_name)
 fn parse_conflicts(content: &str, all_lines: &[&str]) -> (Vec<ConflictBlock>, String, String) {
     let mut conflicts = Vec::new();
     let mut ours_branch = String::new();
@@ -3943,6 +3957,18 @@ struct SpawnPtyOptions {
     cols: u32,
 }
 
+/// Spawns a command in a pseudo-terminal (PTY) and streams output to the frontend.
+///
+/// This is used to run Claude Code CLI in an interactive terminal environment.
+/// The function:
+/// 1. Generates a unique PTY ID for tracking
+/// 2. Spawns the command in a separate thread to avoid blocking
+/// 3. Streams stdout/stderr to the frontend via `pty-output` events
+/// 4. Emits `pty-exit` event when the process terminates
+///
+/// Events emitted:
+/// - `pty-output`: `{ id: u32, data: string }` - output chunks from the process
+/// - `pty-exit`: `{ id: u32, code: i32 }` - process exit code
 #[tauri::command]
 async fn spawn_pty(app: tauri::AppHandle, options: SpawnPtyOptions) -> Result<u32, String> {
     let id = PTY_ID_COUNTER.fetch_add(1, Ordering::SeqCst);

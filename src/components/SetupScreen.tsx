@@ -1,3 +1,17 @@
+/**
+ * SetupScreen component displayed when required CLI tools are missing.
+ *
+ * Shows a checklist of prerequisites (node, npm, git, gh, vercel, claude)
+ * with their installation status. For missing tools, provides:
+ * - Direct links to installation pages
+ * - Homebrew/npm install commands where applicable
+ *
+ * Users can retry detection after installing missing tools.
+ *
+ * @module components/SetupScreen
+ */
+
+/** Represents a CLI tool prerequisite and its availability */
 interface Prerequisite {
   name: string;
   available: boolean;

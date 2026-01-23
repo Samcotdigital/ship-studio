@@ -1,3 +1,21 @@
+/**
+ * PublishDropdown component for deploying changes to staging and production.
+ *
+ * Provides a dropdown menu that allows users to:
+ * - Select deployment targets (staging, production, or both)
+ * - View current branch sync status (commits ahead/behind)
+ * - Publish changes by pushing to GitHub branches
+ * - View deployment URLs and open Vercel dashboard
+ * - Reset local changes to match a deployed branch
+ *
+ * Works in conjunction with Vercel's GitHub integration - pushing to
+ * the staging or main branch triggers automatic Vercel deployments.
+ *
+ * States: idle -> publishing -> success/error
+ *
+ * @module components/PublishDropdown
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {

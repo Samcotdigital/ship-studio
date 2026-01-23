@@ -1,3 +1,17 @@
+/**
+ * IntegrationBar component that displays the status of required integrations.
+ *
+ * Shows a collapsible bar at the bottom of the dashboard indicating:
+ * - Overall integration health (all connected vs some missing)
+ * - Individual status of each integration (Claude, GitHub, Vercel)
+ * - Whether CLI tools are installed and authenticated
+ *
+ * The bar is collapsed by default showing just a summary, and expands
+ * to show detailed status for each integration when clicked.
+ *
+ * @module components/IntegrationBar
+ */
+
 import { useState, useEffect } from "react";
 import { CheckIcon, WarningIcon, ChevronIcon, ClaudeIcon, GitHubIcon, VercelIcon } from "./icons";
 import { getFullSetupStatus, SetupItem, SETUP_ITEM_ORDER } from "../lib/setup";

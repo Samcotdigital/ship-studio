@@ -1,3 +1,12 @@
+/**
+ * SVG icon components used throughout the application.
+ *
+ * All icons accept optional `size` (default varies by icon) and `className` props.
+ * Icons use `currentColor` for stroke/fill to inherit text color from parent.
+ *
+ * @module components/icons
+ */
+
 interface IconProps {
   size?: number;
   className?: string;

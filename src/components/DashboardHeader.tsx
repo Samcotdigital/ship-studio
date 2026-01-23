@@ -1,3 +1,14 @@
+/**
+ * DashboardHeader component for the main project list view.
+ *
+ * Provides:
+ * - Search input with Cmd+K keyboard shortcut for quick filtering
+ * - "New Project" button to create projects
+ * - Settings button for app configuration
+ *
+ * @module components/DashboardHeader
+ */
+
 import { useEffect, useRef } from "react";
 import { SearchIcon, SettingsIcon } from "./icons";
 
