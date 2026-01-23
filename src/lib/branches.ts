@@ -174,13 +174,23 @@ export interface DeploymentStatus {
 
 /**
  * Get the latest deployment status from Vercel.
+ *
+ * Uses `vercel ls` to find the latest deployment, then `vercel inspect --json`
+ * to get accurate status. The optional `sinceTimestamp` parameter filters out
+ * deployments created before that time - useful for tracking a newly triggered deployment.
+ *
  * @param projectPath - Absolute path to the project directory
+ * @param sinceTimestamp - Optional Unix timestamp (ms) to filter old deployments
  * @returns Deployment status or null if unavailable
  */
 export async function getDeploymentStatus(
-  projectPath: string
+  projectPath: string,
+  sinceTimestamp?: number
 ): Promise<DeploymentStatus | null> {
-  return invoke<DeploymentStatus | null>("get_deployment_status", { projectPath });
+  return invoke<DeploymentStatus | null>("get_deployment_status", {
+    projectPath,
+    sinceTimestamp: sinceTimestamp ?? null,
+  });
 }
 
 /**

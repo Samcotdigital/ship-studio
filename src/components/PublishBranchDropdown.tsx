@@ -32,6 +32,8 @@ interface PublishBranchDropdownProps {
   projectVercelStatus: ProjectVercelStatus | null;
   /** Absolute path to the project */
   projectPath: string;
+  /** Whether there are uncommitted changes or unpushed commits */
+  hasChangesToSync: boolean;
   /** Callback when publish completes successfully */
   onStatusChange: () => void;
   /** Callback when modal closes */
@@ -60,6 +62,7 @@ export function PublishBranchDropdown({
   projectGithubStatus,
   projectVercelStatus,
   projectPath,
+  hasChangesToSync,
   onStatusChange,
   onModalClose,
   onToast,
@@ -73,6 +76,7 @@ export function PublishBranchDropdown({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasShownToastRef = useRef(false);
 
   const hasGitHubRepo = projectGithubStatus?.status === "connected" && projectGithubStatus?.github_repo;
   const hasVercel = projectVercelStatus?.status === "connected";
@@ -110,20 +114,32 @@ export function PublishBranchDropdown({
           return;
         }
 
-        const status = await getDeploymentStatus(projectPath);
+        // Pass startTime to filter out deployments created before our push
+        const status = await getDeploymentStatus(projectPath, startTime);
+        console.log("[Polling] status:", status, "startTime:", startTime);
         if (status) {
-          if (status.state === "READY") {
+          // Only treat as READY if we have a URL (confirms it's the new deployment)
+          if (status.state === "READY" && status.url) {
+            console.log("[Polling] READY detected, stopping polling");
             const duration = Math.floor((Date.now() - startTime) / 1000);
             setPublishState({ status: "deployed", url: status.url, duration });
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (timerRef.current) clearInterval(timerRef.current);
-            onToast?.(`Deployed in ${duration}s`, "success");
+            // Prevent duplicate toasts from race condition
+            if (!hasShownToastRef.current) {
+              hasShownToastRef.current = true;
+              onToast?.(`Deployed in ${duration}s`, "success");
+            }
           } else if (status.state === "ERROR" || status.state === "CANCELED") {
             const duration = Math.floor((Date.now() - startTime) / 1000);
             setPublishState({ status: "deploy_error", duration });
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (timerRef.current) clearInterval(timerRef.current);
-            onToast?.("Deployment failed", "error");
+            // Prevent duplicate toasts from race condition
+            if (!hasShownToastRef.current) {
+              hasShownToastRef.current = true;
+              onToast?.("Deployment failed", "error");
+            }
           }
         }
       } catch {
@@ -189,6 +205,7 @@ export function PublishBranchDropdown({
         // Give Vercel a moment to register the deployment
         await new Promise(resolve => setTimeout(resolve, 2000));
         setElapsedSeconds(0);
+        hasShownToastRef.current = false; // Reset for new deployment
         setPublishState({ status: "deploying", startTime: Date.now() });
       } else {
         setPublishState({ status: "success" });
@@ -248,14 +265,21 @@ export function PublishBranchDropdown({
     );
   }
 
+  // Disable sync button when there are no changes to sync
+  const canSync = hasChangesToSync || isPublishing || publishState.status !== "idle";
+
   return (
     <div className="publish-dropdown" ref={dropdownRef}>
       <button
-        className={`publish-button ${isPublishing ? "publishing" : ""}`}
-        onClick={() => setIsOpen(!isOpen)}
+        className={`publish-button ${isPublishing ? "publishing" : ""} ${!canSync ? "synced" : ""}`}
+        onClick={() => canSync && setIsOpen(!isOpen)}
+        disabled={!canSync}
+        title={!canSync ? "Already synced" : undefined}
       >
         {isPublishing
           ? (isMainBranch ? "Publishing..." : "Syncing...")
+          : !canSync
+          ? "Synced"
           : (isMainBranch ? "Publish" : "Sync")}
         <ChevronIcon />
       </button>
@@ -287,18 +311,37 @@ export function PublishBranchDropdown({
             <>
               <div className="publish-success">
                 <SuccessIcon />
-                <span>Deployed!</span>
+                <span>Synced!</span>
                 <span className="publish-elapsed">{publishState.duration}s</span>
+              </div>
+              <div className="publish-deployed-message">
+                Your changes are live.{" "}
+                {!isMainBranch && "Keep working, or create a pull request when ready."}
               </div>
               {publishState.url && (
                 <div className="publish-deployed-url">
-                  <button
-                    className="publish-url-button"
-                    onClick={() => openUrl(publishState.url!)}
-                  >
+                  <span className="publish-url-text">
                     {publishState.url.replace("https://", "")}
-                    <ExternalLinkIcon size={10} />
-                  </button>
+                  </span>
+                  <div className="publish-url-actions">
+                    <button
+                      className="publish-url-btn"
+                      onClick={() => {
+                        navigator.clipboard.writeText(publishState.url!);
+                        onToast?.("URL copied", "success");
+                      }}
+                      title="Copy URL"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      className="publish-url-btn"
+                      onClick={() => openUrl(publishState.url!)}
+                      title="Open in browser"
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="publish-actions publish-actions-center">

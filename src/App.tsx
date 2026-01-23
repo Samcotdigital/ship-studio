@@ -938,6 +938,7 @@ function App() {
             projectGithubStatus={integrations.projectGithub}
             projectVercelStatus={integrations.projectVercel}
             projectPath={currentProject?.path || ""}
+            hasChangesToSync={hasUncommittedChanges}
             onStatusChange={() => {
               handleGitHubStatusChange();
               if (currentProject) fetchBranchInfo(currentProject.path);
