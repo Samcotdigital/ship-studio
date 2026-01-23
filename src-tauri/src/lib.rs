@@ -164,6 +164,12 @@ pub fn run() {
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
             commands::setup::start_vercel_auth,
+            // Assets
+            commands::assets::list_assets,
+            commands::assets::upload_asset,
+            commands::assets::delete_asset,
+            commands::assets::rename_asset,
+            commands::assets::create_asset_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

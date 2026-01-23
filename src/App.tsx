@@ -26,6 +26,7 @@ import { GitHubButton } from "./components/GitHubButton";
 import { VercelButton } from "./components/VercelButton";
 import { PublishBranchDropdown } from "./components/PublishBranchDropdown";
 import { EnvEditor } from "./components/EnvEditor";
+import { AssetsPanel } from "./components/AssetsPanel";
 import { BranchIndicator } from "./components/BranchIndicator";
 import { BranchesTab } from "./components/BranchesTab";
 import { PullRequestsTab } from "./components/PullRequestsTab";
@@ -53,6 +54,7 @@ import {
   PullRequestIcon,
   EyeIcon,
   PlusIcon,
+  ImageIcon,
 } from "./components/icons";
 import { startDevServer, Project, DevServerHandle } from "./lib/project";
 import {
@@ -191,6 +193,9 @@ function App() {
 
   // Env editor modal
   const [showEnvEditor, setShowEnvEditor] = useState(false);
+
+  // Assets panel modal
+  const [showAssetsPanel, setShowAssetsPanel] = useState(false);
 
   // Create project modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -870,6 +875,14 @@ function App() {
         <span className="project-path">{currentProject?.path}</span>
 
         <div className="workspace-header-actions">
+          <button
+            className="assets-button"
+            onClick={() => setShowAssetsPanel(true)}
+            title="Manage Assets"
+          >
+            <ImageIcon size={14} />
+            Assets
+          </button>
           <div
             className="ide-dropdown-container"
             onMouseEnter={() => setShowIdeDropdown(true)}
@@ -1139,6 +1152,16 @@ function App() {
         isOpen={showEnvEditor}
         onClose={() => {
           setShowEnvEditor(false);
+          focusTerminal();
+        }}
+        onToast={showToast}
+      />
+
+      <AssetsPanel
+        projectPath={currentProject?.path || ""}
+        isOpen={showAssetsPanel}
+        onClose={() => {
+          setShowAssetsPanel(false);
           focusTerminal();
         }}
         onToast={showToast}

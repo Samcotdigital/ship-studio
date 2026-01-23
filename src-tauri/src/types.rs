@@ -305,6 +305,25 @@ pub struct ConflictedFile {
     pub theirs_branch: String,
 }
 
+// ============ Assets ============
+
+/// Asset file/folder in the /public directory
+#[derive(Serialize)]
+pub struct Asset {
+    /// File or folder name
+    pub name: String,
+    /// Relative path from /public (e.g., "images/logo.png")
+    pub path: String,
+    /// Full filesystem path
+    pub full_path: String,
+    /// File size in bytes (0 for directories)
+    pub size: u64,
+    /// Whether this is a directory
+    pub is_directory: bool,
+    /// Last modified timestamp in milliseconds since Unix epoch
+    pub modified_at: u64,
+}
+
 // ============ PTY ============
 
 #[derive(Deserialize)]

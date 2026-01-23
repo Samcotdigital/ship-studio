@@ -14,6 +14,7 @@ pub mod pull_requests;
 pub mod conflicts;
 pub mod projects;
 pub mod setup;
+pub mod assets;
 
 // Re-export all commands for easy access in lib.rs
 pub use env::*;
@@ -28,3 +29,4 @@ pub use pull_requests::*;
 pub use conflicts::*;
 pub use projects::*;
 pub use setup::*;
+pub use assets::*;

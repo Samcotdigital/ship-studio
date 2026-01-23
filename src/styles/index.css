@@ -14,6 +14,7 @@
 @import './vercel.css';
 @import './publish.css';
 @import './env-editor.css';
+@import './assets-panel.css';
 @import './ide-dropdown.css';
 @import './dashboard.css';
 @import './update-banner.css';
