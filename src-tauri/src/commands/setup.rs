@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 
 /// Check if we're in mock/debug mode
 pub fn is_mock_mode() -> bool {
-    std::env::var("MARKETINGSTACK_FORCE_SETUP").is_ok()
+    std::env::var("SHIPSTUDIO_FORCE_SETUP").is_ok()
 }
 
 /// Mark an item as mock-installed (for testing)

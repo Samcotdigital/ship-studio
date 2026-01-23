@@ -184,7 +184,7 @@ pub async fn crop_and_save_screenshot(
     height: u32,
 ) -> Result<String, String> {
     let project = validate_project_path(&project_path)?;
-    let screenshots_dir = project.join(".marketingstack").join("screenshots");
+    let screenshots_dir = project.join(".shipstudio").join("screenshots");
 
     // Ensure screenshots directory exists
     if !screenshots_dir.exists() {
@@ -228,14 +228,14 @@ pub async fn crop_and_save_screenshot(
 #[tauri::command]
 pub async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
     let project = validate_project_path(&project_path)?;
-    let marketingstack_dir = project.join(".marketingstack");
+    let shipstudio_dir = project.join(".shipstudio");
 
-    // Ensure .marketingstack directory exists
-    if !marketingstack_dir.exists() {
-        std::fs::create_dir_all(&marketingstack_dir).map_err(|e| e.to_string())?;
+    // Ensure .shipstudio directory exists
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir).map_err(|e| e.to_string())?;
     }
 
-    let thumbnail_path = marketingstack_dir.join("thumbnail.png");
+    let thumbnail_path = shipstudio_dir.join("thumbnail.png");
     let thumbnail_path_str = thumbnail_path.to_string_lossy().to_string();
 
     // Try using Playwright first (more reliable viewport control)
@@ -272,7 +272,7 @@ pub async fn capture_project_thumbnail(project_path: String, url: String) -> Res
 
     if let Some(browser) = chrome_path {
         // Use a temp file for raw capture, then process
-        let temp_path = marketingstack_dir.join("thumbnail_raw.png");
+        let temp_path = shipstudio_dir.join("thumbnail_raw.png");
         let temp_path_str = temp_path.to_string_lossy().to_string();
         let screenshot_arg = format!("--screenshot={}", temp_path_str);
 
@@ -364,7 +364,7 @@ pub async fn capture_project_thumbnail(project_path: String, url: String) -> Res
 #[tauri::command]
 pub async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, String> {
     let project = validate_project_path(&project_path)?;
-    let thumbnail_path = project.join(".marketingstack").join("thumbnail.png");
+    let thumbnail_path = project.join(".shipstudio").join("thumbnail.png");
 
     if thumbnail_path.exists() {
         // Return as base64 data URL for easy display
