@@ -6,7 +6,7 @@ use std::process::Command;
 use crate::types::{
     DeployToVercelOptions, DeploymentStatus, LinkToVercelOptions, ProjectMetadata,
     ProjectVercelStatus, PublishRecord, VercelCliStatus, VercelDeployment,
-    VercelDeploymentStatus,
+    VercelDeploymentStatus, VercelTeam,
 };
 use crate::utils::{get_extended_path, validate_project_path, format_relative_time};
 use crate::commands::setup::is_mock_mode;
@@ -129,23 +129,104 @@ pub async fn get_vercel_username() -> Result<String, String> {
     Ok(username)
 }
 
+/// Get list of Vercel teams the user belongs to.
+#[tauri::command]
+pub async fn get_vercel_teams() -> Result<Vec<VercelTeam>, String> {
+    let output = get_vercel_command()
+        .args(["team", "list", "--no-color"])
+        .output()
+        .map_err(|e| format!("Failed to run vercel team list: {}", e))?;
+
+    // If the command fails (e.g., user has no teams), return empty list
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    // Vercel CLI outputs to stderr, not stdout
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut teams = Vec::new();
+    let mut in_table = false;
+
+    // Parse the output table format:
+    // ✔ team-slug     Team Name
+    //   other-team    Other Team Name
+    for line in stderr.lines() {
+        // Skip header/info lines
+        if line.contains("Vercel CLI")
+            || line.contains("Fetching")
+            || line.trim().is_empty()
+        {
+            continue;
+        }
+
+        // Detect header row
+        if line.trim().starts_with("id") || (line.contains("id") && line.contains("Team name")) {
+            in_table = true;
+            continue;
+        }
+
+        if !in_table {
+            continue;
+        }
+
+        // Check if this line starts with the current team marker
+        let is_current = line.starts_with('✔') || line.starts_with("✔");
+
+        // Remove the marker and leading whitespace
+        let cleaned = line.trim_start_matches('✔').trim();
+
+        // Split into parts - first part is ID (slug), rest is team name
+        // The format uses multiple spaces to separate columns
+        let parts: Vec<&str> = cleaned.splitn(2, "  ").collect();
+
+        if parts.len() >= 2 {
+            let id = parts[0].trim().to_string();
+            let name = parts[1].trim().to_string();
+
+            if !id.is_empty() && !name.is_empty() {
+                teams.push(VercelTeam {
+                    id,
+                    name,
+                    is_current,
+                });
+            }
+        } else if parts.len() == 1 {
+            // Fallback: if only one part, use it as both id and name
+            let id = parts[0].trim().to_string();
+            if !id.is_empty() && !id.to_lowercase().contains("team name") {
+                teams.push(VercelTeam {
+                    id: id.clone(),
+                    name: id,
+                    is_current,
+                });
+            }
+        }
+    }
+
+    Ok(teams)
+}
+
 #[tauri::command]
 pub async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, String> {
     let validated_path = validate_project_path(&options.project_path)?;
     let project_name = &options.project_name;
 
-    eprintln!("Starting Vercel deployment for {} at {:?}", project_name, validated_path);
-
     // Step 1: Link the project to Vercel (creates project if doesn't exist)
+    let mut link_args = vec!["link", "--yes", "--project", project_name];
+
+    // Add scope if provided (team ID)
+    let scope_arg: String;
+    if let Some(ref scope) = options.scope {
+        scope_arg = scope.clone();
+        link_args.push("--scope");
+        link_args.push(&scope_arg);
+    }
+
     let link_output = get_vercel_command()
-        .args(["link", "--yes", "--project", project_name])
+        .args(&link_args)
         .current_dir(&validated_path)
         .output()
         .map_err(|e| format!("Failed to run vercel link: {}", e))?;
-
-    eprintln!("Link output status: {}", link_output.status);
-    eprintln!("Link stdout: {}", String::from_utf8_lossy(&link_output.stdout));
-    eprintln!("Link stderr: {}", String::from_utf8_lossy(&link_output.stderr));
 
     if !link_output.status.success() {
         let stderr = String::from_utf8_lossy(&link_output.stderr);
@@ -156,8 +237,15 @@ pub async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, 
     // Step 2: If GitHub repo is provided, connect it for auto-deploy on future pushes
     if let Some(github_repo) = &options.github_repo {
         let github_url = format!("https://github.com/{}", github_repo);
-        let connect_output = get_vercel_command()
-            .args(["git", "connect", &github_url, "--yes"])
+        let mut connect_cmd = get_vercel_command();
+        connect_cmd.args(["git", "connect", &github_url, "--yes"]);
+
+        // Add scope if provided
+        if let Some(ref scope) = options.scope {
+            connect_cmd.args(["--scope", scope]);
+        }
+
+        let connect_output = connect_cmd
             .current_dir(&validated_path)
             .output();
 
@@ -165,25 +253,44 @@ pub async fn deploy_to_vercel(options: DeployToVercelOptions) -> Result<String, 
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let combined = format!("{}{}", stdout, stderr);
-            eprintln!("Git connect output: {}", combined);
-            // Only warn if it's not "already connected"
+
             if !output.status.success() && !combined.contains("already connected") {
-                eprintln!("Warning: Failed to connect Vercel to GitHub: {}", stderr);
+                // Parse the error to give a helpful message
+                if combined.contains("Make sure there aren't any typos") || combined.contains("access to the repository") {
+                    // Extract GitHub org from repo (e.g., "ship-studio" from "ship-studio/repo-name")
+                    let github_org = github_repo.split('/').next().unwrap_or("the GitHub organization");
+                    return Err(format!(
+                        "GitHub connection failed: The Vercel team doesn't have access to the '{}' GitHub organization.\n\n\
+                        To fix this:\n\
+                        1. Go to Vercel → Team Settings → Git\n\
+                        2. Connect or authorize the '{}' GitHub organization",
+                        github_org, github_org
+                    ));
+                } else if combined.contains("already linked") {
+                    // Different repo already linked - this is fine, continue
+                } else {
+                    return Err(format!("Failed to connect GitHub repository: {}", combined.trim()));
+                }
             }
         }
     }
 
     // Step 3: Deploy to production
-    eprintln!("Starting production deployment...");
+    let mut deploy_args = vec!["--prod", "--yes"];
+
+    // Add scope if provided (team ID)
+    let deploy_scope_arg: String;
+    if let Some(ref scope) = options.scope {
+        deploy_scope_arg = scope.clone();
+        deploy_args.push("--scope");
+        deploy_args.push(&deploy_scope_arg);
+    }
+
     let deploy_output = get_vercel_command()
-        .args(["--prod", "--yes"])
+        .args(&deploy_args)
         .current_dir(&validated_path)
         .output()
         .map_err(|e| format!("Failed to run vercel --prod: {}", e))?;
-
-    eprintln!("Deploy output status: {}", deploy_output.status);
-    eprintln!("Deploy stdout: {}", String::from_utf8_lossy(&deploy_output.stdout));
-    eprintln!("Deploy stderr: {}", String::from_utf8_lossy(&deploy_output.stderr));
 
     if !deploy_output.status.success() {
         let stderr = String::from_utf8_lossy(&deploy_output.stderr);
@@ -245,20 +352,66 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
         return not_linked;
     }
 
-    // Read project.json to get project name
-    let project_name = std::fs::read_to_string(&project_json)
+    // Read project.json to get project name and org/project IDs
+    let project_json_content = std::fs::read_to_string(&project_json)
         .ok()
-        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok());
+
+    let project_name = project_json_content.as_ref()
         .and_then(|json| json.get("projectName").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    // Get orgId for team-scoped projects
+    let org_id = project_json_content.as_ref()
+        .and_then(|json| json.get("orgId").and_then(|v| v.as_str()).map(|s| s.to_string()));
 
     let project_name_str = match &project_name {
         Some(name) => name.clone(),
         None => return not_linked,
     };
 
+    // Verify the project actually exists on Vercel by running `vercel ls`
+    // This will fail if the project was deleted or the local config is stale
+    // Use --scope if we have an orgId (team project)
+    let mut verify_cmd = get_vercel_command();
+    verify_cmd.args(["ls"]);
+    if let Some(ref org) = org_id {
+        verify_cmd.args(["--scope", org]);
+    }
+    let verify_output = verify_cmd
+        .current_dir(&project)
+        .output();
+
+    let project_exists = match verify_output {
+        Ok(output) => {
+            // If the command succeeds and doesn't contain error messages about missing project
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let combined = format!("{}{}", stdout, stderr);
+
+            // Check for various error indicators that mean the project doesn't exist
+            !combined.contains("not linked")
+                && !combined.contains("Could not find")
+                && !combined.contains("No project found")
+                && !combined.contains("does not exist")
+                && output.status.success()
+        }
+        Err(_) => false,
+    };
+
+    if !project_exists {
+        // Clean up stale local config
+        let _ = std::fs::remove_dir_all(&vercel_dir);
+        return not_linked;
+    }
+
     // Check if Vercel is connected to GitHub
-    let git_connect_output = get_vercel_command()
-        .args(["git", "connect", "--yes"])
+    // Use --scope if we have an orgId (team project)
+    let mut git_cmd = get_vercel_command();
+    git_cmd.args(["git", "connect", "--yes"]);
+    if let Some(ref org) = org_id {
+        git_cmd.args(["--scope", org]);
+    }
+    let git_connect_output = git_cmd
         .current_dir(&project)
         .output();
 
@@ -283,8 +436,12 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
     }
 
     // Get URLs from `vercel alias ls`
-    let alias_output = get_vercel_command()
-        .args(["alias", "ls"])
+    let mut alias_cmd = get_vercel_command();
+    alias_cmd.args(["alias", "ls"]);
+    if let Some(ref org) = org_id {
+        alias_cmd.args(["--scope", org]);
+    }
+    let alias_output = alias_cmd
         .current_dir(&project)
         .output()
         .ok();
@@ -334,8 +491,12 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
 
     // If no staging URL from aliases, check vercel list for Preview deployments
     if staging_url.is_none() {
-        let list_output = get_vercel_command()
-            .args(["list"])
+        let mut list_cmd = get_vercel_command();
+        list_cmd.args(["list"]);
+        if let Some(ref org) = org_id {
+            list_cmd.args(["--scope", org]);
+        }
+        let list_output = list_cmd
             .current_dir(&project)
             .output()
             .ok();

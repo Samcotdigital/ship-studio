@@ -125,6 +125,7 @@ pub fn run() {
             // Vercel integration
             commands::vercel::check_vercel_cli_status,
             commands::vercel::get_vercel_username,
+            commands::vercel::get_vercel_teams,
             commands::vercel::get_project_vercel_status,
             commands::vercel::link_to_vercel,
             commands::vercel::install_vercel_cli,

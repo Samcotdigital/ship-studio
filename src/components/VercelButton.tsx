@@ -19,6 +19,8 @@ import {
   installVercelCli,
   deployToVercel,
   checkVercelCliStatus,
+  getVercelTeams,
+  VercelTeam,
 } from "../lib/vercel";
 import { ProjectGitHubStatus } from "../lib/github";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -69,6 +71,9 @@ export function VercelButton({
   const [deployName, setDeployName] = useState(projectName);
   const [isDeploying, setIsDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [teams, setTeams] = useState<VercelTeam[]>([]);
+  const [selectedScope, setSelectedScope] = useState<string | undefined>(undefined);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(false);
   const ptyIdRef = useRef<number | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const ptyListenersRef = useRef<{ unlistenOutput?: () => void; unlistenExit?: () => void }>({});
@@ -190,18 +195,19 @@ export function VercelButton({
 
     setIsDeploying(true);
     setError(null);
-    setShowDeployModal(false);
     try {
       const deployedUrl = await deployToVercel({
         projectPath,
         projectName: deployName,
         githubRepo: projectGithubStatus?.github_repo || undefined,
+        scope: selectedScope,
       });
+      setShowDeployModal(false);
       onStatusChange(deployedUrl);
       onToast?.("Connected to Vercel!", "success");
     } catch (e) {
+      // Keep modal open and show error
       setError(String(e));
-      onToast?.("Failed to connect to Vercel", "error");
     } finally {
       setIsDeploying(false);
     }
@@ -310,16 +316,37 @@ export function VercelButton({
     );
   }
 
+  const handleOpenDeployModal = async () => {
+    setDeployName(projectName);
+    setShowDeployModal(true);
+    setError(null);
+    setIsLoadingTeams(true);
+
+    try {
+      const fetchedTeams = await getVercelTeams();
+      setTeams(fetchedTeams);
+      // Pre-select the current team if one is marked
+      const currentTeam = fetchedTeams.find((t) => t.is_current);
+      if (currentTeam) {
+        setSelectedScope(currentTeam.id);
+      } else {
+        setSelectedScope(undefined);
+      }
+    } catch {
+      // If fetching teams fails, just proceed without team selection
+      setTeams([]);
+      setSelectedScope(undefined);
+    } finally {
+      setIsLoadingTeams(false);
+    }
+  };
+
   // Not linked yet - show Connect button to set up Vercel project
   return (
     <>
       <button
         className="vercel-button vercel-setup"
-        onClick={() => {
-          setDeployName(projectName);
-          setShowDeployModal(true);
-          setError(null);
-        }}
+        onClick={handleOpenDeployModal}
         title="Connect to Vercel for auto-deployments"
       >
         <VercelIcon />
@@ -333,6 +360,26 @@ export function VercelButton({
             <p>Link this project to Vercel for automatic deployments when you publish.</p>
 
             <div className="vercel-form">
+              {isLoadingTeams ? (
+                <div className="vercel-teams-loading">Loading teams...</div>
+              ) : teams.length > 0 && (
+                <label>
+                  Team
+                  <select
+                    className="owner-select"
+                    value={selectedScope || ""}
+                    onChange={(e) => setSelectedScope(e.target.value || undefined)}
+                  >
+                    <option value="">Personal Account</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <label>
                 Vercel project name
                 <input
@@ -367,14 +414,10 @@ export function VercelButton({
               </button>
               <button
                 className="btn-primary"
-                onClick={() => {
-                  setShowDeployModal(false);
-                  handleDeploy();
-                  onModalClose?.();
-                }}
+                onClick={handleDeploy}
                 disabled={isDeploying || !deployName.trim()}
               >
-                Connect & Deploy
+                {isDeploying ? "Connecting..." : "Connect & Deploy"}
               </button>
             </div>
           </div>

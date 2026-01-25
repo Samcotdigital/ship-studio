@@ -136,12 +136,22 @@ pub struct VercelCliStatus {
     pub authenticated: bool,
 }
 
+/// A Vercel team/organization
+#[derive(Serialize)]
+pub struct VercelTeam {
+    pub id: String,
+    pub name: String,
+    pub is_current: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeployToVercelOptions {
     pub project_path: String,
     pub project_name: String,
     pub github_repo: Option<String>,
+    /// Team/scope ID to deploy under (optional, uses current team if not provided)
+    pub scope: Option<String>,
 }
 
 /// Vercel connection status - verified against Vercel API

@@ -53,6 +53,24 @@ export async function getVercelUsername(): Promise<string> {
   return invoke<string>("get_vercel_username");
 }
 
+/** A Vercel team/organization */
+export interface VercelTeam {
+  /** Team ID (e.g., team_xxxxx) */
+  id: string;
+  /** Team display name */
+  name: string;
+  /** Whether this is the user's current team */
+  is_current: boolean;
+}
+
+/**
+ * Get list of Vercel teams the user belongs to.
+ * @returns Array of teams, empty if user has no teams
+ */
+export async function getVercelTeams(): Promise<VercelTeam[]> {
+  return invoke<VercelTeam[]>("get_vercel_teams");
+}
+
 /**
  * Get a project's Vercel connection status.
  * @param projectPath - Absolute path to the project directory
@@ -96,6 +114,8 @@ export interface DeployToVercelOptions {
   projectName: string;
   /** Optional GitHub repository for git integration */
   githubRepo?: string;
+  /** Optional team/scope ID to deploy under */
+  scope?: string;
 }
 
 /**
