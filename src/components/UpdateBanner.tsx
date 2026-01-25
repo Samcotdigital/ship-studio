@@ -84,10 +84,24 @@ export function UpdateBanner() {
         setProgress(p);
       });
       setStatus("ready");
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("[UpdateBanner] Download failed:", err);
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Update failed");
+      // Extract as much error info as possible
+      let errorMsg = "Update failed";
+      if (err instanceof Error) {
+        errorMsg = err.message;
+        // Include cause if available
+        if (err.cause) {
+          errorMsg += ` (${err.cause})`;
+        }
+      } else if (typeof err === "string") {
+        errorMsg = err;
+      } else if (err && typeof err === "object") {
+        // Try to stringify the error object
+        errorMsg = JSON.stringify(err);
+      }
+      setError(errorMsg);
     }
   }, [updateAvailable]);
 

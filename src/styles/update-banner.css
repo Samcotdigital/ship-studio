@@ -101,7 +101,12 @@
 
 .update-banner-error {
   color: var(--error);
-  font-size: 13px;
+  font-size: 12px;
+  font-family: 'JetBrainsMono NF', monospace;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .update-banner-notes {
