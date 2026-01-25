@@ -783,87 +783,61 @@ pub async fn get_vercel_deployments(project_path: String) -> Result<VercelDeploy
 pub async fn get_deployment_status(project_path: String, _since_timestamp: Option<u64>) -> Result<Option<DeploymentStatus>, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    // Step 1: Check for any BUILDING deployments first
-    let building_output = Command::new("vercel")
-        .args(["ls", "--status", "BUILDING", "--no-color"])
+    // Read orgId from .vercel/project.json for team-scoped projects
+    let vercel_config = validated_path.join(".vercel").join("project.json");
+    let org_id = std::fs::read_to_string(&vercel_config)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|json| json.get("orgId").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    // Run vercel ls to get deployments
+    let mut cmd = get_vercel_command();
+    cmd.args(["ls", "--no-color"]);
+    if let Some(ref org) = org_id {
+        cmd.args(["--scope", org]);
+    }
+    let output = cmd
         .current_dir(&validated_path)
-        .env("PATH", get_extended_path())
         .output()
         .map_err(|e| format!("Failed to run vercel ls: {}", e))?;
 
-    if building_output.status.success() {
-        let building_stdout = String::from_utf8_lossy(&building_output.stdout);
-        if let Some(url) = building_stdout.lines()
-            .find(|line| line.contains(".vercel.app") && line.trim().starts_with("https://"))
-            .map(|line| line.trim().to_string())
-        {
-            return Ok(Some(DeploymentStatus {
-                state: "BUILDING".to_string(),
-                url: Some(url),
-                created_at: None,
-                ready_at: None,
-            }));
-        }
-    }
-
-    // Step 2: No building deployments, get the newest deployment
-    let output = Command::new("vercel")
-        .args(["ls", "--no-color"])
-        .current_dir(&validated_path)
-        .env("PATH", get_extended_path())
-        .output()
-        .map_err(|e| format!("Failed to run vercel ls: {}", e))?;
-
-    if !output.status.success() {
-        return Ok(None);
-    }
-
+    // URLs are in stdout, status table is in stderr
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
+    // Get the first (newest) deployment URL from stdout
     let url = match stdout.lines()
-        .find(|line| line.contains(".vercel.app") && line.trim().starts_with("https://"))
+        .find(|line| line.contains(".vercel.app"))
         .map(|line| line.trim().to_string())
     {
         Some(u) => u,
         None => return Ok(None),
     };
 
-    // Step 3: Get deployment details with vercel inspect --json
-    let inspect_output = Command::new("vercel")
-        .args(["inspect", &url, "--json"])
-        .current_dir(&validated_path)
-        .env("PATH", get_extended_path())
-        .output()
-        .map_err(|e| format!("Failed to run vercel inspect: {}", e))?;
-
-    if !inspect_output.status.success() {
-        return Ok(None);
-    }
-
-    let inspect_stdout = String::from_utf8_lossy(&inspect_output.stdout);
-
-    let json_start = match inspect_stdout.find('{') {
-        Some(i) => i,
-        None => return Ok(None),
-    };
-    let json_str = &inspect_stdout[json_start..];
-
-    let ready_state = if json_str.contains("\"readyState\": \"READY\"") || json_str.contains("\"readyState\":\"READY\"") {
-        "READY"
-    } else if json_str.contains("\"readyState\": \"BUILDING\"") || json_str.contains("\"readyState\":\"BUILDING\"") {
-        "BUILDING"
-    } else if json_str.contains("\"readyState\": \"ERROR\"") || json_str.contains("\"readyState\":\"ERROR\"") {
-        "ERROR"
-    } else if json_str.contains("\"readyState\": \"QUEUED\"") || json_str.contains("\"readyState\":\"QUEUED\"") {
-        "QUEUED"
-    } else if json_str.contains("\"readyState\": \"CANCELED\"") || json_str.contains("\"readyState\":\"CANCELED\"") {
-        "CANCELED"
-    } else {
-        "BUILDING"
-    };
+    // Parse status from stderr table
+    // Format: "  2m      https://xxx.vercel.app     ● Ready     Production"
+    // or:     "  2m      https://xxx.vercel.app     ● Building  Preview"
+    let state = stderr.lines()
+        .find(|line| line.contains(&url) || (line.contains(".vercel.app") && !line.contains("Deployment")))
+        .map(|line| {
+            if line.contains("● Ready") || line.contains("Ready") {
+                "READY"
+            } else if line.contains("● Building") || line.contains("Building") {
+                "BUILDING"
+            } else if line.contains("● Error") || line.contains("Error") {
+                "ERROR"
+            } else if line.contains("● Queued") || line.contains("Queued") {
+                "QUEUED"
+            } else if line.contains("● Canceled") || line.contains("Canceled") {
+                "CANCELED"
+            } else {
+                "BUILDING" // Default to building if unknown
+            }
+        })
+        .unwrap_or("BUILDING");
 
     Ok(Some(DeploymentStatus {
-        state: ready_state.to_string(),
+        state: state.to_string(),
         url: Some(url),
         created_at: None,
         ready_at: None,
