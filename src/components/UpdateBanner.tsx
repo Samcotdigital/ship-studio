@@ -91,9 +91,10 @@ export function UpdateBanner() {
       let errorMsg = "Update failed";
       if (err instanceof Error) {
         errorMsg = err.message;
-        // Include cause if available
-        if (err.cause) {
-          errorMsg += ` (${err.cause})`;
+        // Include cause if available (ES2022+)
+        const cause = (err as Error & { cause?: unknown }).cause;
+        if (cause) {
+          errorMsg += ` (${String(cause)})`;
         }
       } else if (typeof err === "string") {
         errorMsg = err;
