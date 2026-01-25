@@ -170,7 +170,7 @@ jobs:
           NOTES_EOF
           )
           # Escape newlines and quotes for JSON
-          NOTES_JSON=$(echo "$NOTES" | sed 's/"/\\"/g' | tr '\n' ' ' | sed 's/  */ /g' | xargs)
+          NOTES_JSON=$(echo "$NOTES" | sed 's/"/\\"/g' | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')
 
           # Create the manifest using printf to avoid YAML parsing issues
           # URLs point to the PUBLIC releases repo so auto-updater can download
