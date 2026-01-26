@@ -23,6 +23,8 @@ interface SplitPaneProps {
   minLeft?: number;
   /** Minimum width for right pane as percentage (default: 20) */
   minRight?: number;
+  /** Whether the right pane is collapsed */
+  rightCollapsed?: boolean;
 }
 
 export function SplitPane({
@@ -31,8 +33,11 @@ export function SplitPane({
   defaultSplit = 50,
   minLeft = 20,
   minRight = 20,
+  rightCollapsed = false,
 }: SplitPaneProps) {
   const [split, setSplit] = useState(defaultSplit);
+  const savedSplitRef = useRef(defaultSplit);
+  const prevCollapsedRef = useRef(rightCollapsed);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +57,23 @@ export function SplitPane({
       document.body.style.userSelect = "";
     };
   }, []);
+
+  // Handle collapse/expand of right pane
+  useEffect(() => {
+    // Only act on actual state changes, not initial mount
+    if (rightCollapsed !== prevCollapsedRef.current) {
+      if (rightCollapsed) {
+        // Save current split before collapsing
+        savedSplitRef.current = split;
+      } else {
+        // Restore saved split when expanding
+        setSplit(savedSplitRef.current);
+      }
+      prevCollapsedRef.current = rightCollapsed;
+      // Trigger resize event for terminals to recalculate
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+    }
+  }, [rightCollapsed, split]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -91,18 +113,22 @@ export function SplitPane({
   }, [minLeft, minRight]);
 
   return (
-    <div ref={containerRef} className="split-pane">
+    <div ref={containerRef} className={`split-pane ${rightCollapsed ? "right-collapsed" : ""}`}>
       {/* Overlay to capture mouse events during drag (prevents iframe from stealing events) */}
       {isDragging && <div className="split-pane-overlay" />}
-      <div className="split-pane-left" style={{ width: `${split}%` }}>
+      <div className="split-pane-left" style={{ width: rightCollapsed ? "100%" : `${split}%` }}>
         {left}
       </div>
-      <div className="split-pane-handle" onMouseDown={handleMouseDown}>
-        <div className="split-pane-handle-bar" />
-      </div>
-      <div className="split-pane-right" style={{ width: `${100 - split}%` }}>
-        {right}
-      </div>
+      {!rightCollapsed && (
+        <>
+          <div className="split-pane-handle" onMouseDown={handleMouseDown}>
+            <div className="split-pane-handle-bar" />
+          </div>
+          <div className="split-pane-right" style={{ width: `${100 - split}%` }}>
+            {right}
+          </div>
+        </>
+      )}
     </div>
   );
 }

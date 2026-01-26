@@ -55,6 +55,8 @@ import {
   BranchIcon,
   PullRequestIcon,
   EyeIcon,
+  EyeOffIcon,
+  PanelRightIcon,
   PlusIcon,
   ImageIcon,
   TerminalIcon,
@@ -253,6 +255,9 @@ function App() {
 
   // Workspace tab state (preview/branches/prs)
   const [workspaceTab, setWorkspaceTab] = useState<"preview" | "branches" | "prs">("preview");
+
+  // Preview panel visibility
+  const [isPreviewHidden, setIsPreviewHidden] = useState(false);
 
   // Reset to preview tab if on branches/prs and GitHub is not connected
   useEffect(() => {
@@ -1056,6 +1061,7 @@ function App() {
           defaultSplit={28}
           minLeft={20}
           minRight={35}
+          rightCollapsed={isPreviewHidden}
           left={
             <div className="terminal-pane">
               <div className="terminal-toolbar">
@@ -1088,6 +1094,26 @@ function App() {
                       <CropIcon size={14} />
                     )}
                   </button>
+                  {isPreviewHidden && (
+                    <>
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => setIsPreviewHidden(false)}
+                        title="Show Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Show Preview</span>
+                      </button>
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => openUrl(`http://localhost:${devServerPort}`)}
+                        title="Open in Browser"
+                      >
+                        <ExternalLinkIcon size={14} />
+                        <span>Open in Browser</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="terminal-tabs-bar">
@@ -1218,6 +1244,13 @@ function App() {
                       <span>PRs</span>
                     </button>
                   </div>
+                  <button
+                    className="hide-preview-btn"
+                    onClick={() => setIsPreviewHidden(true)}
+                    title="Hide Preview"
+                  >
+                    <EyeOffIcon size={14} />
+                  </button>
                 </div>
               ) : (
                 <div className="preview-tabs-bar preview-tabs-bar-simple">
@@ -1229,6 +1262,13 @@ function App() {
                   >
                     <ExternalLinkIcon size={14} />
                     <span>Open in Browser</span>
+                  </button>
+                  <button
+                    className="hide-preview-btn"
+                    onClick={() => setIsPreviewHidden(true)}
+                    title="Hide Preview"
+                  >
+                    <EyeOffIcon size={14} />
                   </button>
                 </div>
               )}

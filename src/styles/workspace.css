@@ -214,6 +214,60 @@
   flex-shrink: 0;
 }
 
+/* Hide Preview Button */
+.hide-preview-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  outline: none;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.hide-preview-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+
+/* Show Preview Button (when preview is hidden) */
+.show-preview-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  outline: none;
+}
+
+.show-preview-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-style: solid;
+  border-color: var(--border);
+}
+
+.show-preview-btn svg {
+  flex-shrink: 0;
+}
+
 /* Terminal Tabs Bar */
 .terminal-tabs-bar {
   display: flex;
