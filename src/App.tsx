@@ -20,6 +20,7 @@ import { Terminal, TerminalHandle } from "./components/Terminal";
 import { Preview, PreviewHandle } from "./components/Preview";
 import { ProjectList } from "./components/ProjectList";
 import { CreateProject } from "./components/CreateProject";
+import { ImportProject } from "./components/ImportProject";
 import { OnboardingScreen } from "./components/setup";
 import { SplitPane } from "./components/SplitPane";
 import { GitHubButton } from "./components/GitHubButton";
@@ -199,6 +200,9 @@ function App() {
 
   // Create project modal
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Import project modal
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // IDE dropdown
   const [showIdeDropdown, setShowIdeDropdown] = useState(false);
@@ -729,6 +733,16 @@ function App() {
     handleSelectProject({ name: projectName, path: projectPath, thumbnail: null });
   };
 
+  const handleImportProject = () => {
+    setShowImportModal(true);
+  };
+
+  const handleProjectImported = async (projectPath: string) => {
+    setShowImportModal(false);
+    const projectName = projectPath.split("/").pop() || "project";
+    handleSelectProject({ name: projectName, path: projectPath, thumbnail: null });
+  };
+
   const handleBackToProjects = async () => {
     // Clear screenshot interval and project ref
     if (screenshotIntervalRef.current) {
@@ -840,11 +854,18 @@ function App() {
         <ProjectList
           onSelectProject={handleSelectProject}
           onCreateProject={handleCreateProject}
+          onImportProject={handleImportProject}
         />
         {showCreateModal && (
           <CreateProject
             onComplete={handleProjectCreated}
             onCancel={() => setShowCreateModal(false)}
+          />
+        )}
+        {showImportModal && (
+          <ImportProject
+            onComplete={handleProjectImported}
+            onCancel={() => setShowImportModal(false)}
           />
         )}
       </div>
@@ -1026,15 +1047,15 @@ function App() {
                       )}
                     </button>
                   ))}
+                  {terminalTabs.length < MAX_TERMINAL_TABS && (
+                    <button
+                      className="terminal-tab-add"
+                      onClick={addTerminalTab}
+                    >
+                      <PlusIcon size={12} />
+                    </button>
+                  )}
                 </div>
-                {terminalTabs.length < MAX_TERMINAL_TABS && (
-                  <button
-                    className="terminal-tab-add"
-                    onClick={addTerminalTab}
-                  >
-                    <PlusIcon size={12} />
-                  </button>
-                )}
               </div>
               <div className="terminal-content">
                 {terminalTabs.map(tabId => (

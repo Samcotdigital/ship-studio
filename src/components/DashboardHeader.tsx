@@ -16,6 +16,7 @@ interface DashboardHeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreateProject: () => void;
+  onImportProject?: () => void;
   onOpenSettings?: () => void;
 }
 
@@ -23,6 +24,7 @@ export function DashboardHeader({
   searchQuery,
   onSearchChange,
   onCreateProject,
+  onImportProject,
   onOpenSettings,
 }: DashboardHeaderProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +61,11 @@ export function DashboardHeader({
         <span className="dashboard-search-shortcut">⌘K</span>
       </div>
       <div className="dashboard-header-actions">
+        {onImportProject && (
+          <button className="btn-secondary" onClick={onImportProject}>
+            Import
+          </button>
+        )}
         <button className="btn-primary" onClick={onCreateProject}>
           + New Project
         </button>

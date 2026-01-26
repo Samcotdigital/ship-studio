@@ -138,6 +138,8 @@ pub fn run() {
             commands::github::get_github_orgs,
             commands::github::get_project_github_status,
             commands::github::push_to_github,
+            commands::github::list_github_repos,
+            commands::github::detect_package_manager,
             // Publishing
             commands::publishing::publish_to_github,
             commands::publishing::publish_to_staging,

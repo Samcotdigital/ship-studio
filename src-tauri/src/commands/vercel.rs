@@ -399,9 +399,17 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
     };
 
     if !project_exists {
-        // Clean up stale local config
-        let _ = std::fs::remove_dir_all(&vercel_dir);
-        return not_linked;
+        // Don't delete the .vercel directory - the user might have access
+        // but verification failed for other reasons (auth scope, network, etc.)
+        // Trust that if .vercel/project.json exists with valid content, it's likely connected
+        // The user can always re-link via the Vercel button if needed
+        return ProjectVercelStatus {
+            status: "connected".to_string(),
+            project_name,
+            vercel_org: org_id,
+            production_url: None,
+            staging_url: None,
+        };
     }
 
     // Check if Vercel is connected to GitHub

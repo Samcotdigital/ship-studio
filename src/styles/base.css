@@ -112,3 +112,15 @@ button:hover {
   background: var(--action-hover);
   color: var(--action-text);
 }
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}

@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.2.2
+
+- **Import projects from GitHub** - Import existing repositories directly from your GitHub account or organizations
+- **Ship Studio preview detection** - Sites can now detect when running in Ship Studio preview via `?shipstudio=1` query parameter (useful for disabling iframe detection)
+- **Better Vercel detection for imported projects** - Imported projects with existing Vercel config are now correctly detected as connected
+- **Fixed branch author display** - Branch cards no longer show misleading author info for newly created branches
+
 ## What's New in v0.2.1
 
 - **Redesigned update banner** - Cleaner UI that matches the app theme, shows release notes, with "Update Now" and "Later" options

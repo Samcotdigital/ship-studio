@@ -235,6 +235,29 @@ pub struct PushToGitHubOptions {
     pub is_private: bool,
 }
 
+/// GitHub repository info from gh CLI
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRepo {
+    pub name: String,
+    pub url: String,
+    #[serde(rename = "sshUrl")]
+    pub ssh_url: String,
+    #[serde(rename = "isPrivate")]
+    pub is_private: bool,
+    pub description: Option<String>,
+    #[serde(rename = "primaryLanguage")]
+    pub primary_language: Option<GitHubLanguage>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// GitHub repository primary language
+#[derive(Serialize, Deserialize)]
+pub struct GitHubLanguage {
+    pub name: String,
+}
+
 // ============ Publishing ============
 
 #[derive(Serialize)]

@@ -3,7 +3,8 @@
 //! Commands for GitHub CLI status, authentication, and user info.
 
 use std::process::Command;
-use crate::types::{GitHubCliStatus, ProjectGitHubStatus, PushToGitHubOptions};
+use std::path::Path;
+use crate::types::{GitHubCliStatus, ProjectGitHubStatus, PushToGitHubOptions, GitHubRepo};
 use crate::utils::{find_executable, get_extended_path, validate_project_path};
 use crate::commands::git::{init_git_repo, git_stage_and_commit};
 
@@ -217,4 +218,47 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Stri
 
     // Return the repo URL
     Ok(format!("https://github.com/{}", repo_name))
+}
+
+/// Lists GitHub repositories for a given owner (user or organization)
+#[tauri::command]
+pub async fn list_github_repos(owner: String) -> Result<Vec<GitHubRepo>, String> {
+    let output = get_gh_command()
+        .args([
+            "repo", "list", &owner,
+            "--json", "name,url,sshUrl,isPrivate,description,primaryLanguage,updatedAt",
+            "--limit", "100",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list repos: {}", stderr));
+    }
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let repos: Vec<GitHubRepo> = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse repo list: {}", e))?;
+
+    Ok(repos)
+}
+
+/// Detects the package manager used in a project by checking for lock files
+#[tauri::command]
+pub async fn detect_package_manager(project_path: String) -> Result<String, String> {
+    let path = Path::new(&project_path);
+
+    // Check in order of specificity
+    if path.join("pnpm-lock.yaml").exists() {
+        return Ok("pnpm".to_string());
+    }
+    if path.join("yarn.lock").exists() {
+        return Ok("yarn".to_string());
+    }
+    if path.join("bun.lockb").exists() {
+        return Ok("bun".to_string());
+    }
+    // Default to npm
+    Ok("npm".to_string())
 }

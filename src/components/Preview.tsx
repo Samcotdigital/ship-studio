@@ -137,7 +137,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // Cache-buster to prevent showing stale content when switching projects
   const [cacheBuster, setCacheBuster] = useState(() => Date.now());
   // For now, always use dev server directly (proxy disabled due to issues)
-  const currentUrl = `${devServerUrl}${currentPage === "/" ? "" : currentPage}?_cb=${cacheBuster}`;
+  // Add shipstudio=1 param so sites can detect they're in Ship Studio preview (e.g., to disable iframe detection)
+  const currentUrl = `${devServerUrl}${currentPage === "/" ? "" : currentPage}?_cb=${cacheBuster}&shipstudio=1`;
 
   // Reset state when project changes
   useEffect(() => {

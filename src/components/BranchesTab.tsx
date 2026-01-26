@@ -201,7 +201,7 @@ export function BranchesTab({
               </div>
               <div className="branch-card-meta">
                 {formatRelativeTime(currentBranchInfo.lastCommitDate)}
-                {currentBranchInfo.lastCommitAuthor && ` · ${currentBranchInfo.lastCommitAuthor}`}
+                {(currentBranchInfo.isDefault || currentBranchInfo.aheadOfMain > 0) && currentBranchInfo.lastCommitAuthor && ` · ${currentBranchInfo.lastCommitAuthor}`}
               </div>
             </div>
             <div className="branch-card-actions">
@@ -477,7 +477,7 @@ function BranchCard({
         </div>
         <div className="branch-card-meta">
           {formatRelativeTime(branch.lastCommitDate)}
-          {branch.lastCommitAuthor && ` · ${branch.lastCommitAuthor}`}
+          {(branch.isDefault || branch.aheadOfMain > 0) && branch.lastCommitAuthor && ` · ${branch.lastCommitAuthor}`}
         </div>
         {!branch.isDefault && (branch.aheadOfMain > 0 || branch.behindOfMain > 0) && (
           <div className="branch-card-status">

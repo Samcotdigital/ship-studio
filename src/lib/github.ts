@@ -76,6 +76,29 @@ export interface PushToGitHubOptions {
   isPrivate: boolean;
 }
 
+/** GitHub repository primary language */
+export interface GitHubLanguage {
+  name: string;
+}
+
+/** GitHub repository info from gh CLI */
+export interface GitHubRepo {
+  /** Repository name */
+  name: string;
+  /** HTTPS URL */
+  url: string;
+  /** SSH URL for cloning */
+  sshUrl: string;
+  /** Whether the repo is private */
+  isPrivate: boolean;
+  /** Repository description */
+  description: string | null;
+  /** Primary programming language */
+  primaryLanguage: GitHubLanguage | null;
+  /** Last updated timestamp */
+  updatedAt: string;
+}
+
 /**
  * Create a GitHub repository and push the project.
  * @param options - Push configuration
@@ -145,4 +168,23 @@ export async function getBranchStatus(projectPath: string): Promise<BranchStatus
  */
 export async function resetToBranch(projectPath: string, branch: "staging" | "production"): Promise<void> {
   return invoke("reset_to_branch", { projectPath, branch });
+}
+
+/**
+ * List GitHub repositories for a given owner (user or organization).
+ * @param owner - GitHub username or organization name
+ * @returns Array of repository information
+ */
+export async function listGitHubRepos(owner: string): Promise<GitHubRepo[]> {
+  return invoke<GitHubRepo[]>("list_github_repos", { owner });
+}
+
+/**
+ * Detect the package manager used in a project.
+ * Checks for lock files in the following order: pnpm, yarn, bun, npm (default).
+ * @param projectPath - Absolute path to the project directory
+ * @returns Package manager name ("pnpm", "yarn", "bun", or "npm")
+ */
+export async function detectPackageManager(projectPath: string): Promise<string> {
+  return invoke<string>("detect_package_manager", { projectPath });
 }

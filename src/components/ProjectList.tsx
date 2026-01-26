@@ -43,11 +43,14 @@ interface ProjectListProps {
   onSelectProject: (project: Project) => void;
   /** Callback to open the create project wizard */
   onCreateProject: () => void;
+  /** Callback to open the import project wizard */
+  onImportProject?: () => void;
 }
 
 export function ProjectList({
   onSelectProject,
   onCreateProject,
+  onImportProject,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,6 +174,7 @@ export function ProjectList({
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCreateProject={onCreateProject}
+        onImportProject={onImportProject}
       />
 
       <div className="dashboard-section-header">
