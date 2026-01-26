@@ -216,7 +216,14 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     let claude_auth = if claude_path.is_some() {
         if let Some(home) = dirs::home_dir() {
             let claude_dir = home.join(".claude");
-            claude_dir.exists() && claude_dir.join("settings.json").exists()
+            // Check for various indicators that Claude has been authenticated/used:
+            // - settings.json (older versions)
+            // - statsig directory (created after auth)
+            // - projects directory (created after using Claude)
+            let settings_exists = claude_dir.join("settings.json").exists();
+            let statsig_exists = claude_dir.join("statsig").is_dir();
+            let projects_exists = claude_dir.join("projects").is_dir();
+            settings_exists || statsig_exists || projects_exists
         } else {
             false
         }
