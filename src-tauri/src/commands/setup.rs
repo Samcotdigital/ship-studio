@@ -482,8 +482,16 @@ pub async fn check_claude_auth_status() -> bool {
     }
 
     if let Some(home) = dirs::home_dir() {
-        let settings_path = home.join(".claude").join("settings.json");
-        return settings_path.exists();
+        let claude_dir = home.join(".claude");
+        // Check for various indicators that Claude has been authenticated/used:
+        // - settings.json (older versions)
+        // - statsig directory (created after auth)
+        // - projects directory with content (created after using Claude)
+        let settings_exists = claude_dir.join("settings.json").exists();
+        let statsig_exists = claude_dir.join("statsig").is_dir();
+        let projects_exists = claude_dir.join("projects").is_dir();
+
+        return settings_exists || statsig_exists || projects_exists;
     }
 
     false

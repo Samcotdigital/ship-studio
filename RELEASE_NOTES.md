@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.2.7
+
+- **Fixed Claude Account detection** - Now correctly detects Claude authentication for newer Claude Code versions
+
 ## What's New in v0.2.6
 
 - **Update banner on setup screen** - Users stuck on the setup screen will now see update notifications
