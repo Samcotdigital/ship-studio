@@ -13,22 +13,26 @@
  */
 
 import { useState, useEffect } from "react";
-import { CheckIcon, WarningIcon, ChevronIcon, ClaudeIcon, GitHubIcon, VercelIcon } from "./icons";
+import { CheckIcon, WarningIcon, ChevronIcon, ClaudeIcon, GitHubIcon, VercelIcon, SpinnerIcon } from "./icons";
 import { getFullSetupStatus, SetupItem, SETUP_ITEM_ORDER } from "../lib/setup";
 
 export function IntegrationBar() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [setupItems, setSetupItems] = useState<SetupItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Fetch full setup status on mount
   useEffect(() => {
+    setIsLoading(true);
     getFullSetupStatus().then((status) => {
       // Sort by display order
       const sorted = [...status.items].sort((a, b) => {
         return SETUP_ITEM_ORDER.indexOf(a.id) - SETUP_ITEM_ORDER.indexOf(b.id);
       });
       setSetupItems(sorted);
-    }).catch(console.error);
+    }).catch(console.error).finally(() => {
+      setIsLoading(false);
+    });
   }, []);
 
   const readyCount = setupItems.filter((item) => item.status === "ready").length;
@@ -66,7 +70,12 @@ export function IntegrationBar() {
         className="integration-bar-toggle"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        {allConnected ? (
+        {isLoading ? (
+          <>
+            <SpinnerIcon size={16} className="spinner-icon integration-bar-icon" />
+            <span>Checking integrations...</span>
+          </>
+        ) : allConnected ? (
           <>
             <CheckIcon size={16} className="integration-bar-icon success" />
             <span>All integrations connected</span>
