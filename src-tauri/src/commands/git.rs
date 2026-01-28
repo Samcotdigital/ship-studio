@@ -860,10 +860,7 @@ pub async fn discard_changes(project_path: String) -> Result<(), String> {
 /// Stage all changes and create a commit with the given message.
 /// Returns true if a commit was made, false if there was nothing to commit.
 #[tauri::command]
-pub async fn commit_changes(
-    project_path: String,
-    message: String,
-) -> Result<bool, String> {
+pub async fn commit_changes(project_path: String, message: String) -> Result<bool, String> {
     let validated_path = validate_project_path(&project_path)?;
     let committed = git_stage_and_commit(&validated_path, &message)?;
     if committed {

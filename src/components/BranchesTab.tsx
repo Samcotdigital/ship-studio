@@ -217,25 +217,27 @@ export function BranchesTab({
               </div>
             </div>
             <div className="branch-card-actions">
-              {!currentBranchInfo.isDefault && currentBranchInfo.name !== 'staging' && (() => {
-                const existingPR = openPRs.find((pr) => pr.headRef === currentBranchInfo.name);
-                return existingPR ? (
-                  <button
-                    className="branch-card-action"
-                    onClick={() => void openUrl(existingPR.url)}
-                    title={`PR #${existingPR.number}: ${existingPR.title}`}
-                  >
-                    View PR #{existingPR.number}
-                  </button>
-                ) : (
-                  <button
-                    className="branch-card-action primary"
-                    onClick={() => onSubmitForReview(currentBranchInfo.name)}
-                  >
-                    Submit for Review
-                  </button>
-                );
-              })()}
+              {!currentBranchInfo.isDefault &&
+                currentBranchInfo.name !== 'staging' &&
+                (() => {
+                  const existingPR = openPRs.find((pr) => pr.headRef === currentBranchInfo.name);
+                  return existingPR ? (
+                    <button
+                      className="branch-card-action"
+                      onClick={() => void openUrl(existingPR.url)}
+                      title={`PR #${existingPR.number}: ${existingPR.title}`}
+                    >
+                      View PR #{existingPR.number}
+                    </button>
+                  ) : (
+                    <button
+                      className="branch-card-action primary"
+                      onClick={() => onSubmitForReview(currentBranchInfo.name)}
+                    >
+                      Submit for Review
+                    </button>
+                  );
+                })()}
               <button
                 className="branch-card-action danger-outline"
                 onClick={() => setShowRevertConfirm(true)}

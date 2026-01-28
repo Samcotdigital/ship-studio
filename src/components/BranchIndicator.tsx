@@ -137,7 +137,10 @@ export function BranchIndicator({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <button className="branch-indicator-button" onClick={onClick}>
+      <button
+        className={`branch-indicator-button ${isMainBranch ? 'main-branch' : ''}`}
+        onClick={onClick}
+      >
         <BranchIcon size={14} />
         <span className="branch-name">{currentBranch}</span>
         {isMainBranch && <span className="branch-live-badge">Live</span>}

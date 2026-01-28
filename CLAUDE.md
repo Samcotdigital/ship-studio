@@ -1,5 +1,18 @@
 # Ship Studio Development Guidelines
 
+## Feature Overview
+
+Ship Studio is a desktop app for web developers that provides:
+- **Project Management** - Create new projects or import existing repos from GitHub
+- **Terminal with Claude Code** - Integrated terminal with Claude AI for code assistance
+- **Branch Management** - Create, switch, and manage git branches
+- **Pull Request Creation** - Submit PRs with AI-generated titles and descriptions
+- **Merge Conflict Resolution** - Visual UI for resolving git merge conflicts
+- **Asset Management** - Upload, view, and delete files in `/public` folder
+- **IDE Integration** - Open projects in VS Code or Cursor with one click
+- **Vercel Deployment** - Publish to staging/production via Vercel integration
+- **Auto-Updates** - Automatic update detection and installation
+
 ## Core Principles
 
 ### Never Assume Data
@@ -27,12 +40,54 @@
 - Vercel operations use the `vercel` CLI
 - Structured logging via `tracing` crate, logs stored at `~/Library/Logs/ShipStudio/`
 
+#### Command Modules
+All 14 command modules in `src-tauri/src/commands/`:
+- `ai.rs` - AI-powered PR title/description generation via Claude CLI
+- `assets.rs` - File management for `/public` folder (list, upload, delete)
+- `claude.rs` - Claude Code binary detection and version checking
+- `conflicts.rs` - Merge conflict detection, parsing, and resolution
+- `env.rs` - Environment variable management
+- `git.rs` - Git operations (status, branches, commits, diffs, stash)
+- `github.rs` - GitHub CLI integration (auth status, push, remote management)
+- `ide.rs` - VS Code/Cursor detection and project opening
+- `projects.rs` - Project CRUD operations and metadata management
+- `pty.rs` - Pseudo-terminal spawning for embedded Claude Code terminal
+- `publishing.rs` - Vercel deployment workflow and publish record tracking
+- `pull_requests.rs` - PR listing and creation via `gh` CLI
+- `setup.rs` - First-run setup, onboarding, and integration checks
+- `vercel.rs` - Vercel CLI integration (auth, project linking, domains)
+
+### AI Features
+- PR title/description generation using Claude CLI (`src-tauri/src/commands/ai.rs`)
+- Frontend wrapper in `src/lib/ai.ts`
+- Uses `find_claude_binary()` to locate Claude Code installation
+- Gathers git diff, commit messages, branch name, and diff stats as context
+- Implements 40KB max diff limit with intelligent truncation at newline boundaries
+- Prompts Claude to respond in structured format (`TITLE:` / `DESCRIPTION:`)
+
 ### Frontend (React/TypeScript)
 - Components are in `src/components/`
 - Lib functions (Tauri invoke wrappers) are in `src/lib/`
 - Main app state is managed in `src/App.tsx`
 - Polling uses exponential backoff (`src/lib/polling.ts`)
 - Structured logging via `src/lib/logger.ts`
+
+#### Frontend Libraries
+Key modules in `src/lib/`:
+- `ai.ts` - AI generation wrapper for PR descriptions
+- `assets.ts` - Asset management (list, upload, delete public files)
+- `branches.ts` - Branch operations and PR status management
+- `claude.ts` - Claude Code detection and availability checking
+- `conflicts.ts` - Conflict resolution operations
+- `fonts.ts` - Font loading utilities for the terminal
+- `git.ts` - Git operations wrapper (status, commits, branches)
+- `github.ts` - GitHub operations (auth, push, clone)
+- `logger.ts` - Structured frontend logging
+- `polling.ts` - Exponential backoff utilities for async operations
+- `project.ts` - Project metadata and file operations
+- `setup.ts` - Setup wizard and integration status
+- `updater.ts` - Auto-update functionality and version checking
+- `vercel.ts` - Vercel deployment operations
 
 ## Testing
 
@@ -58,6 +113,20 @@ Unit tests are colocated in source files using `#[cfg(test)]` modules.
 2. Backend pushes to GitHub (staging or main branch)
 3. Vercel auto-deploys via GitHub integration
 4. Result (URL, state, timestamp) is saved to `.shipstudio/project.json`
+
+### Pull Request Flow
+1. User clicks "Submit for Review" on a branch
+2. SubmitReviewModal opens with branch name as default title
+3. User can click "Generate with AI" to auto-generate title/description
+4. Backend gathers git context (diff, commits, branch name) and calls Claude CLI
+5. PR is created via `gh pr create` with the title and description
+
+### Conflict Resolution
+- Conflicts detected via `git diff --name-only --diff-filter=U`
+- ConflictedFile struct contains parsed conflict blocks with context lines
+- User resolves conflicts in UI by choosing "ours" or "theirs" for each block
+- Resolution written back to file, then auto-staged when all conflicts resolved
+- Complete merge commits with message "Resolved merge conflicts via Ship Studio"
 
 ### Integration Status
 - GitHub: Check via `gh auth status`

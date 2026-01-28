@@ -1,0 +1,74 @@
+/* Main Branch Warning Banner */
+.main-branch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(245, 158, 11, 0.1);
+  border-bottom: 1px solid var(--border);
+}
+
+.main-branch-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.main-branch-banner-content svg {
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
+.main-branch-banner-text {
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.main-branch-banner-text strong {
+  font-weight: 600;
+  color: #fcd34d;
+}
+
+.main-branch-banner-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.main-branch-banner-action:hover {
+  background: rgba(245, 158, 11, 0.3);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fcd34d;
+}
+
+.main-branch-banner-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #f59e0b;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.15s;
+}
+
+.main-branch-banner-close:hover {
+  opacity: 1;
+  background: rgba(245, 158, 11, 0.2);
+}

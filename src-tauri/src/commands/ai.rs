@@ -19,10 +19,15 @@ pub async fn generate_pr_description(
 ) -> Result<GeneratedPR, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let claude_path = find_claude_binary()
-        .ok_or_else(|| "Claude CLI is not installed. Install Claude Code to use AI generation.".to_string())?;
+    let claude_path = find_claude_binary().ok_or_else(|| {
+        "Claude CLI is not installed. Install Claude Code to use AI generation.".to_string()
+    })?;
 
-    info!("Generating PR description for {} against {}", validated_path.display(), base_branch);
+    info!(
+        "Generating PR description for {} against {}",
+        validated_path.display(),
+        base_branch
+    );
 
     // Gather context in parallel-ish (all quick git commands)
     let branch_name = get_branch_name(&validated_path)?;
@@ -36,18 +41,32 @@ pub async fn generate_pr_description(
 
     // Truncate diff if too large
     let truncated_diff = if diff.len() > MAX_DIFF_SIZE {
-        warn!("Diff is {} bytes, truncating to {}", diff.len(), MAX_DIFF_SIZE);
+        warn!(
+            "Diff is {} bytes, truncating to {}",
+            diff.len(),
+            MAX_DIFF_SIZE
+        );
         let truncated = &diff[..MAX_DIFF_SIZE];
         // Try to cut at a newline boundary
         match truncated.rfind('\n') {
-            Some(pos) => format!("{}\n\n[... diff truncated, {} more bytes ...]", &truncated[..pos], diff.len() - pos),
+            Some(pos) => format!(
+                "{}\n\n[... diff truncated, {} more bytes ...]",
+                &truncated[..pos],
+                diff.len() - pos
+            ),
             None => format!("{}\n\n[... diff truncated ...]", truncated),
         }
     } else {
         diff
     };
 
-    let prompt = build_prompt(&branch_name, &base_branch, &commits, &diff_stat, &truncated_diff);
+    let prompt = build_prompt(
+        &branch_name,
+        &base_branch,
+        &commits,
+        &diff_stat,
+        &truncated_diff,
+    );
 
     debug!("Calling Claude CLI for PR generation");
 
@@ -86,7 +105,12 @@ fn get_branch_name(path: &std::path::Path) -> Result<String, String> {
 
 fn get_commit_messages(path: &std::path::Path, base: &str) -> Result<String, String> {
     let output = Command::new("git")
-        .args(["log", &format!("{}..HEAD", base), "--pretty=format:%s", "--no-merges"])
+        .args([
+            "log",
+            &format!("{}..HEAD", base),
+            "--pretty=format:%s",
+            "--no-merges",
+        ])
         .current_dir(path)
         .output()
         .map_err(|e| e.to_string())?;
@@ -162,7 +186,12 @@ fn parse_response(response: &str) -> Result<GeneratedPR, String> {
         after_prefix[..title_end].trim().to_string()
     } else {
         // Fallback: use the first line as title
-        response.lines().next().unwrap_or("Update code").trim().to_string()
+        response
+            .lines()
+            .next()
+            .unwrap_or("Update code")
+            .trim()
+            .to_string()
     };
 
     // Find DESCRIPTION: section
@@ -202,7 +231,8 @@ mod tests {
 
     #[test]
     fn test_parse_response_with_extra_whitespace() {
-        let response = "\n  TITLE:   Fix broken tests  \n  DESCRIPTION:\n  Fixed flaky unit tests.\n";
+        let response =
+            "\n  TITLE:   Fix broken tests  \n  DESCRIPTION:\n  Fixed flaky unit tests.\n";
         let result = parse_response(response).unwrap();
         assert_eq!(result.title, "Fix broken tests");
         assert!(result.description.contains("Fixed flaky unit tests"));

@@ -35,6 +35,8 @@ import { PullRequestsTab } from './components/PullRequestsTab';
 import { GitErrorHandler } from './components/GitErrorHandler';
 import { SubmitReviewModal } from './components/SubmitReviewModal';
 import { ConflictResolutionModal } from './components/ConflictResolutionModal';
+import { BugReportButton } from './components/BugReportButton';
+import { MainBranchBanner } from './components/MainBranchBanner';
 import {
   BranchInfo,
   PullRequestInfo,
@@ -959,509 +961,539 @@ function App() {
 
   if (view === 'loading') {
     return (
-      <div className="app loading">
-        <img src="/ship_studio_full_noshadow.svg" alt="Ship Studio" className="app-logo" />
-        <div className="spinner" />
-      </div>
+      <>
+        <div className="app loading">
+          <img src="/ship_studio_full_noshadow.svg" alt="Ship Studio" className="app-logo" />
+          <div className="spinner" />
+        </div>
+        <BugReportButton />
+      </>
     );
   }
 
   if (view === 'onboarding') {
     return (
-      <div className="app">
-        <UpdateBanner />
-        <OnboardingScreen onComplete={() => void checkSetup()} />
-      </div>
+      <>
+        <div className="app">
+          <UpdateBanner />
+          <OnboardingScreen onComplete={() => void checkSetup()} />
+        </div>
+        <BugReportButton />
+      </>
     );
   }
 
   if (view === 'projects') {
     return (
-      <div className="app">
-        <UpdateBanner />
-        <ProjectList
-          onSelectProject={(project) => void handleSelectProject(project)}
-          onCreateProject={handleCreateProject}
-          onImportProject={handleImportProject}
-        />
-        {showCreateModal && (
-          <CreateProject
-            onComplete={handleProjectCreated}
-            onCancel={() => setShowCreateModal(false)}
+      <>
+        <div className="app">
+          <UpdateBanner />
+          <ProjectList
+            onSelectProject={(project) => void handleSelectProject(project)}
+            onCreateProject={handleCreateProject}
+            onImportProject={handleImportProject}
           />
-        )}
-        {showImportModal && (
-          <ImportProject
-            onComplete={handleProjectImported}
-            onCancel={() => setShowImportModal(false)}
-          />
-        )}
-      </div>
+          {showCreateModal && (
+            <CreateProject
+              onComplete={handleProjectCreated}
+              onCancel={() => setShowCreateModal(false)}
+            />
+          )}
+          {showImportModal && (
+            <ImportProject
+              onComplete={handleProjectImported}
+              onCancel={() => setShowImportModal(false)}
+            />
+          )}
+        </div>
+        <BugReportButton />
+      </>
     );
   }
 
   if (view === 'project-loading') {
     return (
-      <div className="app loading">
-        <div className="spinner" />
-        <p>Opening {currentProject?.name}...</p>
-      </div>
+      <>
+        <div className="app loading">
+          <div className="spinner" />
+          <p>Opening {currentProject?.name}...</p>
+        </div>
+        <BugReportButton />
+      </>
     );
   }
 
   // Workspace view
   return (
-    <div className="app workspace">
-      <UpdateBanner />
-      <header className="workspace-header">
-        <button className="back-button" onClick={() => void handleBackToProjects()}>
-          ← Projects
-        </button>
-        <h1>{currentProject?.name}</h1>
-        <span className="project-path">{currentProject?.path}</span>
-
-        <div className="workspace-header-actions">
-          <button
-            className="assets-button"
-            onClick={() => setShowAssetsPanel(true)}
-            title="Manage Assets"
-          >
-            <ImageIcon size={14} />
-            Assets
+    <>
+      <div className="app workspace">
+        <UpdateBanner />
+        <header className="workspace-header">
+          <button className="back-button" onClick={() => void handleBackToProjects()}>
+            ← Projects
           </button>
-          <div
-            className="ide-dropdown-container"
-            onMouseEnter={() => setShowIdeDropdown(true)}
-            onMouseLeave={() => setShowIdeDropdown(false)}
-          >
-            <button className="ide-button" title="Open in IDE">
-              <CodeIcon size={14} />
+          <h1>{currentProject?.name}</h1>
+          <span className="project-path">{currentProject?.path}</span>
+
+          <div className="workspace-header-actions">
+            <button
+              className="assets-button"
+              onClick={() => setShowAssetsPanel(true)}
+              title="Manage Assets"
+            >
+              <ImageIcon size={14} />
+              Assets
             </button>
-            {showIdeDropdown && (
-              <div className="ide-dropdown">
-                <div className="ide-dropdown-inner">
-                  {ideAvailability.vscode && (
-                    <button onClick={() => void openInIde('vscode')} disabled={openingIde !== null}>
-                      <VSCodeIcon size={14} />
-                      {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
-                    </button>
-                  )}
-                  {ideAvailability.cursor && (
-                    <button onClick={() => void openInIde('cursor')} disabled={openingIde !== null}>
-                      <CursorIcon size={14} />
-                      {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
-                    </button>
-                  )}
-                  {!ideAvailability.vscode && !ideAvailability.cursor && (
-                    <div className="ide-dropdown-empty">No IDEs found</div>
-                  )}
+            <div
+              className="ide-dropdown-container"
+              onMouseEnter={() => setShowIdeDropdown(true)}
+              onMouseLeave={() => setShowIdeDropdown(false)}
+            >
+              <button className="ide-button" title="Open in IDE">
+                <CodeIcon size={14} />
+              </button>
+              {showIdeDropdown && (
+                <div className="ide-dropdown">
+                  <div className="ide-dropdown-inner">
+                    {ideAvailability.vscode && (
+                      <button
+                        onClick={() => void openInIde('vscode')}
+                        disabled={openingIde !== null}
+                      >
+                        <VSCodeIcon size={14} />
+                        {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
+                      </button>
+                    )}
+                    {ideAvailability.cursor && (
+                      <button
+                        onClick={() => void openInIde('cursor')}
+                        disabled={openingIde !== null}
+                      >
+                        <CursorIcon size={14} />
+                        {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
+                      </button>
+                    )}
+                    {!ideAvailability.vscode && !ideAvailability.cursor && (
+                      <div className="ide-dropdown-empty">No IDEs found</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+            <button
+              className="env-button"
+              onClick={() => setShowEnvEditor(true)}
+              title="Environment Variables"
+            >
+              <span className="env-button-icon">$</span>
+              .env
+            </button>
+            <GitHubButton
+              githubState={integrations.github}
+              vercelState={integrations.vercel}
+              projectStatus={integrations.projectGithub}
+              projectPath={currentProject?.path || ''}
+              projectName={currentProject?.name || ''}
+              onStatusChange={handleGitHubStatusChange}
+              onGitHubConnect={() => void refreshGitHubStatus()}
+              onModalClose={focusTerminal}
+              onToast={showToast}
+              onVercelAutoConnectStart={() => setIsVercelAutoConnecting(true)}
+              onVercelAutoConnectEnd={() => setIsVercelAutoConnecting(false)}
+            />
+            <VercelButton
+              vercelState={integrations.vercel}
+              projectVercelStatus={integrations.projectVercel}
+              projectGithubStatus={integrations.projectGithub}
+              projectPath={currentProject?.path || ''}
+              projectName={currentProject?.name || ''}
+              onStatusChange={(deployedUrl) => void handleVercelStatusChange(deployedUrl)}
+              onVercelConnect={() => void refreshVercelStatus()}
+              onModalClose={focusTerminal}
+              onToast={showToast}
+              isAutoConnecting={isVercelAutoConnecting}
+            />
+            <PublishBranchDropdown
+              currentBranch={currentBranch || 'main'}
+              projectGithubStatus={integrations.projectGithub}
+              projectVercelStatus={integrations.projectVercel}
+              projectPath={currentProject?.path || ''}
+              hasChangesToSync={hasUncommittedChanges}
+              onStatusChange={() => {
+                void handleGitHubStatusChange();
+                if (currentProject) void fetchBranchInfo(currentProject.path);
+              }}
+              onModalClose={focusTerminal}
+              onToast={showToast}
+              isPublishing={isPublishing}
+              setIsPublishing={setIsPublishing}
+              onPublishError={handlePublishError}
+            />
           </div>
-          <button
-            className="env-button"
-            onClick={() => setShowEnvEditor(true)}
-            title="Environment Variables"
-          >
-            <span className="env-button-icon">$</span>
-            .env
-          </button>
-          <GitHubButton
-            githubState={integrations.github}
-            vercelState={integrations.vercel}
-            projectStatus={integrations.projectGithub}
-            projectPath={currentProject?.path || ''}
-            projectName={currentProject?.name || ''}
-            onStatusChange={handleGitHubStatusChange}
-            onGitHubConnect={() => void refreshGitHubStatus()}
-            onModalClose={focusTerminal}
-            onToast={showToast}
-            onVercelAutoConnectStart={() => setIsVercelAutoConnecting(true)}
-            onVercelAutoConnectEnd={() => setIsVercelAutoConnecting(false)}
-          />
-          <VercelButton
-            vercelState={integrations.vercel}
-            projectVercelStatus={integrations.projectVercel}
-            projectGithubStatus={integrations.projectGithub}
-            projectPath={currentProject?.path || ''}
-            projectName={currentProject?.name || ''}
-            onStatusChange={(deployedUrl) => void handleVercelStatusChange(deployedUrl)}
-            onVercelConnect={() => void refreshVercelStatus()}
-            onModalClose={focusTerminal}
-            onToast={showToast}
-            isAutoConnecting={isVercelAutoConnecting}
-          />
-          <PublishBranchDropdown
-            currentBranch={currentBranch || 'main'}
-            projectGithubStatus={integrations.projectGithub}
-            projectVercelStatus={integrations.projectVercel}
-            projectPath={currentProject?.path || ''}
-            hasChangesToSync={hasUncommittedChanges}
-            onStatusChange={() => {
-              void handleGitHubStatusChange();
-              if (currentProject) void fetchBranchInfo(currentProject.path);
-            }}
-            onModalClose={focusTerminal}
-            onToast={showToast}
-            isPublishing={isPublishing}
-            setIsPublishing={setIsPublishing}
-            onPublishError={handlePublishError}
-          />
-        </div>
-      </header>
+        </header>
 
-      <div className="workspace-content">
-        <SplitPane
-          defaultSplit={28}
-          minLeft={20}
-          minRight={35}
-          rightCollapsed={isPreviewHidden}
-          left={
-            <div className="terminal-pane">
-              <div className="terminal-toolbar">
-                <div className="agent-toolbar">
-                  <div className="agent-label">
-                    <ChatIcon size={14} />
-                    <span>Agent</span>
-                  </div>
-                  <button
-                    className="agent-capture-btn"
-                    onClick={() => void handleCaptureForClaude()}
-                    disabled={isCapturing || isCropMode}
-                    title="Screenshot preview for Claude"
-                  >
-                    {isCapturing ? <div className="capture-spinner" /> : <CameraIcon size={14} />}
-                  </button>
-                  <button
-                    className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
-                    onClick={() => setIsCropMode(!isCropMode)}
-                    disabled={isCapturing || isCropCapturing}
-                    title="Crop screenshot for Claude"
-                  >
-                    {isCropCapturing ? <div className="capture-spinner" /> : <CropIcon size={14} />}
-                  </button>
-                </div>
-                {isPreviewHidden && (
-                  <div className="preview-hidden-actions">
+        {(currentBranch === 'main' || currentBranch === 'master') && (
+          <MainBranchBanner onCreateBranch={() => setWorkspaceTab('branches')} />
+        )}
+
+        <div className="workspace-content">
+          <SplitPane
+            defaultSplit={28}
+            minLeft={20}
+            minRight={35}
+            rightCollapsed={isPreviewHidden}
+            left={
+              <div className="terminal-pane">
+                <div className="terminal-toolbar">
+                  <div className="agent-toolbar">
+                    <div className="agent-label">
+                      <ChatIcon size={14} />
+                      <span>Agent</span>
+                    </div>
                     <button
-                      className="show-preview-btn"
-                      onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                      title="Open in Browser"
+                      className="agent-capture-btn"
+                      onClick={() => void handleCaptureForClaude()}
+                      disabled={isCapturing || isCropMode}
+                      title="Screenshot preview for Claude"
                     >
-                      <ExternalLinkIcon size={14} />
-                      <span>Open in Browser</span>
+                      {isCapturing ? <div className="capture-spinner" /> : <CameraIcon size={14} />}
                     </button>
                     <button
-                      className="show-preview-btn"
-                      onClick={() => setIsPreviewHidden(false)}
-                      title="Show Preview"
+                      className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
+                      onClick={() => setIsCropMode(!isCropMode)}
+                      disabled={isCapturing || isCropCapturing}
+                      title="Crop screenshot for Claude"
                     >
-                      <PanelRightIcon size={14} />
-                      <span>Show Preview</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="terminal-tabs-bar">
-                <div className="terminal-tabs">
-                  {terminalTabs.map((tabId, index) => (
-                    <button
-                      key={tabId}
-                      className={`terminal-tab ${!showDevServerLogs && activeTerminalTab === tabId ? 'active' : ''}`}
-                      onClick={() => {
-                        setShowDevServerLogs(false);
-                        setActiveTerminalTab(tabId);
-                      }}
-                    >
-                      <span className="terminal-tab-number">{index + 1}</span>
-                      {terminalTabs.length > 1 && (
-                        <span
-                          className="terminal-tab-close"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeTerminalTab(tabId);
-                          }}
-                        >
-                          <CloseIcon size={10} />
-                        </span>
+                      {isCropCapturing ? (
+                        <div className="capture-spinner" />
+                      ) : (
+                        <CropIcon size={14} />
                       )}
                     </button>
-                  ))}
-                  {terminalTabs.length < MAX_TERMINAL_TABS && (
-                    <button className="terminal-tab-add" onClick={addTerminalTab}>
-                      <PlusIcon size={12} />
-                    </button>
+                  </div>
+                  {isPreviewHidden && (
+                    <div className="preview-hidden-actions">
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
+                        title="Open in Browser"
+                      >
+                        <ExternalLinkIcon size={14} />
+                        <span>Open in Browser</span>
+                      </button>
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => setIsPreviewHidden(false)}
+                        title="Show Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Show Preview</span>
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div className="terminal-tabs-divider" />
-                <button
-                  className={`terminal-tab logs-tab ${showDevServerLogs ? 'active' : ''}`}
-                  onClick={() => setShowDevServerLogs(true)}
-                  title="View dev server logs"
-                >
-                  <TerminalIcon size={12} />
-                  <span>Logs</span>
-                </button>
-              </div>
-              <div className="terminal-content">
-                {terminalTabs.map((tabId) => (
-                  <div
-                    key={`session-${terminalSessionId}-tab-${tabId}`}
-                    className="terminal-tab-content"
-                    style={{
-                      display: !showDevServerLogs && activeTerminalTab === tabId ? 'block' : 'none',
-                    }}
-                  >
-                    <Terminal
-                      ref={(ref) => {
-                        if (ref) {
-                          terminalRefsMap.current.set(tabId, ref);
-                        }
-                      }}
-                      projectPath={currentProject?.path || ''}
-                      onExit={handleTerminalExit}
-                    />
+                <div className="terminal-tabs-bar">
+                  <div className="terminal-tabs">
+                    {terminalTabs.map((tabId, index) => (
+                      <button
+                        key={tabId}
+                        className={`terminal-tab ${!showDevServerLogs && activeTerminalTab === tabId ? 'active' : ''}`}
+                        onClick={() => {
+                          setShowDevServerLogs(false);
+                          setActiveTerminalTab(tabId);
+                        }}
+                      >
+                        <span className="terminal-tab-number">{index + 1}</span>
+                        {terminalTabs.length > 1 && (
+                          <span
+                            className="terminal-tab-close"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeTerminalTab(tabId);
+                            }}
+                          >
+                            <CloseIcon size={10} />
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    {terminalTabs.length < MAX_TERMINAL_TABS && (
+                      <button className="terminal-tab-add" onClick={addTerminalTab}>
+                        <PlusIcon size={12} />
+                      </button>
+                    )}
                   </div>
-                ))}
-                {showDevServerLogs && (
-                  <div className="terminal-tab-content" style={{ display: 'block' }}>
-                    <DevServerLogs
-                      output={devServerOutputRef.current}
-                      outputVersion={devServerOutputVersion}
-                    />
+                  <div className="terminal-tabs-divider" />
+                  <button
+                    className={`terminal-tab logs-tab ${showDevServerLogs ? 'active' : ''}`}
+                    onClick={() => setShowDevServerLogs(true)}
+                    title="View dev server logs"
+                  >
+                    <TerminalIcon size={12} />
+                    <span>Logs</span>
+                  </button>
+                </div>
+                <div className="terminal-content">
+                  {terminalTabs.map((tabId) => (
+                    <div
+                      key={`session-${terminalSessionId}-tab-${tabId}`}
+                      className="terminal-tab-content"
+                      style={{
+                        display:
+                          !showDevServerLogs && activeTerminalTab === tabId ? 'block' : 'none',
+                      }}
+                    >
+                      <Terminal
+                        ref={(ref) => {
+                          if (ref) {
+                            terminalRefsMap.current.set(tabId, ref);
+                          }
+                        }}
+                        projectPath={currentProject?.path || ''}
+                        onExit={handleTerminalExit}
+                      />
+                    </div>
+                  ))}
+                  {showDevServerLogs && (
+                    <div className="terminal-tab-content" style={{ display: 'block' }}>
+                      <DevServerLogs
+                        output={devServerOutputRef.current}
+                        outputVersion={devServerOutputVersion}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            }
+            right={
+              <div className="preview-pane">
+                {/* Preview/Branches/PRs Tabs - only show branch tabs when GitHub repo exists */}
+                {integrations.projectGithub?.status === 'connected' ? (
+                  <div className="preview-tabs-bar">
+                    {/* Branch Indicator - click to toggle between Branches tab and Preview */}
+                    {currentBranch && (
+                      <BranchIndicator
+                        currentBranch={currentBranch}
+                        hasUncommittedChanges={hasUncommittedChanges}
+                        changedFiles={changedFiles}
+                        projectPath={currentProject?.path || ''}
+                        isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
+                        onClick={() =>
+                          setWorkspaceTab(
+                            workspaceTab === 'branches' || workspaceTab === 'prs'
+                              ? 'preview'
+                              : 'branches'
+                          )
+                        }
+                        onDiscard={() => {
+                          if (currentProject) {
+                            void checkGitStatus(currentProject.path);
+                          }
+                        }}
+                        onToast={showToast}
+                      />
+                    )}
+                    <div className="workspace-tabs">
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('preview')}
+                      >
+                        <EyeIcon size={14} />
+                        <span>Preview</span>
+                      </button>
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('branches')}
+                      >
+                        <BranchIcon size={14} />
+                        <span>Branches</span>
+                      </button>
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('prs')}
+                      >
+                        <PullRequestIcon size={14} />
+                        <span>PRs</span>
+                      </button>
+                    </div>
+                    <div className="preview-tabs-divider" />
+                    <div className="preview-actions">
+                      <button
+                        className="preview-action-btn"
+                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
+                        title="Open in Browser"
+                      >
+                        <ExternalLinkIcon size={14} />
+                        <span>Open in Browser</span>
+                      </button>
+                      <button
+                        className="preview-action-btn"
+                        onClick={() => setIsPreviewHidden(true)}
+                        title="Hide Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Hide Preview</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="preview-tabs-bar preview-tabs-bar-simple">
+                    <span className="preview-label">Preview</span>
+                    <div className="preview-tabs-divider" />
+                    <div className="preview-actions">
+                      <button
+                        className="preview-action-btn"
+                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
+                        title="Open in Browser"
+                      >
+                        <ExternalLinkIcon size={14} />
+                        <span>Open in Browser</span>
+                      </button>
+                      <button
+                        className="preview-action-btn"
+                        onClick={() => setIsPreviewHidden(true)}
+                        title="Hide Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Hide Preview</span>
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {/* Tab content */}
+                {workspaceTab === 'preview' && (
+                  <Preview
+                    key={`${currentProject?.path || 'none'}-${devServerPort}`}
+                    ref={previewRef}
+                    port={devServerPort}
+                    projectPath={currentProject?.path || ''}
+                    onServerReady={handlePreviewReady}
+                    onPageChange={setCurrentPreviewPage}
+                    isCropMode={isCropMode}
+                    onCropStart={handleCropStart}
+                    onCropComplete={handleCropComplete}
+                    onCropCancel={handleCropCancel}
+                    isBranchSwitching={isBranchSwitching}
+                  />
+                )}
+                {workspaceTab === 'branches' && currentProject && (
+                  <BranchesTab
+                    branches={branches}
+                    currentBranch={currentBranch || ''}
+                    projectPath={currentProject.path}
+                    githubUsername={integrations.github.username}
+                    openPRs={openPRs}
+                    onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
+                    onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
+                    onRefresh={() => void fetchBranchInfo(currentProject.path)}
+                    onToast={showToast}
+                  />
+                )}
+                {workspaceTab === 'prs' && currentProject && (
+                  <PullRequestsTab
+                    projectPath={currentProject.path}
+                    githubUsername={integrations.github.username}
+                    onRefresh={() => void fetchBranchInfo(currentProject.path)}
+                    onToast={showToast}
+                    onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
+                    onNavigateToBranches={() => setWorkspaceTab('branches')}
+                    onResolveConflicts={(headBranch, baseBranch) =>
+                      void handleResolveConflicts(headBranch, baseBranch)
+                    }
+                  />
+                )}
               </div>
-            </div>
-          }
-          right={
-            <div className="preview-pane">
-              {/* Preview/Branches/PRs Tabs - only show branch tabs when GitHub repo exists */}
-              {integrations.projectGithub?.status === 'connected' ? (
-                <div className="preview-tabs-bar">
-                  {/* Branch Indicator - click to toggle between Branches tab and Preview */}
-                  {currentBranch && (
-                    <BranchIndicator
-                      currentBranch={currentBranch}
-                      hasUncommittedChanges={hasUncommittedChanges}
-                      changedFiles={changedFiles}
-                      projectPath={currentProject?.path || ''}
-                      isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
-                      onClick={() =>
-                        setWorkspaceTab(
-                          workspaceTab === 'branches' || workspaceTab === 'prs'
-                            ? 'preview'
-                            : 'branches'
-                        )
-                      }
-                      onDiscard={() => {
-                        if (currentProject) {
-                          void checkGitStatus(currentProject.path);
-                        }
-                      }}
-                      onToast={showToast}
-                    />
-                  )}
-                  <div className="workspace-tabs">
-                    <button
-                      className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('preview')}
-                    >
-                      <EyeIcon size={14} />
-                      <span>Preview</span>
-                    </button>
-                    <button
-                      className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('branches')}
-                    >
-                      <BranchIcon size={14} />
-                      <span>Branches</span>
-                    </button>
-                    <button
-                      className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('prs')}
-                    >
-                      <PullRequestIcon size={14} />
-                      <span>PRs</span>
-                    </button>
-                  </div>
-                  <div className="preview-tabs-divider" />
-                  <div className="preview-actions">
-                    <button
-                      className="preview-action-btn"
-                      onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                      title="Open in Browser"
-                    >
-                      <ExternalLinkIcon size={14} />
-                      <span>Open in Browser</span>
-                    </button>
-                    <button
-                      className="preview-action-btn"
-                      onClick={() => setIsPreviewHidden(true)}
-                      title="Hide Preview"
-                    >
-                      <PanelRightIcon size={14} />
-                      <span>Hide Preview</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="preview-tabs-bar preview-tabs-bar-simple">
-                  <span className="preview-label">Preview</span>
-                  <div className="preview-tabs-divider" />
-                  <div className="preview-actions">
-                    <button
-                      className="preview-action-btn"
-                      onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                      title="Open in Browser"
-                    >
-                      <ExternalLinkIcon size={14} />
-                      <span>Open in Browser</span>
-                    </button>
-                    <button
-                      className="preview-action-btn"
-                      onClick={() => setIsPreviewHidden(true)}
-                      title="Hide Preview"
-                    >
-                      <PanelRightIcon size={14} />
-                      <span>Hide Preview</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab content */}
-              {workspaceTab === 'preview' && (
-                <Preview
-                  key={`${currentProject?.path || 'none'}-${devServerPort}`}
-                  ref={previewRef}
-                  port={devServerPort}
-                  projectPath={currentProject?.path || ''}
-                  onServerReady={handlePreviewReady}
-                  onPageChange={setCurrentPreviewPage}
-                  isCropMode={isCropMode}
-                  onCropStart={handleCropStart}
-                  onCropComplete={handleCropComplete}
-                  onCropCancel={handleCropCancel}
-                  isBranchSwitching={isBranchSwitching}
-                />
-              )}
-              {workspaceTab === 'branches' && currentProject && (
-                <BranchesTab
-                  branches={branches}
-                  currentBranch={currentBranch || ''}
-                  projectPath={currentProject.path}
-                  githubUsername={integrations.github.username}
-                  openPRs={openPRs}
-                  onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
-                  onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
-                  onRefresh={() => void fetchBranchInfo(currentProject.path)}
-                  onToast={showToast}
-                />
-              )}
-              {workspaceTab === 'prs' && currentProject && (
-                <PullRequestsTab
-                  projectPath={currentProject.path}
-                  githubUsername={integrations.github.username}
-                  onRefresh={() => void fetchBranchInfo(currentProject.path)}
-                  onToast={showToast}
-                  onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
-                  onNavigateToBranches={() => setWorkspaceTab('branches')}
-                  onResolveConflicts={(headBranch, baseBranch) =>
-                    void handleResolveConflicts(headBranch, baseBranch)
-                  }
-                />
-              )}
-            </div>
-          }
-        />
-      </div>
-
-      <EnvEditor
-        projectPath={currentProject?.path || ''}
-        isOpen={showEnvEditor}
-        onClose={() => {
-          setShowEnvEditor(false);
-          focusTerminal();
-        }}
-        onToast={showToast}
-      />
-
-      <AssetsPanel
-        projectPath={currentProject?.path || ''}
-        isOpen={showAssetsPanel}
-        onClose={() => {
-          setShowAssetsPanel(false);
-          focusTerminal();
-        }}
-        onToast={showToast}
-      />
-
-      {/* Toast notifications */}
-      {toasts.length > 0 && (
-        <div className="toast-container">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={`toast toast-${toast.type}`}>
-              <span className="toast-icon">
-                {toast.type === 'success' ? <SuccessIcon size={16} /> : <InfoIcon size={16} />}
-              </span>
-              <span className="toast-message">{toast.message}</span>
-              <button className="toast-close" onClick={() => dismissToast(toast.id)}>
-                <CloseIcon size={14} />
-              </button>
-            </div>
-          ))}
+            }
+          />
         </div>
-      )}
 
-      {/* Submit for Review Modal */}
-      {showSubmitReview && (
-        <SubmitReviewModal
+        <EnvEditor
           projectPath={currentProject?.path || ''}
-          branchName={showSubmitReview}
-          baseBranches={branches
-            .filter((b) => b.isDefault || b.name === 'staging')
-            .map((b) => b.name)}
-          claudeAvailable={integrations.claude.cliStatus.installed}
-          onSuccess={() => {
-            showToast('Pull request created', 'success');
-            if (currentProject) void fetchBranchInfo(currentProject.path);
-          }}
+          isOpen={showEnvEditor}
           onClose={() => {
-            setShowSubmitReview(null);
+            setShowEnvEditor(false);
             focusTerminal();
           }}
           onToast={showToast}
         />
-      )}
 
-      {/* Git Error Handler */}
-      {gitError && (
-        <GitErrorHandler
-          errorType={gitError.errorType}
-          errorMessage={gitError.message}
-          branchName={gitError.branchName}
-          onClose={() => setGitError(null)}
-          onSendToClaude={sendToClaude}
-          onToast={showToast}
-          onResolveConflicts={() => void handleResolveConflicts()}
-        />
-      )}
-
-      {/* Conflict Resolution Modal */}
-      {showConflictResolution && currentProject && (
-        <ConflictResolutionModal
-          projectPath={currentProject.path}
+        <AssetsPanel
+          projectPath={currentProject?.path || ''}
+          isOpen={showAssetsPanel}
           onClose={() => {
-            setShowConflictResolution(false);
+            setShowAssetsPanel(false);
             focusTerminal();
           }}
-          onResolved={handleConflictsResolved}
           onToast={showToast}
         />
-      )}
-    </div>
+
+        {/* Toast notifications */}
+        {toasts.length > 0 && (
+          <div className="toast-container">
+            {toasts.map((toast) => (
+              <div key={toast.id} className={`toast toast-${toast.type}`}>
+                <span className="toast-icon">
+                  {toast.type === 'success' ? <SuccessIcon size={16} /> : <InfoIcon size={16} />}
+                </span>
+                <span className="toast-message">{toast.message}</span>
+                <button className="toast-close" onClick={() => dismissToast(toast.id)}>
+                  <CloseIcon size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Submit for Review Modal */}
+        {showSubmitReview && (
+          <SubmitReviewModal
+            projectPath={currentProject?.path || ''}
+            branchName={showSubmitReview}
+            baseBranches={branches
+              .filter((b) => b.isDefault || b.name === 'staging')
+              .map((b) => b.name)}
+            claudeAvailable={integrations.claude.cliStatus.installed}
+            onSuccess={() => {
+              showToast('Pull request created', 'success');
+              if (currentProject) void fetchBranchInfo(currentProject.path);
+            }}
+            onClose={() => {
+              setShowSubmitReview(null);
+              focusTerminal();
+            }}
+            onToast={showToast}
+          />
+        )}
+
+        {/* Git Error Handler */}
+        {gitError && (
+          <GitErrorHandler
+            errorType={gitError.errorType}
+            errorMessage={gitError.message}
+            branchName={gitError.branchName}
+            onClose={() => setGitError(null)}
+            onSendToClaude={sendToClaude}
+            onToast={showToast}
+            onResolveConflicts={() => void handleResolveConflicts()}
+          />
+        )}
+
+        {/* Conflict Resolution Modal */}
+        {showConflictResolution && currentProject && (
+          <ConflictResolutionModal
+            projectPath={currentProject.path}
+            onClose={() => {
+              setShowConflictResolution(false);
+              focusTerminal();
+            }}
+            onResolved={handleConflictsResolved}
+            onToast={showToast}
+          />
+        )}
+      </div>
+      <BugReportButton />
+    </>
   );
 }
 
