@@ -6,36 +6,37 @@
 
 **IMPORTANT: This step is mandatory. Users see these notes in the update dialog.**
 
-Edit `RELEASE_NOTES.md` and update the "What's New" section with user-friendly descriptions of changes:
+Edit `RELEASE_NOTES.md` and add a new section at the top (below the HTML comment):
 
 ```markdown
 ## What's New in vX.Y.Z
 
-- Added feature X for better Y
-- Fixed bug where Z would happen
-- Improved performance of W
+- **Feature name** - Description of the change
+- **Bug fix** - What was fixed
 ```
 
-### 2. Update version in all three files:
-   - `package.json`
-   - `src-tauri/Cargo.toml`
-   - `src-tauri/tauri.conf.json`
+### 2. Run the release script
 
-### 3. Commit all changes:
 ```bash
-git add RELEASE_NOTES.md package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "Release vX.Y.Z - Brief description"
+./scripts/release.sh          # patch bump (0.3.2 -> 0.3.3)
+./scripts/release.sh minor    # minor bump (0.3.2 -> 0.4.0)
+./scripts/release.sh major    # major bump (0.3.2 -> 1.0.0)
 ```
 
-### 4. Create and push a tag:
+The script will:
+- Bump the version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
+- Update `Cargo.lock`
+- Commit and tag
+
+### 3. Push
+
 ```bash
-git tag -a vX.Y.Z -m "vX.Y.Z - Brief description"
 git push origin main && git push origin vX.Y.Z
 ```
 
-### 5. Wait for GitHub Actions to complete (~8 minutes)
+### 4. Wait for GitHub Actions to complete (~15 minutes)
 
-### 6. Publish the draft release in the main repo:
+### 5. Publish the draft release in the main repo:
 - https://github.com/ship-studio/ship-studio/releases
 - (The public releases repo auto-publishes)
 
@@ -69,9 +70,12 @@ These secrets must be configured in the main repo's GitHub settings:
 
 | Secret | Purpose |
 |--------|---------|
-| `APPLE_CERTIFICATE` | Base64-encoded .p12 certificate |
+| `APPLE_CERTIFICATE` | Base64-encoded .p12 certificate for code signing |
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the certificate |
-| `TAURI_SIGNING_PRIVATE_KEY` | Private key for update signing |
+| `APPLE_API_ISSUER` | App Store Connect API issuer ID (for notarization) |
+| `APPLE_API_KEY` | App Store Connect API key ID (for notarization) |
+| `APPLE_API_KEY_CONTENT` | Base64-encoded .p8 private key file (for notarization) |
+| `TAURI_SIGNING_PRIVATE_KEY` | Private key for update bundle signing |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the signing key |
 | `RELEASES_PAT` | Personal Access Token with `public_repo` scope for cross-repo access |
 
