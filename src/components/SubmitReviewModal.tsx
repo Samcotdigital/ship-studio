@@ -2,12 +2,15 @@
  * Submit for Review modal.
  *
  * Creates a pull request from the current branch.
+ * Supports AI-generated PR titles and descriptions via Claude CLI.
  *
  * @module components/SubmitReviewModal
  */
 
 import { useState } from 'react';
 import { createPullRequest } from '../lib/branches';
+import { generatePRDescription } from '../lib/ai';
+import { commitChanges } from '../lib/git';
 
 interface SubmitReviewModalProps {
   /** Project path for PR operations */
@@ -16,6 +19,8 @@ interface SubmitReviewModalProps {
   branchName: string;
   /** Available base branches */
   baseBranches: string[];
+  /** Whether Claude CLI is available for AI generation */
+  claudeAvailable: boolean;
   /** Callback when PR is created */
   onSuccess: (prUrl: string) => void;
   /** Callback to close modal */
@@ -28,6 +33,7 @@ export function SubmitReviewModal({
   projectPath,
   branchName,
   baseBranches,
+  claudeAvailable,
   onSuccess,
   onClose,
   onToast,
@@ -36,7 +42,56 @@ export function SubmitReviewModal({
   const [description, setDescription] = useState('');
   const [baseBranch, setBaseBranch] = useState(baseBranches[0] || 'main');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [needsCommit, setNeedsCommit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    setError(null);
+    setNeedsCommit(false);
+
+    try {
+      const result = await generatePRDescription(projectPath, baseBranch);
+      setTitle(result.title);
+      setDescription(result.description);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.includes('No changes found')) {
+        setNeedsCommit(true);
+      } else {
+        setError(`AI generation failed: ${message}`);
+        onToast?.('Failed to generate PR description', 'error');
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCommitAndGenerate = async () => {
+    setIsGenerating(true);
+    setError(null);
+    setNeedsCommit(false);
+
+    try {
+      const committed = await commitChanges(projectPath, 'Updates from Ship Studio');
+      if (!committed) {
+        setError('No changes to commit.');
+        setIsGenerating(false);
+        return;
+      }
+
+      const result = await generatePRDescription(projectPath, baseBranch);
+      setTitle(result.title);
+      setDescription(result.description);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(`Failed: ${message}`);
+      onToast?.('Failed to generate PR description', 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -71,14 +126,58 @@ export function SubmitReviewModal({
     }
   };
 
+  const isBusy = isSubmitting || isGenerating;
+
   return (
     <div className="submit-review-modal" onKeyDown={handleKeyDown} onClick={onClose}>
       <div className="submit-review-content" onClick={(e) => e.stopPropagation()}>
         <div className="submit-review-header">
           <h2>Submit for Review</h2>
+          {claudeAvailable && (
+            <button
+              className="submit-review-generate-btn"
+              onClick={() => void handleGenerate()}
+              disabled={isBusy}
+              title="Generate title and description from your code changes using AI"
+            >
+              {isGenerating ? (
+                <>
+                  <span className="submit-review-spinner" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.4V11h3a4 4 0 0 1 4 4v1a2 2 0 0 1-2 2h-1v2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2H5a2 2 0 0 1-2-2v-1a4 4 0 0 1 4-4h3V9.4A4 4 0 0 1 8 6a4 4 0 0 1 4-4z" />
+                  </svg>
+                  Generate with AI
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         <div className="submit-review-body">
+          {needsCommit && (
+            <div className="submit-review-commit-prompt">
+              <p>Your changes need to be committed before AI can analyze them.</p>
+              <button
+                className="submit-review-commit-btn"
+                onClick={() => void handleCommitAndGenerate()}
+                disabled={isBusy}
+              >
+                {isGenerating ? (
+                  <>
+                    <span className="submit-review-spinner" />
+                    Committing & generating...
+                  </>
+                ) : (
+                  'Commit & Generate'
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="submit-review-field">
             <label className="submit-review-label">Branch</label>
             <div className="publish-branch-info">
@@ -92,6 +191,7 @@ export function SubmitReviewModal({
               className="submit-review-input"
               value={baseBranch}
               onChange={(e) => setBaseBranch(e.target.value)}
+              disabled={isBusy}
             >
               {baseBranches.map((b) => (
                 <option key={b} value={b}>
@@ -114,6 +214,7 @@ export function SubmitReviewModal({
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
+              disabled={isGenerating}
             />
           </div>
 
@@ -128,6 +229,7 @@ export function SubmitReviewModal({
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
+              disabled={isGenerating}
             />
           </div>
 
@@ -135,13 +237,13 @@ export function SubmitReviewModal({
         </div>
 
         <div className="submit-review-footer">
-          <button className="branch-selector-cancel" onClick={onClose} disabled={isSubmitting}>
+          <button className="branch-selector-cancel" onClick={onClose} disabled={isBusy}>
             Cancel
           </button>
           <button
             className="branch-selector-submit"
             onClick={() => void handleSubmit()}
-            disabled={isSubmitting || !title.trim()}
+            disabled={isBusy || !title.trim()}
           >
             {isSubmitting ? 'Creating...' : 'Create Pull Request'}
           </button>

@@ -59,7 +59,8 @@ pub async fn list_pull_requests(project_path: String) -> Result<Vec<PullRequestI
     Ok(prs)
 }
 
-/// Create a new pull request
+/// Create a new pull request.
+/// Automatically pushes the branch to the remote first if needed.
 #[tauri::command]
 pub async fn create_pull_request(
     project_path: String,
@@ -68,6 +69,21 @@ pub async fn create_pull_request(
     base: String,
 ) -> Result<String, String> {
     let validated_path = validate_project_path(&project_path)?;
+
+    // Push the branch to the remote first (gh pr create requires this)
+    let push_output = std::process::Command::new("git")
+        .args(["push", "-u", "origin", "HEAD"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| format!("Failed to push branch: {}", e))?;
+
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        // Ignore "everything up-to-date" which isn't a real error
+        if !stderr.contains("Everything up-to-date") {
+            return Err(format!("Failed to push branch: {}", stderr));
+        }
+    }
 
     let body_str = body.unwrap_or_default();
     let args = vec![

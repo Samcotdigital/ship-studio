@@ -37,7 +37,9 @@ import { SubmitReviewModal } from './components/SubmitReviewModal';
 import { ConflictResolutionModal } from './components/ConflictResolutionModal';
 import {
   BranchInfo,
+  PullRequestInfo,
   listBranches,
+  listPullRequests,
   getCurrentBranch,
   switchBranch,
   pullAndMerge,
@@ -263,6 +265,7 @@ function App() {
   // Branch management state
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
+  const [openPRs, setOpenPRs] = useState<PullRequestInfo[]>([]);
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
   const [showSubmitReview, setShowSubmitReview] = useState<string | null>(null);
@@ -465,6 +468,11 @@ function App() {
       ]);
       setCurrentBranch(branch);
       setBranches(branchList);
+
+      // Fetch open PRs for branch status display (non-blocking)
+      void listPullRequests(projectPath)
+        .then((prs) => setOpenPRs(prs.filter((pr) => pr.state === 'OPEN')))
+        .catch(() => setOpenPRs([]));
 
       // Check for uncommitted changes using the backend
       void invoke<boolean>('check_git_has_changes', { projectPath })
@@ -1345,6 +1353,7 @@ function App() {
                   currentBranch={currentBranch || ''}
                   projectPath={currentProject.path}
                   githubUsername={integrations.github.username}
+                  openPRs={openPRs}
                   onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
                   onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
                   onRefresh={() => void fetchBranchInfo(currentProject.path)}
@@ -1414,6 +1423,7 @@ function App() {
           baseBranches={branches
             .filter((b) => b.isDefault || b.name === 'staging')
             .map((b) => b.name)}
+          claudeAvailable={integrations.claude.cliStatus.installed}
           onSuccess={() => {
             showToast('Pull request created', 'success');
             if (currentProject) void fetchBranchInfo(currentProject.path);

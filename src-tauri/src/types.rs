@@ -383,6 +383,15 @@ pub struct PullRequestInfo {
     pub created_at: String,
 }
 
+// ============ AI Generation ============
+
+/// AI-generated pull request title and description
+#[derive(Serialize)]
+pub struct GeneratedPR {
+    pub title: String,
+    pub description: String,
+}
+
 // ============ Merge Conflict Resolution ============
 
 /// A single conflict block within a file

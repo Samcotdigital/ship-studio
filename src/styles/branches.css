@@ -1362,6 +1362,9 @@
 .submit-review-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .submit-review-header h2 {
@@ -1371,8 +1374,91 @@
   color: var(--text-primary);
 }
 
+.submit-review-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.submit-review-generate-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: #3b82f6;
+}
+
+.submit-review-generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit-review-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: submit-review-spin 0.6s linear infinite;
+}
+
+@keyframes submit-review-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .submit-review-body {
   padding: 20px 24px;
+}
+
+.submit-review-commit-prompt {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.submit-review-commit-prompt p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.submit-review-commit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #3b82f6;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.submit-review-commit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.submit-review-commit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .submit-review-field {

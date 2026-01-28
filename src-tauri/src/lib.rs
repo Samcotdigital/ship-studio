@@ -105,6 +105,7 @@ pub fn run() {
             commands::git::apply_stash,
             commands::git::drop_stash,
             commands::git::discard_changes,
+            commands::git::commit_changes,
             commands::git::create_branch,
             commands::git::fetch_all_branches,
             commands::git::git_pull,
@@ -140,6 +141,8 @@ pub fn run() {
             commands::ide::capture_project_thumbnail,
             commands::ide::get_project_thumbnail,
             commands::ide::crop_and_save_screenshot,
+            // AI generation
+            commands::ai::generate_pr_description,
             // Claude integration
             commands::claude::check_claude_cli_status,
             commands::claude::install_claude_cli,

@@ -857,6 +857,21 @@ pub async fn discard_changes(project_path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Stage all changes and create a commit with the given message.
+/// Returns true if a commit was made, false if there was nothing to commit.
+#[tauri::command]
+pub async fn commit_changes(
+    project_path: String,
+    message: String,
+) -> Result<bool, String> {
+    let validated_path = validate_project_path(&project_path)?;
+    let committed = git_stage_and_commit(&validated_path, &message)?;
+    if committed {
+        GIT_CACHE.invalidate_status(&project_path);
+    }
+    Ok(committed)
+}
+
 /// Create a new branch from a base branch
 #[tauri::command]
 #[instrument(name = "create_branch", skip(project_path), fields(project = %project_path, branch = %branch_name, from = %from_branch))]

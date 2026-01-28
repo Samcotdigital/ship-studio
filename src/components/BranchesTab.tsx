@@ -17,6 +17,7 @@
 import { useState, useEffect } from 'react';
 import {
   BranchInfo,
+  PullRequestInfo,
   switchBranch,
   deleteBranch,
   createBranch,
@@ -24,6 +25,7 @@ import {
   formatRelativeTime,
 } from '../lib/branches';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { BranchIcon, PlusIcon } from './icons';
 import { UnsavedChangesModal } from './UnsavedChangesModal';
 
@@ -36,6 +38,8 @@ interface BranchesTabProps {
   projectPath: string;
   /** GitHub username for grouping */
   githubUsername: string | null;
+  /** Open pull requests for showing PR status on branches */
+  openPRs: PullRequestInfo[];
   /** Callback when branch is switched */
   onBranchSwitch: (branchName: string) => void;
   /** Callback to open submit for review modal */
@@ -51,6 +55,7 @@ export function BranchesTab({
   currentBranch,
   projectPath,
   githubUsername,
+  openPRs,
   onBranchSwitch,
   onSubmitForReview,
   onRefresh,
@@ -212,14 +217,25 @@ export function BranchesTab({
               </div>
             </div>
             <div className="branch-card-actions">
-              {!currentBranchInfo.isDefault && currentBranchInfo.name !== 'staging' && (
-                <button
-                  className="branch-card-action primary"
-                  onClick={() => onSubmitForReview(currentBranchInfo.name)}
-                >
-                  Submit for Review
-                </button>
-              )}
+              {!currentBranchInfo.isDefault && currentBranchInfo.name !== 'staging' && (() => {
+                const existingPR = openPRs.find((pr) => pr.headRef === currentBranchInfo.name);
+                return existingPR ? (
+                  <button
+                    className="branch-card-action"
+                    onClick={() => void openUrl(existingPR.url)}
+                    title={`PR #${existingPR.number}: ${existingPR.title}`}
+                  >
+                    View PR #{existingPR.number}
+                  </button>
+                ) : (
+                  <button
+                    className="branch-card-action primary"
+                    onClick={() => onSubmitForReview(currentBranchInfo.name)}
+                  >
+                    Submit for Review
+                  </button>
+                );
+              })()}
               <button
                 className="branch-card-action danger-outline"
                 onClick={() => setShowRevertConfirm(true)}

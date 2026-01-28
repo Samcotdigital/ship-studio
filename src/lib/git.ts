@@ -31,3 +31,14 @@ export interface ChangedFile {
 export async function getChangedFiles(projectPath: string): Promise<ChangedFile[]> {
   return invoke<ChangedFile[]>('get_changed_files', { projectPath });
 }
+
+/**
+ * Stage all changes and create a commit.
+ *
+ * @param projectPath - Absolute path to the project
+ * @param message - Commit message
+ * @returns true if a commit was made, false if nothing to commit
+ */
+export async function commitChanges(projectPath: string, message: string): Promise<boolean> {
+  return invoke<boolean>('commit_changes', { projectPath, message });
+}
