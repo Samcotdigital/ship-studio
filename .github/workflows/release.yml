@@ -114,6 +114,14 @@ jobs:
             # Also save just the signature content
             cat "$SIG_FILE" > "artifacts/signature.txt"
 
+            # Copy DMG for user downloads
+            DMG_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+            DMG_FILE=$(find "$DMG_DIR" -name "*.dmg" -type f | head -1)
+            if [ -n "$DMG_FILE" ]; then
+              cp "$DMG_FILE" "artifacts/ShipStudio_${{ matrix.updater_target }}.dmg"
+              echo "Found dmg: $DMG_FILE"
+            fi
+
             ls -la artifacts/
           else
             echo "Warning: Could not find updater artifacts"
@@ -232,4 +240,6 @@ jobs:
             --notes "Auto-updater release for Ship Studio v${VERSION}. See the main repository for full release notes." \
             artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.app.tar.gz \
             artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.app.tar.gz \
+            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.dmg \
+            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.dmg \
             latest.json
