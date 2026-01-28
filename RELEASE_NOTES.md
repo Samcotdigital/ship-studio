@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.1
+
+- **Apple notarization** - App is now signed and notarized by Apple, eliminating "unverified developer" warnings on install
+- **DMG downloads** - Release now includes DMG installers for both Apple Silicon and Intel Macs
+
 ## What's New in v0.3.0
 
 - **Fixed terminal font rendering** - Terminal now correctly displays JetBrains Mono Nerd Font in production builds (was falling back to system font)
