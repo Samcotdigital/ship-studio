@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.3
+
+- **Fixed bug X** - Tyler is testing the auto update
+
 ## What's New in v0.3.2
 
 - **Test update** - Testing the auto-update flow
