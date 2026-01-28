@@ -40,9 +40,9 @@
 }
 
 .onboarding-header h1 {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .onboarding-header p {
@@ -51,10 +51,9 @@
 }
 
 .onboarding-header .onboarding-reassurance {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-top: 12px;
-  font-style: italic;
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-top: 8px;
 }
 
 .onboarding-error {
@@ -220,6 +219,17 @@
 
 .setup-item-btn-retry:hover:not(:disabled) {
   background: var(--bg-hover);
+}
+
+.setup-item-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-item-time-estimate {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* ============ Progress Bar ============ */

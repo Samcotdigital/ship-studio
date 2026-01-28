@@ -15,14 +15,111 @@ use tauri::Emitter;
 // Mock state for testing - tracks which items have been "installed" in debug mode
 lazy_static::lazy_static! {
     static ref MOCK_INSTALLED: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    static ref MOCK_INITIALIZED: Mutex<bool> = Mutex::new(false);
     /// Global registry of spawned auth process PIDs for cleanup
     /// Maps auth type (e.g., "github", "claude", "vercel") -> OS process ID (PID)
     static ref AUTH_PIDS: Mutex<std::collections::HashMap<String, u32>> = Mutex::new(std::collections::HashMap::new());
 }
 
+/// All setup item IDs in dependency order
+const ALL_ITEMS: &[&str] = &[
+    "homebrew",
+    "node",
+    "git",
+    "gh",
+    "gh_auth",
+    "claude",
+    "claude_auth",
+    "vercel",
+    "vercel_auth",
+];
+
+/// Tool items (not auth)
+const TOOL_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude", "vercel"];
+
+/// Get items that should be pre-installed for a given scenario
+fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
+    match scenario {
+        // Fresh install - nothing installed (default)
+        "1" | "fresh" => vec![],
+
+        // All tools installed, but no auth configured
+        "auth-only" => TOOL_ITEMS.to_vec(),
+
+        // Everything except Vercel auth
+        "vercel-missing" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "vercel_auth")
+            .copied()
+            .collect(),
+
+        // Everything except GitHub auth
+        "github-missing" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "gh_auth")
+            .copied()
+            .collect(),
+
+        // Everything except Claude auth
+        "claude-missing" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "claude_auth")
+            .copied()
+            .collect(),
+
+        // Only Homebrew missing (tests dependency blocking)
+        "homebrew-missing" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "homebrew")
+            .copied()
+            .collect(),
+
+        // Almost done - only vercel_auth left
+        "almost-done" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "vercel_auth")
+            .copied()
+            .collect(),
+
+        // Comma-separated list of specific items to pre-install
+        // e.g., "homebrew,node,git" or "homebrew,node,git,gh,gh_auth,claude,claude_auth,vercel"
+        _ => scenario
+            .split(',')
+            .map(|s| s.trim())
+            .filter_map(|s| ALL_ITEMS.iter().find(|&&item| item == s).copied())
+            .collect(),
+    }
+}
+
+/// Initialize mock state from SHIPSTUDIO_FORCE_SETUP env var
+fn initialize_mock_state() {
+    let mut initialized = MOCK_INITIALIZED.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+
+    if let Ok(scenario) = std::env::var("SHIPSTUDIO_FORCE_SETUP") {
+        let items = get_scenario_items(&scenario);
+        if let Ok(mut set) = MOCK_INSTALLED.lock() {
+            for item in items {
+                set.insert(item.to_string());
+            }
+        }
+        tracing::info!(
+            scenario = scenario,
+            "Mock mode initialized with scenario"
+        );
+    }
+}
+
 /// Check if we're in mock/debug mode
 pub fn is_mock_mode() -> bool {
-    std::env::var("SHIPSTUDIO_FORCE_SETUP").is_ok()
+    let is_mock = std::env::var("SHIPSTUDIO_FORCE_SETUP").is_ok();
+    if is_mock {
+        initialize_mock_state();
+    }
+    is_mock
 }
 
 /// Mark an item as mock-installed (for testing)

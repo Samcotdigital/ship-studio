@@ -269,9 +269,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       <div className="onboarding-content">
         <div className="onboarding-header">
           <img src="/ship_studio_full_noshadow.svg" alt="Ship Studio" className="onboarding-logo" />
-          <p>Let's get your development environment set up</p>
+          <h1>Quick Setup</h1>
           <p className="onboarding-reassurance">
-            Yeah, we know it's a pain, but once you do it once — you're good to go!
+            Most users finish in under 3 minutes. Let's get you ready to ship.
           </p>
         </div>
 

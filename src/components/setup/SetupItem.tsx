@@ -9,6 +9,7 @@ import {
   SetupItem as SetupItemType,
   SetupItemStatus,
   SETUP_PROGRESS_MESSAGES,
+  SETUP_TIME_ESTIMATES,
 } from '../../lib/setup';
 
 interface SetupItemProps {
@@ -164,29 +165,37 @@ function getActionButton(
     );
   }
 
-  // Not installed shows Install button
+  // Not installed shows Install button with time estimate
   if (item.status === 'not_installed') {
+    const timeEstimate = SETUP_TIME_ESTIMATES[item.id];
     return (
-      <button
-        className="setup-item-btn setup-item-btn-install"
-        onClick={onAction}
-        disabled={isAnyActionInProgress}
-      >
-        Install
-      </button>
+      <div className="setup-item-action-row">
+        {timeEstimate && <span className="setup-item-time-estimate">{timeEstimate}</span>}
+        <button
+          className="setup-item-btn setup-item-btn-install"
+          onClick={onAction}
+          disabled={isAnyActionInProgress}
+        >
+          Install
+        </button>
+      </div>
     );
   }
 
-  // Not authenticated shows Connect button
+  // Not authenticated shows Connect button with time estimate
   if (item.status === 'not_authenticated') {
+    const timeEstimate = SETUP_TIME_ESTIMATES[item.id];
     return (
-      <button
-        className="setup-item-btn setup-item-btn-connect"
-        onClick={onAction}
-        disabled={isAnyActionInProgress}
-      >
-        Connect
-      </button>
+      <div className="setup-item-action-row">
+        {timeEstimate && <span className="setup-item-time-estimate">{timeEstimate}</span>}
+        <button
+          className="setup-item-btn setup-item-btn-connect"
+          onClick={onAction}
+          disabled={isAnyActionInProgress}
+        >
+          Connect
+        </button>
+      </div>
     );
   }
 

@@ -107,6 +107,19 @@ export const SETUP_PROGRESS_MESSAGES: Record<string, string> = {
   vercel_auth: 'Connecting to Vercel...',
 };
 
+/** Time estimates for each setup item */
+export const SETUP_TIME_ESTIMATES: Record<string, string> = {
+  homebrew: '~30 sec',
+  node: '~10 sec',
+  git: '~5 sec',
+  gh: '~5 sec',
+  gh_auth: '~15 sec',
+  claude: '~10 sec',
+  claude_auth: '~15 sec',
+  vercel: '~10 sec',
+  vercel_auth: '~15 sec',
+};
+
 /**
  * Check if an item's dependencies are all ready.
  */
