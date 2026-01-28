@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.5
+
+- **Bug Report Button** - Floating, draggable button on all screens to report bugs via Loom video or description
+- **Main Branch Warning** - Orange branch indicator and dismissible banner when editing main/master directly
+- **Documentation** - Comprehensive CLAUDE.md update with all features, commands, and workflows
+
+
 ## What's New in v0.3.4
 
 - **AI Pull Request Generation** - Generate PR titles and descriptions automatically using Claude CLI from the Submit for Review modal
