@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.18
+
+- **Folders** - Organize projects into folders on dashboard
+- **Yolo Mode** - Auto-accept mode toggle for Claude per project
+- **UI Polish** - Health toolbar height fixes, breadcrumb navigation improvements
+
+
 ## What's New in v0.3.17
 
 - **Save button in Unsaved Changes dropdown** - Added a Save button that opens the Publish dropdown, making it clearer how to save uncommitted changes
