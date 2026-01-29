@@ -588,8 +588,8 @@ function App() {
       }, 2500);
       // Run health checks after branch switch (give files time to settle)
       setTimeout(() => {
-        healthPanelRef.current?.refreshScripts();
-        healthPanelRef.current?.runAllChecks();
+        void healthPanelRef.current?.refreshScripts();
+        void healthPanelRef.current?.runAllChecks();
       }, 1000);
     },
     [currentProject, fetchBranchInfo]

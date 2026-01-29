@@ -26,6 +26,7 @@ import {
   formatDuration,
   getFixPrompt,
 } from '../lib/health';
+import { logger } from '../lib/logger';
 import { ChevronIcon, ChevronRightIcon, SpinnerIcon, CloseIcon, CopyIcon, FileIcon } from './icons';
 
 interface CodeHealthPanelProps {
@@ -132,7 +133,9 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
 
         setCheckStates(newStates);
       } catch (e) {
-        console.error('Failed to detect health scripts:', e);
+        logger.error('Failed to detect health scripts', {
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }, [projectPath]);
 
@@ -150,9 +153,9 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
     }, [loadScriptsAndStatus, onToast]);
 
     const runCheck = useCallback(
-      async (category: ScriptCategory) => {
+      async (category: ScriptCategory): Promise<'pass' | 'fail' | undefined> => {
         const scriptName = checkStates[category].scriptName;
-        if (!scriptName || !projectPath) return;
+        if (!scriptName || !projectPath) return undefined;
 
         // Set running state
         setCheckStates((prev) => ({
@@ -185,6 +188,7 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
               `\x1b[32m✓\x1b[0m ${CATEGORY_LABELS[category]} passed \x1b[90m(${duration})\x1b[0m\r\n`
             );
             onToast?.(`${CATEGORY_LABELS[category]} passed`, 'success');
+            return 'pass';
           } else {
             emitOutput(
               `\x1b[31m✕\x1b[0m ${CATEGORY_LABELS[category]} failed \x1b[90m(${duration})\x1b[0m\r\n`
@@ -201,6 +205,7 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
               emitOutput(`\x1b[90m───────────────────────────────────────\x1b[0m\r\n`);
             }
             onToast?.(`${CATEGORY_LABELS[category]} failed`, 'error');
+            return 'fail';
           }
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
@@ -223,6 +228,7 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
             },
           }));
           onToast?.(`${CATEGORY_LABELS[category]} failed: ${message}`, 'error');
+          return 'fail';
         }
       },
       [checkStates, projectPath, onToast, emitOutput]
@@ -240,19 +246,26 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
         emitOutput(`\r\n\x1b[1m━━━ Running All Health Checks ━━━\x1b[0m\r\n\r\n`);
       }
 
+      // Track results locally to avoid stale state reads
+      let localPassed = 0;
+      let localFailed = 0;
+
       for (const category of availableCategories) {
         if (runAllAbortRef.current) break;
-        await runCheck(category);
+        const result = await runCheck(category);
+        if (result === 'pass') {
+          localPassed++;
+        } else if (result === 'fail') {
+          localFailed++;
+        }
       }
 
       if (availableCategories.length > 0 && !runAllAbortRef.current) {
-        const passed = CATEGORIES.filter((cat) => checkStates[cat].status === 'pass').length;
-        const failed = CATEGORIES.filter((cat) => checkStates[cat].status === 'fail').length;
         emitOutput(`\r\n\x1b[1m━━━ Health Checks Complete ━━━\x1b[0m\r\n`);
-        if (failed > 0) {
-          emitOutput(`\x1b[31m${failed} failed\x1b[0m, ${passed} passed\r\n\r\n`);
+        if (localFailed > 0) {
+          emitOutput(`\x1b[31m${localFailed} failed\x1b[0m, ${localPassed} passed\r\n\r\n`);
         } else {
-          emitOutput(`\x1b[32mAll ${passed} checks passed\x1b[0m\r\n\r\n`);
+          emitOutput(`\x1b[32mAll ${localPassed} checks passed\x1b[0m\r\n\r\n`);
         }
       }
 
@@ -677,7 +690,7 @@ function PackageJsonModal({ content, onClose, onCopy }: PackageJsonModalProps) {
   // Try to format the JSON nicely
   let formattedContent = content;
   try {
-    const parsed = JSON.parse(content);
+    const parsed: unknown = JSON.parse(content);
     formattedContent = JSON.stringify(parsed, null, 2);
   } catch {
     // If parsing fails, use the raw content
