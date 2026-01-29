@@ -3,6 +3,7 @@
  *
  * Provides:
  * - Search input with Cmd+K keyboard shortcut for quick filtering
+ * - "New Folder" button to create folders
  * - "New Project" button to create projects
  * - Settings button for app configuration
  *
@@ -10,7 +11,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { SearchIcon, SettingsIcon } from './icons';
+import { SearchIcon, SettingsIcon, FolderPlusIcon } from './icons';
 
 interface DashboardHeaderProps {
   searchQuery: string;
@@ -18,6 +19,7 @@ interface DashboardHeaderProps {
   onCreateProject: () => void;
   onImportProject?: () => void;
   onOpenSettings?: () => void;
+  onCreateFolder?: () => void;
 }
 
 export function DashboardHeader({
@@ -26,6 +28,7 @@ export function DashboardHeader({
   onCreateProject,
   onImportProject,
   onOpenSettings,
+  onCreateFolder,
 }: DashboardHeaderProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,6 +64,11 @@ export function DashboardHeader({
         <span className="dashboard-search-shortcut">⌘K</span>
       </div>
       <div className="dashboard-header-actions">
+        {onCreateFolder && (
+          <button className="btn-secondary btn-icon" onClick={onCreateFolder} title="New Folder">
+            <FolderPlusIcon size={16} />
+          </button>
+        )}
         {onImportProject && (
           <button className="btn-secondary" onClick={onImportProject}>
             Import

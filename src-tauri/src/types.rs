@@ -430,6 +430,42 @@ pub struct ConflictedFile {
     pub theirs_branch: String,
 }
 
+// ============ Folders ============
+
+/// Current schema version for folder config.
+pub const FOLDER_CONFIG_SCHEMA_VERSION: u32 = 1;
+
+/// Folder configuration stored in ~/ShipStudio/.shipstudio/folders.json
+#[derive(Serialize, Deserialize, Default)]
+pub struct FolderConfig {
+    pub schema_version: u32,
+    pub folders: Vec<Folder>,
+}
+
+/// A folder containing multiple projects
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    /// Array of project paths in this folder
+    pub project_paths: Vec<String>,
+    /// Unix timestamp (ms) when folder was created
+    pub created_at: u64,
+    /// Unix timestamp (ms) when folder was last updated
+    pub updated_at: u64,
+}
+
+/// Folder info for dashboard display (includes preview thumbnails)
+#[derive(Serialize)]
+pub struct FolderInfo {
+    pub id: String,
+    pub name: String,
+    pub project_count: u32,
+    /// Up to 4 thumbnails for grid preview (base64 encoded)
+    pub preview_thumbnails: Vec<Option<String>>,
+    pub updated_at: u64,
+}
+
 // ============ Assets ============
 
 /// Asset file/folder in the /public directory

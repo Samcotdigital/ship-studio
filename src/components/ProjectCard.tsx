@@ -8,8 +8,10 @@
  * @module components/ProjectCard
  */
 
+import { useState, useRef, useCallback } from 'react';
 import { DashboardProject } from '../lib/project';
-import { BranchIcon, ExternalLinkIcon, CodeIcon } from './icons';
+import { BranchIcon, ExternalLinkIcon, CodeIcon, FolderIcon, TrashIcon } from './icons';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Props for the ProjectCard component */
 interface ProjectCardProps {
@@ -25,6 +27,8 @@ interface ProjectCardProps {
   onOpenSite?: () => void;
   /** Callback to open the project in VS Code or Cursor */
   onOpenIde?: () => void;
+  /** Callback to move project to a folder */
+  onMoveToFolder?: () => void;
 }
 
 export function ProjectCard({
@@ -34,8 +38,14 @@ export function ProjectCard({
   onDelete,
   onOpenSite,
   onOpenIde,
+  onMoveToFolder,
 }: ProjectCardProps) {
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const hasChanges = project.uncommitted_count !== null && project.uncommitted_count > 0;
+
+  const closeMenu = useCallback(() => setShowMenu(false), []);
+  useClickOutside(menuRef, closeMenu, showMenu);
 
   return (
     <div className="project-card">
@@ -117,16 +127,46 @@ export function ProjectCard({
             )}
           </div>
         </div>
-        <button
-          className="project-card-menu"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          title="Delete project"
-        >
-          &bull;&bull;&bull;
-        </button>
+        <div className="project-card-menu-container" ref={menuRef}>
+          <button
+            className="project-card-menu"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(!showMenu);
+            }}
+            title="Project options"
+          >
+            &bull;&bull;&bull;
+          </button>
+          {showMenu && (
+            <div className="project-card-dropdown-menu">
+              {onMoveToFolder && (
+                <button
+                  className="project-card-menu-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                    onMoveToFolder();
+                  }}
+                >
+                  <FolderIcon size={14} />
+                  Move to Folder
+                </button>
+              )}
+              <button
+                className="project-card-menu-item project-card-menu-item-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                  onDelete();
+                }}
+              >
+                <TrashIcon size={14} />
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

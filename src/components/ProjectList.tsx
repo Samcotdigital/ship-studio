@@ -2,11 +2,12 @@
  * ProjectList component that displays the main dashboard with all projects.
  *
  * This is the home screen of the application, showing:
- * - Grid of project cards with thumbnails and metadata
+ * - Grid of folders and project cards with thumbnails and metadata
  * - Search filtering with Cmd+K keyboard shortcut
  * - Sorting options (last opened, name, last deployed)
+ * - Folder navigation with breadcrumb
  * - Integration status bar (GitHub, Vercel, Claude)
- * - Project creation and deletion
+ * - Project and folder creation/deletion
  *
  * @module components/ProjectList
  */
@@ -15,10 +16,25 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { DashboardProject, getDashboardProjects } from '../lib/project';
+import {
+  FolderInfo,
+  Folder,
+  listFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
+  getFiledProjectPaths,
+  getFolderProjects,
+  getFolder,
+  moveProjectToFolder,
+} from '../lib/folders';
 import { DashboardHeader } from './DashboardHeader';
 import { ProjectCard } from './ProjectCard';
+import { FolderCard } from './FolderCard';
 import { IntegrationBar } from './IntegrationBar';
-import { ChevronIcon, CheckIcon } from './icons';
+import { NewFolderModal } from './NewFolderModal';
+import { MoveFolderModal } from './MoveFolderModal';
+import { ChevronIcon, CheckIcon, ChevronRightIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Basic project info for selection callback */
@@ -53,9 +69,26 @@ export function ProjectList({
   onImportProject,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
+  const [folders, setFolders] = useState<FolderInfo[]>([]);
+  const [filedPaths, setFiledPaths] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<DashboardProject | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Folder navigation state
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
+  const [folderProjectPaths, setFolderProjectPaths] = useState<string[]>([]);
+
+  // Folder modal state
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState<FolderInfo | null>(null);
+  const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<FolderInfo | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+
+  // Move to folder modal state
+  const [moveProject, setMoveProject] = useState<DashboardProject | null>(null);
+  const [moveProjectFolderId, setMoveProjectFolderId] = useState<string | null>(null);
 
   // Search and sort state
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,18 +125,60 @@ export function ProjectList({
       setProjects(projectsWithThumbnails);
     } catch (error) {
       console.error('Failed to load projects:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
+  const loadFolders = async () => {
+    try {
+      const folderList = await listFolders();
+      setFolders(folderList);
+
+      const paths = await getFiledProjectPaths();
+      setFiledPaths(new Set(paths));
+    } catch (error) {
+      console.error('Failed to load folders:', error);
+    }
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    await Promise.all([loadProjects(), loadFolders()]);
+    setLoading(false);
+  };
+
+  // Load folder details when navigating into a folder
   useEffect(() => {
-    void loadProjects();
+    if (currentFolderId) {
+      getFolder(currentFolderId).then((folder) => {
+        setCurrentFolder(folder);
+      });
+      getFolderProjects(currentFolderId).then((paths) => {
+        setFolderProjectPaths(paths);
+      });
+    } else {
+      setCurrentFolder(null);
+      setFolderProjectPaths([]);
+    }
+  }, [currentFolderId]);
+
+  useEffect(() => {
+    void loadAll();
   }, []);
+
+  // Get projects to display based on current folder
+  const displayedProjects = useMemo(() => {
+    if (currentFolderId) {
+      // Show only projects in this folder
+      return projects.filter((p) => folderProjectPaths.includes(p.path));
+    } else {
+      // Show only unfiled projects (not in any folder)
+      return projects.filter((p) => !filedPaths.has(p.path));
+    }
+  }, [projects, currentFolderId, folderProjectPaths, filedPaths]);
 
   // Filtered and sorted projects
   const filteredProjects = useMemo(() => {
-    let result = [...projects];
+    let result = [...displayedProjects];
 
     // Filter by search query
     if (searchQuery) {
@@ -135,20 +210,81 @@ export function ProjectList({
     });
 
     return result;
-  }, [projects, searchQuery, sortBy]);
+  }, [displayedProjects, searchQuery, sortBy]);
+
+  // Filter folders by search query
+  const filteredFolders = useMemo(() => {
+    if (!searchQuery || currentFolderId) return folders;
+    const query = searchQuery.toLowerCase();
+    return folders.filter((f) => f.name.toLowerCase().includes(query));
+  }, [folders, searchQuery, currentFolderId]);
 
   const handleDelete = async (project: DashboardProject) => {
     setDeleting(true);
     try {
       await invoke('delete_project', { path: project.path });
       setDeleteConfirm(null);
-      await loadProjects();
+      await loadAll();
     } catch (error) {
       console.error('Failed to delete project:', error);
       alert('Failed to delete project: ' + String(error));
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleCreateFolder = async (name: string) => {
+    await createFolder(name);
+    await loadFolders();
+  };
+
+  const handleRenameFolder = async (name: string) => {
+    if (!renamingFolder) return;
+    await renameFolder(renamingFolder.id, name);
+    await loadFolders();
+  };
+
+  const handleDeleteFolder = async (folder: FolderInfo) => {
+    setDeletingFolder(true);
+    try {
+      await deleteFolder(folder.id);
+      setDeleteFolderConfirm(null);
+      await loadAll();
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      alert('Failed to delete folder: ' + String(error));
+    } finally {
+      setDeletingFolder(false);
+    }
+  };
+
+  const handleMoveProject = async (folderId: string | null) => {
+    if (!moveProject) return;
+    await moveProjectToFolder(moveProject.path, folderId);
+    setMoveProject(null);
+    setMoveProjectFolderId(null);
+    await loadAll();
+  };
+
+  const handleOpenMoveModal = async (project: DashboardProject) => {
+    // Check if project is currently in a folder
+    const paths = await getFiledProjectPaths();
+    const isInFolder = paths.includes(project.path);
+
+    if (isInFolder) {
+      // Find which folder it's in
+      for (const folder of folders) {
+        const folderPaths = await getFolderProjects(folder.id);
+        if (folderPaths.includes(project.path)) {
+          setMoveProjectFolderId(folder.id);
+          break;
+        }
+      }
+    } else {
+      setMoveProjectFolderId(null);
+    }
+
+    setMoveProject(project);
   };
 
   if (loading) {
@@ -166,6 +302,10 @@ export function ProjectList({
     last_deployed: 'Last deployed',
   };
 
+  const totalCount = currentFolderId
+    ? filteredProjects.length
+    : filteredFolders.length + filteredProjects.length;
+
   return (
     <div className="project-list dashboard">
       <DashboardHeader
@@ -173,11 +313,24 @@ export function ProjectList({
         onSearchChange={setSearchQuery}
         onCreateProject={onCreateProject}
         onImportProject={onImportProject}
+        onCreateFolder={() => setShowNewFolderModal(true)}
       />
+
+      {/* Folder breadcrumb when inside a folder */}
+      {currentFolderId && currentFolder && (
+        <div className="folder-breadcrumb">
+          <button className="folder-breadcrumb-back" onClick={() => setCurrentFolderId(null)}>
+            <ChevronRightIcon size={14} />
+            All Projects
+          </button>
+          <span className="folder-breadcrumb-separator">/</span>
+          <span className="folder-breadcrumb-current">{currentFolder.name}</span>
+        </div>
+      )}
 
       <div className="dashboard-section-header">
         <span className="dashboard-section-title">
-          Projects {filteredProjects.length > 0 && `(${filteredProjects.length})`}
+          {currentFolderId ? 'Projects' : 'All Items'} {totalCount > 0 && `(${totalCount})`}
         </span>
         <div className="dashboard-section-controls">
           <div className="sort-dropdown" ref={sortDropdownRef}>
@@ -209,12 +362,17 @@ export function ProjectList({
         </div>
       </div>
 
-      {filteredProjects.length === 0 ? (
+      {totalCount === 0 ? (
         <div className="project-list-empty">
           {searchQuery ? (
             <>
-              <p>No projects found</p>
+              <p>No items found</p>
               <p className="hint">Try a different search term</p>
+            </>
+          ) : currentFolderId ? (
+            <>
+              <p>This folder is empty</p>
+              <p className="hint">Move projects here or create a new project</p>
             </>
           ) : (
             <>
@@ -225,6 +383,18 @@ export function ProjectList({
         </div>
       ) : (
         <div className="project-grid">
+          {/* Render folders first (only at root level) */}
+          {!currentFolderId &&
+            filteredFolders.map((folder) => (
+              <FolderCard
+                key={folder.id}
+                folder={folder}
+                onOpen={() => setCurrentFolderId(folder.id)}
+                onRename={() => setRenamingFolder(folder)}
+                onDelete={() => setDeleteFolderConfirm(folder)}
+              />
+            ))}
+          {/* Render projects */}
           {filteredProjects.map((project) => (
             <ProjectCard
               key={project.path}
@@ -232,6 +402,7 @@ export function ProjectList({
               thumbnailData={project.thumbnailData}
               onSelect={() => onSelectProject(project)}
               onDelete={() => setDeleteConfirm(project)}
+              onMoveToFolder={() => handleOpenMoveModal(project)}
               onOpenSite={
                 project.production_url
                   ? () => {
@@ -247,7 +418,36 @@ export function ProjectList({
 
       <IntegrationBar />
 
-      {/* Delete Confirmation Modal */}
+      {/* New Folder Modal */}
+      <NewFolderModal
+        isOpen={showNewFolderModal}
+        onClose={() => setShowNewFolderModal(false)}
+        onCreate={handleCreateFolder}
+      />
+
+      {/* Rename Folder Modal */}
+      <NewFolderModal
+        isOpen={renamingFolder !== null}
+        onClose={() => setRenamingFolder(null)}
+        onCreate={handleRenameFolder}
+        initialName={renamingFolder?.name || ''}
+        title="Rename Folder"
+        buttonLabel="Rename"
+      />
+
+      {/* Move to Folder Modal */}
+      <MoveFolderModal
+        isOpen={moveProject !== null}
+        onClose={() => {
+          setMoveProject(null);
+          setMoveProjectFolderId(null);
+        }}
+        onSelect={handleMoveProject}
+        projectName={moveProject?.name || ''}
+        currentFolderId={moveProjectFolderId}
+      />
+
+      {/* Delete Project Confirmation Modal */}
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -255,7 +455,10 @@ export function ProjectList({
             <p>
               Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
             </p>
-            <p className="hint">This will permanently delete all files in this project.</p>
+            <p className="hint">
+              This will delete the local copy from your computer. If this project is connected to
+              GitHub, your code will remain there and you can reimport it at any time.
+            </p>
             <div className="modal-actions">
               <button onClick={() => setDeleteConfirm(null)} disabled={deleting}>
                 Cancel
@@ -266,6 +469,33 @@ export function ProjectList({
                 disabled={deleting}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Folder Confirmation Modal */}
+      {deleteFolderConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteFolderConfirm(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Folder?</h3>
+            <p>
+              Are you sure you want to delete <strong>{deleteFolderConfirm.name}</strong>?
+            </p>
+            <p className="hint">
+              Projects in this folder will not be deleted. They will appear at the root level.
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => setDeleteFolderConfirm(null)} disabled={deletingFolder}>
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                onClick={() => void handleDeleteFolder(deleteFolderConfirm)}
+                disabled={deletingFolder}
+              >
+                {deletingFolder ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

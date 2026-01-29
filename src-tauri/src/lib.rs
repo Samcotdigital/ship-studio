@@ -215,6 +215,18 @@ pub fn run() {
             commands::health::get_health_status,
             commands::health::clear_health_status,
             commands::health::get_package_json,
+            // Folders
+            commands::folders::list_folders,
+            commands::folders::create_folder,
+            commands::folders::rename_folder,
+            commands::folders::delete_folder,
+            commands::folders::add_project_to_folder,
+            commands::folders::remove_project_from_folder,
+            commands::folders::move_project_to_folder,
+            commands::folders::get_project_folder,
+            commands::folders::get_filed_project_paths,
+            commands::folders::get_folder_projects,
+            commands::folders::get_folder,
             // Logging
             logging::get_log_path,
             logging::log_frontend_event,

@@ -127,3 +127,10 @@ button:hover {
   background: var(--border);
   color: var(--text-primary);
 }
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
