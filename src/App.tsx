@@ -762,28 +762,38 @@ function App() {
   }, [currentProject, captureScreenshot]);
 
   const handleSelectProject = async (project: Project) => {
+    const totalStart = performance.now();
+    let stepStart = performance.now();
+    logger.info(`[OpenProject] Starting: ${project.name}`);
+
     // Stop any existing dev server first
     if (devServerRef.current) {
       await devServerRef.current.stop();
       devServerRef.current = null;
     }
+    logger.info(`[OpenProject] Step 1: Stop existing dev server - ${Math.round(performance.now() - stepStart)}ms`);
 
     // Kill any process on our previously used port (handles orphaned processes from this session)
+    stepStart = performance.now();
     try {
       await invoke('kill_port', { port: devServerPort });
     } catch {
       // Ignore errors - port may already be free
     }
+    logger.info(`[OpenProject] Step 2: Kill port ${devServerPort} - ${Math.round(performance.now() - stepStart)}ms`);
 
     // Clean up any orphaned PTY processes from previous operations
+    stepStart = performance.now();
     try {
       await invoke('kill_all_pty');
       await invoke('cleanup_orphaned_processes');
     } catch {
       // Ignore cleanup errors
     }
+    logger.info(`[OpenProject] Step 3: Kill PTY and cleanup orphaned processes - ${Math.round(performance.now() - stepStart)}ms`);
 
     // Find an available port (doesn't kill other apps' processes)
+    stepStart = performance.now();
     let port = PREFERRED_DEV_SERVER_PORT;
     try {
       port = await invoke<number>('find_available_port', {
@@ -792,6 +802,7 @@ function App() {
     } catch (error) {
       logger.error('Failed to find available port, using default', { error });
     }
+    logger.info(`[OpenProject] Step 4: Find available port ${port} - ${Math.round(performance.now() - stepStart)}ms`);
     setDevServerPort(port);
 
     // Clear any existing screenshot interval
@@ -818,12 +829,14 @@ function App() {
     setView('project-loading');
 
     // Fetch auto-accept mode preference for this project
+    stepStart = performance.now();
     try {
       const autoAccept = await getAutoAcceptMode(project.path);
       setAutoAcceptMode(autoAccept);
     } catch {
       setAutoAcceptMode(false);
     }
+    logger.info(`[OpenProject] Step 5: Fetch auto-accept mode - ${Math.round(performance.now() - stepStart)}ms`);
 
     // Mark project as opened (for sorting by last opened)
     void invoke('mark_project_opened', { projectPath: project.path }).catch(() => {});
@@ -831,21 +844,13 @@ function App() {
     // Ensure .shipstudio/ is gitignored (backwards compat for existing projects)
     void invoke('ensure_gitignore_has_shipstudio', { projectPath: project.path }).catch(() => {});
 
-    // Check project's GitHub and Vercel status in parallel
-    try {
-      const [ghStatus, vcStatus] = await Promise.all([
-        getProjectGitHubStatus(project.path).catch(() => null),
-        getProjectVercelStatus(project.path).catch(() => null),
-      ]);
-      dispatch({ type: 'SET_PROJECT_STATUSES', payload: { github: ghStatus, vercel: vcStatus } });
-    } catch {
-      dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
-    }
-
-    // Fetch branch info
+    // Fetch branch info (needed for UI before showing workspace)
+    stepStart = performance.now();
     await fetchBranchInfo(project.path);
+    logger.info(`[OpenProject] Step 6: Fetch branch info - ${Math.round(performance.now() - stepStart)}ms`);
 
     // Start dev server in background on the available port
+    stepStart = performance.now();
     try {
       // Clear previous output buffers
       devServerOutputRef.current = '';
@@ -865,8 +870,25 @@ function App() {
     } catch (error) {
       logger.error('Failed to start dev server', { error });
     }
+    logger.info(`[OpenProject] Step 7: Start dev server - ${Math.round(performance.now() - stepStart)}ms`);
 
     setView('workspace');
+    logger.info(`[OpenProject] Complete - Total: ${Math.round(performance.now() - totalStart)}ms`);
+
+    // Fetch GitHub and Vercel status in background (non-blocking for faster perceived load)
+    void (async () => {
+      const bgStart = performance.now();
+      try {
+        const [ghStatus, vcStatus] = await Promise.all([
+          getProjectGitHubStatus(project.path).catch(() => null),
+          getProjectVercelStatus(project.path).catch(() => null),
+        ]);
+        dispatch({ type: 'SET_PROJECT_STATUSES', payload: { github: ghStatus, vercel: vcStatus } });
+      } catch {
+        dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
+      }
+      logger.info(`[OpenProject] Background: Fetch GitHub and Vercel status - ${Math.round(performance.now() - bgStart)}ms`);
+    })();
 
     // Capture screenshots periodically - check ref to avoid stale closure
     const projectPath = project.path;

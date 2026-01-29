@@ -115,6 +115,13 @@
   background: var(--border);
 }
 
+.github-button.github-creating,
+.github-button.github-checking {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 .github-error {
   color: var(--error);
   font-size: 12px;

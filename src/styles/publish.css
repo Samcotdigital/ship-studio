@@ -46,6 +46,13 @@
   cursor: not-allowed;
 }
 
+.publish-button.publish-checking {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 .publish-button.synced {
   background: var(--bg-tertiary);
   border-color: var(--border);

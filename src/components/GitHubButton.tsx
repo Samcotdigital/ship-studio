@@ -192,6 +192,16 @@ export function GitHubButton({
     );
   }
 
+  // Still checking GitHub status - show loading state
+  if (projectStatus === null) {
+    return (
+      <button className="github-button github-checking" disabled title="Checking GitHub status...">
+        <GitHubIcon />
+        Checking...
+      </button>
+    );
+  }
+
   // Project not connected - show Create Repo button
   return (
     <>

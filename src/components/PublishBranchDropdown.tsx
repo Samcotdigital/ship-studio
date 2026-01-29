@@ -297,6 +297,18 @@ export function PublishBranchDropdown({
       : null;
   const previewUrl = getPreviewUrl();
 
+  // Still checking GitHub status - show loading state
+  if (projectGithubStatus === null) {
+    return (
+      <div className="publish-dropdown" ref={dropdownRef}>
+        <button className="publish-button publish-checking" disabled title="Checking status...">
+          Checking...
+          <ChevronIcon />
+        </button>
+      </div>
+    );
+  }
+
   // If no GitHub repo, show disabled state
   if (!hasGitHubRepo) {
     return (
