@@ -661,10 +661,6 @@
   transition: all 0.15s;
 }
 
-.folder-breadcrumb-back svg {
-  transform: rotate(180deg);
-}
-
 .folder-breadcrumb-back:hover {
   background: var(--bg-tertiary);
   border-color: var(--text-muted);

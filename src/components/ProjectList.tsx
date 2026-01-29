@@ -34,7 +34,7 @@ import { FolderCard } from './FolderCard';
 import { IntegrationBar } from './IntegrationBar';
 import { NewFolderModal } from './NewFolderModal';
 import { MoveFolderModal } from './MoveFolderModal';
-import { ChevronIcon, CheckIcon, ChevronRightIcon } from './icons';
+import { ChevronIcon, CheckIcon, ArrowLeftIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Basic project info for selection callback */
@@ -333,7 +333,7 @@ export function ProjectList({
       {currentFolderId && currentFolder && (
         <div className="folder-breadcrumb">
           <button className="folder-breadcrumb-back" onClick={() => setCurrentFolderId(null)}>
-            <ChevronRightIcon size={14} />
+            <ArrowLeftIcon size={14} />
             All Projects
           </button>
           <span className="folder-breadcrumb-separator">/</span>
@@ -343,7 +343,7 @@ export function ProjectList({
 
       <div className="dashboard-section-header">
         <span className="dashboard-section-title">
-          {currentFolderId ? 'Projects' : 'All Items'} {totalCount > 0 && `(${totalCount})`}
+          {currentFolderId ? 'Projects' : 'All Projects'} {totalCount > 0 && `(${totalCount})`}
         </span>
         <div className="dashboard-section-controls">
           <div className="sort-dropdown" ref={sortDropdownRef}>
