@@ -3,11 +3,13 @@
 .health-panel {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 9px 12px;
   background: #252525;
   border-bottom: 1px solid var(--border);
   gap: 8px;
-  min-height: 36px;
+  min-height: 48px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .health-toggle {
@@ -23,6 +25,8 @@
   transition: all 0.15s;
   font-size: 12px;
   font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .health-toggle:hover {
@@ -46,6 +50,8 @@
   align-items: center;
   gap: 6px;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .health-button-wrapper {
@@ -58,7 +64,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  height: 28px;
+  padding: 0 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid transparent;
   border-radius: 6px;
@@ -66,6 +73,8 @@
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .health-button:hover {
@@ -126,7 +135,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 4px 12px;
+  height: 28px;
+  padding: 0 12px;
   margin-left: auto;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
@@ -135,6 +145,8 @@
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .health-run-all:hover {
@@ -165,6 +177,8 @@
   font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
   cursor: pointer;
   transition: all 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .health-auto-run:hover {
@@ -202,6 +216,7 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .health-pkg-json:hover {
@@ -228,6 +243,7 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .health-refresh:hover {
@@ -265,7 +281,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 22px;
+  height: 28px;
   padding: 0 8px;
   margin-left: 4px;
   background: rgba(59, 142, 234, 0.15);
@@ -275,6 +291,8 @@
   font-size: 11px;
   font-weight: 500;
   font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .health-countdown svg {
@@ -504,7 +522,8 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 4px 10px;
+  height: 28px;
+  padding: 0 10px;
   background: rgba(255, 193, 7, 0.1);
   border: 1px solid rgba(255, 193, 7, 0.3);
   border-radius: 6px;
@@ -513,6 +532,8 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .health-suggestions-btn:hover {
