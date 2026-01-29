@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.14
+
+- **Improved preview stability** - Added tolerance for temporary dev server slowdowns during health checks to prevent false crash detection
+
 ## What's New in v0.3.13
 
 - **Browser picker** - Hover over 'Open in Browser' to choose a specific browser (Chrome, Safari, Firefox, Arc, Brave, Edge)
