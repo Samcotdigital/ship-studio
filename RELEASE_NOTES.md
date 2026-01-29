@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.16
+
+- **Clear cache on server restart** - Restart Server now clears .next and other cache directories for a fresh build
+
 ## What's New in v0.3.15
 
 - **Restart Dev Server** - Added a button to restart the dev server without leaving the project. Shows a loading overlay on the preview while restarting.
