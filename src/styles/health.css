@@ -148,6 +148,47 @@
   cursor: wait;
 }
 
+.health-auto-run {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.health-auto-run:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.health-auto-run.active {
+  background: rgba(59, 142, 234, 0.15);
+  border-color: rgba(59, 142, 234, 0.4);
+  color: #3b8eea;
+}
+
+.health-auto-run.active:hover {
+  background: rgba(59, 142, 234, 0.2);
+  border-color: rgba(59, 142, 234, 0.6);
+}
+
+.health-auto-run:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .health-pkg-json {
   display: flex;
   align-items: center;

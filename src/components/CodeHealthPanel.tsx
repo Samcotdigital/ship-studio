@@ -76,6 +76,13 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
+    // Auto-run state
+    const AUTO_RUN_INTERVAL_SECONDS = 15 * 60; // 15 minutes
+    const [isAutoRunEnabled, setIsAutoRunEnabled] = useState(false);
+    const [autoRunSecondsRemaining, setAutoRunSecondsRemaining] =
+      useState(AUTO_RUN_INTERVAL_SECONDS);
+    const autoRunIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     // Helper to emit output to logs
     const emitOutput = useCallback(
       (message: string) => {
@@ -282,6 +289,51 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
       [runAllChecks, loadScriptsAndStatus]
     );
 
+    // Auto-run timer effect
+    useEffect(() => {
+      if (isAutoRunEnabled) {
+        // Start countdown timer
+        autoRunIntervalRef.current = setInterval(() => {
+          setAutoRunSecondsRemaining((prev) => {
+            if (prev <= 1) {
+              // Time's up - run all checks and reset
+              void runAllChecks();
+              return AUTO_RUN_INTERVAL_SECONDS;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        // Clear timer and reset countdown
+        if (autoRunIntervalRef.current) {
+          clearInterval(autoRunIntervalRef.current);
+          autoRunIntervalRef.current = null;
+        }
+        setAutoRunSecondsRemaining(AUTO_RUN_INTERVAL_SECONDS);
+      }
+
+      return () => {
+        if (autoRunIntervalRef.current) {
+          clearInterval(autoRunIntervalRef.current);
+          autoRunIntervalRef.current = null;
+        }
+      };
+    }, [isAutoRunEnabled, runAllChecks, AUTO_RUN_INTERVAL_SECONDS]);
+
+    // Format seconds as MM:SS
+    const formatCountdown = (seconds: number): string => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const handleAutoRunToggle = () => {
+      setIsAutoRunEnabled((prev) => !prev);
+      if (!isAutoRunEnabled) {
+        onToast?.('Auto-run enabled (every 15 min)', 'success');
+      }
+    };
+
     const handleButtonClick = (category: ScriptCategory) => {
       const state = checkStates[category];
       if (state.status === 'running' || state.status === 'missing') return;
@@ -385,6 +437,46 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
                 title="Run all available checks"
               >
                 {isRunningAll ? <SpinnerIcon size={12} /> : 'Run All'}
+              </button>
+
+              <button
+                className={`health-auto-run ${isAutoRunEnabled ? 'active' : ''}`}
+                onClick={handleAutoRunToggle}
+                disabled={isRunningAll}
+                title={
+                  isAutoRunEnabled
+                    ? `Auto-run in ${formatCountdown(autoRunSecondsRemaining)} (click to disable)`
+                    : 'Enable auto-run every 15 minutes'
+                }
+              >
+                {isAutoRunEnabled ? (
+                  <>
+                    <svg
+                      width={10}
+                      height={10}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    <span>{formatCountdown(autoRunSecondsRemaining)}</span>
+                  </>
+                ) : (
+                  <svg
+                    width={12}
+                    height={12}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                )}
               </button>
 
               <button
