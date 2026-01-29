@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.17
+
+- **Save button in Unsaved Changes dropdown** - Added a Save button that opens the Publish dropdown, making it clearer how to save uncommitted changes
+
 ## What's New in v0.3.16
 
 - **Clear cache on server restart** - Restart Server now clears .next and other cache directories for a fresh build
