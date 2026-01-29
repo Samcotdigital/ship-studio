@@ -509,3 +509,37 @@ pub async fn delete_project(path: String) -> Result<(), String> {
     std::fs::remove_dir_all(project_path).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Clears project cache directories (.next, node_modules/.cache, etc.)
+/// Used when restarting the dev server to ensure a fresh build.
+#[tauri::command]
+pub async fn clear_project_cache(project_path: String) -> Result<(), String> {
+    let project = validate_project_path(&project_path)?;
+
+    // List of cache directories to clear
+    let cache_dirs = [
+        ".next",                      // Next.js build cache
+        "node_modules/.cache",        // Various build tool caches (babel, eslint, etc.)
+        ".turbo",                     // Turborepo cache
+        ".swc",                       // SWC compiler cache
+    ];
+
+    let mut errors = Vec::new();
+
+    for cache_dir in &cache_dirs {
+        let cache_path = project.join(cache_dir);
+        if cache_path.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&cache_path) {
+                errors.push(format!("Failed to remove {}: {}", cache_dir, e));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        // Log errors but don't fail - some caches might be locked
+        tracing::warn!("Some cache directories could not be cleared: {:?}", errors);
+        Ok(())
+    }
+}

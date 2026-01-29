@@ -930,6 +930,13 @@ function App() {
         // Ignore if nothing to kill
       }
 
+      // Clear project cache (.next, node_modules/.cache, etc.)
+      try {
+        await invoke('clear_project_cache', { projectPath: currentProject.path });
+      } catch {
+        // Non-critical - continue even if cache clear fails
+      }
+
       // Start new dev server
       devServerRef.current = await startDevServer(currentProject.path, devServerPort, (data) => {
         devServerOutputRef.current += data;
