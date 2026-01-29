@@ -37,6 +37,7 @@ import { SubmitReviewModal } from './components/SubmitReviewModal';
 import { ConflictResolutionModal } from './components/ConflictResolutionModal';
 import { BugReportButton } from './components/BugReportButton';
 import { MainBranchBanner } from './components/MainBranchBanner';
+import { BrowserDropdown } from './components/BrowserDropdown';
 import {
   BranchInfo,
   PullRequestInfo,
@@ -63,9 +64,7 @@ import {
   PlusIcon,
   ImageIcon,
   TerminalIcon,
-  ExternalLinkIcon,
 } from './components/icons';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { startDevServer, Project, DevServerHandle } from './lib/project';
 import {
   checkGitHubCliStatus,
@@ -1173,14 +1172,10 @@ function App() {
                   </div>
                   {isPreviewHidden && (
                     <div className="preview-hidden-actions">
-                      <button
-                        className="show-preview-btn"
-                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                        title="Open in Browser"
-                      >
-                        <ExternalLinkIcon size={14} />
-                        <span>Open in Browser</span>
-                      </button>
+                      <BrowserDropdown
+                        url={`http://localhost:${devServerPort}`}
+                        buttonClassName="show-preview-btn"
+                      />
                       <button
                         className="show-preview-btn"
                         onClick={() => setIsPreviewHidden(false)}
@@ -1318,14 +1313,10 @@ function App() {
                     </div>
                     <div className="preview-tabs-divider" />
                     <div className="preview-actions">
-                      <button
-                        className="preview-action-btn"
-                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                        title="Open in Browser"
-                      >
-                        <ExternalLinkIcon size={14} />
-                        <span>Open in Browser</span>
-                      </button>
+                      <BrowserDropdown
+                        url={`http://localhost:${devServerPort}`}
+                        buttonClassName="preview-action-btn"
+                      />
                       <button
                         className="preview-action-btn"
                         onClick={() => setIsPreviewHidden(true)}
@@ -1341,14 +1332,10 @@ function App() {
                     <span className="preview-label">Preview</span>
                     <div className="preview-tabs-divider" />
                     <div className="preview-actions">
-                      <button
-                        className="preview-action-btn"
-                        onClick={() => void openUrl(`http://localhost:${devServerPort}`)}
-                        title="Open in Browser"
-                      >
-                        <ExternalLinkIcon size={14} />
-                        <span>Open in Browser</span>
-                      </button>
+                      <BrowserDropdown
+                        url={`http://localhost:${devServerPort}`}
+                        buttonClassName="preview-action-btn"
+                      />
                       <button
                         className="preview-action-btn"
                         onClick={() => setIsPreviewHidden(true)}

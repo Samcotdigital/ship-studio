@@ -134,6 +134,8 @@ pub fn run() {
             // IDE & Webviews
             commands::ide::check_ide_availability,
             commands::ide::open_in_ide,
+            commands::ide::check_browser_availability,
+            commands::ide::open_url_in_browser,
             commands::ide::create_preview_webview,
             commands::ide::navigate_preview_webview,
             commands::ide::resize_preview_webview,

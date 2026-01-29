@@ -1,12 +1,28 @@
-//! # IDE and Webview Commands
+//! # IDE, Browser, and Webview Commands
 //!
-//! Commands for IDE integration, preview webviews, and screenshots.
+//! Commands for IDE integration, browser selection, preview webviews, and screenshots.
 
-use crate::types::IdeAvailability;
+use crate::types::{BrowserInfo, IdeAvailability};
 use crate::utils::validate_project_path;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{Manager, Webview, WebviewUrl};
+
+/// Browser configurations for macOS
+/// Tuple: (id, display_name, app_path)
+#[cfg(target_os = "macos")]
+const MACOS_BROWSERS: &[(&str, &str, &str)] = &[
+    ("safari", "Safari", "/Applications/Safari.app"),
+    (
+        "chrome",
+        "Google Chrome",
+        "/Applications/Google Chrome.app",
+    ),
+    ("firefox", "Firefox", "/Applications/Firefox.app"),
+    ("arc", "Arc", "/Applications/Arc.app"),
+    ("brave", "Brave", "/Applications/Brave Browser.app"),
+    ("edge", "Microsoft Edge", "/Applications/Microsoft Edge.app"),
+];
 
 /// Tracks whether a preview webview currently exists
 static PREVIEW_WEBVIEW_EXISTS: Mutex<bool> = Mutex::new(false);
@@ -65,6 +81,59 @@ pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String
     }
 
     Ok(())
+}
+
+/// Check which browsers are available on the system
+#[tauri::command]
+pub async fn check_browser_availability() -> Vec<BrowserInfo> {
+    #[cfg(target_os = "macos")]
+    {
+        MACOS_BROWSERS
+            .iter()
+            .filter_map(|(id, name, path)| {
+                if std::path::Path::new(path).exists() {
+                    Some(BrowserInfo {
+                        id: id.to_string(),
+                        name: name.to_string(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // For non-macOS, return empty list (future: implement for Windows/Linux)
+        vec![]
+    }
+}
+
+/// Open a URL in a specific browser
+#[tauri::command]
+pub async fn open_url_in_browser(url: String, browser_id: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let app_name = MACOS_BROWSERS
+            .iter()
+            .find(|(id, _, _)| *id == browser_id)
+            .map(|(_, name, _)| *name)
+            .ok_or_else(|| format!("Unknown browser: {}", browser_id))?;
+
+        Command::new("open")
+            .args(["-a", app_name, &url])
+            .spawn()
+            .map_err(|e| format!("Failed to open in {}: {}", browser_id, e))?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (url, browser_id);
+        Err("Browser selection not supported on this platform".to_string())
+    }
 }
 
 /// Creates a native child webview at the specified position.

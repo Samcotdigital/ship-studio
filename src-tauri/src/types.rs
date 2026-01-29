@@ -165,6 +165,17 @@ pub struct IdeAvailability {
     pub cursor: bool,
 }
 
+// ============ Browser ============
+
+/// Information about an available browser
+#[derive(Serialize)]
+pub struct BrowserInfo {
+    /// Unique identifier (e.g., "chrome", "safari")
+    pub id: String,
+    /// Display name (e.g., "Google Chrome", "Safari")
+    pub name: String,
+}
+
 // ============ Claude Integration ============
 
 #[derive(Serialize)]

@@ -17,6 +17,7 @@
 @import './env-editor.css';
 @import './assets-panel.css';
 @import './ide-dropdown.css';
+@import './browser-dropdown.css';
 @import './dashboard.css';
 @import './update-banner.css';
 @import './branches.css';
