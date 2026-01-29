@@ -299,8 +299,16 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }, [devServerUrl, retryCount]);
 
   // Periodic health check after server is ready - detect if it crashes
+  // Use a ref to track consecutive failures (allows tolerance for temporary slowdowns)
+  const healthCheckFailuresRef = useRef(0);
+  const HEALTH_CHECK_MAX_FAILURES = 3; // Allow 3 consecutive failures before showing error
+
   useEffect(() => {
-    if (!serverReady) return;
+    if (!serverReady) {
+      // Reset failure count when server is not ready
+      healthCheckFailuresRef.current = 0;
+      return;
+    }
 
     const healthCheck = async () => {
       try {
@@ -313,12 +321,22 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         });
 
         clearTimeout(timeoutId);
+        // Reset failure count on success
+        healthCheckFailuresRef.current = 0;
       } catch {
-        // Server stopped responding - show error state
-        console.warn('[Preview] Dev server health check failed - server may have crashed');
-        setServerReady(false);
-        setHasError(true);
-        setIsLoading(false);
+        // Increment failure count
+        healthCheckFailuresRef.current += 1;
+        console.warn(
+          `[Preview] Dev server health check failed (${healthCheckFailuresRef.current}/${HEALTH_CHECK_MAX_FAILURES})`
+        );
+
+        // Only show error after consecutive failures (tolerates temporary slowdowns)
+        if (healthCheckFailuresRef.current >= HEALTH_CHECK_MAX_FAILURES) {
+          console.warn('[Preview] Dev server appears to have crashed after multiple failed health checks');
+          setServerReady(false);
+          setHasError(true);
+          setIsLoading(false);
+        }
       }
     };
 
