@@ -86,7 +86,7 @@ import {
   ProjectVercelStatus,
 } from './lib/vercel';
 import { checkClaudeCliStatus, ClaudeCliStatus } from './lib/claude';
-import { getFullSetupStatus } from './lib/setup';
+import { getFullSetupStatus, quickSetupCheck, markSetupComplete } from './lib/setup';
 import { UpdateBanner } from './components/UpdateBanner';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from './lib/logger';
@@ -358,10 +358,22 @@ function App() {
     void checkSetup();
   }, []);
 
-  const checkSetup = async () => {
+  const checkSetup = async (forceFullCheck = false) => {
     setView('loading');
     try {
-      // Get full setup status (tools + auth)
+      // Fast path: if setup was previously completed, try quick check first
+      if (!forceFullCheck) {
+        const quickCheck = await quickSetupCheck();
+        if (quickCheck.setupCompleteCached && quickCheck.allPresent) {
+          // Setup was completed before and all binaries still exist
+          // Show projects immediately, verify auth in background
+          setView('projects');
+          void verifySetupInBackground();
+          return;
+        }
+      }
+
+      // Slow path: full setup check (first launch or something missing)
       const setupStatus = await getFullSetupStatus();
 
       // Check GitHub, Vercel, and Claude status in parallel
@@ -401,6 +413,9 @@ function App() {
 
       // Use full setup status to determine if onboarding is needed
       if (setupStatus.allReady) {
+        // Persist setup complete for existing users upgrading to this version
+        // (they already completed onboarding but don't have the cached state yet)
+        void markSetupComplete();
         setView('projects');
       } else {
         setView('onboarding');
@@ -408,6 +423,60 @@ function App() {
     } catch (error) {
       logger.error('Failed to check prerequisites', { error });
       setView('onboarding');
+    }
+  };
+
+  // Background verification for optimistic loading
+  const verifySetupInBackground = async () => {
+    try {
+      // Full verification of auth status
+      const [ghStatus, vcStatus, clStatus] = await Promise.all([
+        checkGitHubCliStatus(),
+        checkVercelCliStatus(),
+        checkClaudeCliStatus(),
+      ]);
+
+      let ghUsername: string | null = null;
+      if (ghStatus.authenticated) {
+        try {
+          ghUsername = await getGitHubUsername();
+        } catch {
+          // Ignore - username is optional
+        }
+      }
+
+      let vcUsername: string | null = null;
+      if (vcStatus.authenticated) {
+        try {
+          vcUsername = await getVercelUsername();
+        } catch {
+          // Ignore - username is optional
+        }
+      }
+
+      // Update CLI states
+      dispatch({
+        type: 'SET_ALL_CLI',
+        payload: {
+          github: { cliStatus: ghStatus, username: ghUsername },
+          vercel: { cliStatus: vcStatus, username: vcUsername },
+          claude: { cliStatus: clStatus },
+        },
+      });
+
+      // Check if any auth is now missing
+      const setupStatus = await getFullSetupStatus();
+      if (!setupStatus.allReady) {
+        // Something is no longer configured - redirect to onboarding
+        const missingItems = setupStatus.items
+          .filter((i) => i.status !== 'ready')
+          .map((i) => i.friendlyName);
+        logger.warn('Background verification found missing setup items', { missingItems });
+        // Redirect to onboarding to fix the issues
+        setView('onboarding');
+      }
+    } catch (error) {
+      logger.error('Background setup verification failed', { error });
     }
   };
 
@@ -1124,11 +1193,18 @@ function App() {
   }
 
   if (view === 'onboarding') {
+    const handleOnboardingComplete = async () => {
+      // Persist that setup is complete so future launches are fast
+      await markSetupComplete();
+      // Force full check to update all CLI states
+      void checkSetup(true);
+    };
+
     return (
       <>
         <div className="app">
           <UpdateBanner />
-          <OnboardingScreen onComplete={() => void checkSetup()} />
+          <OnboardingScreen onComplete={() => void handleOnboardingComplete()} />
         </div>
         <BugReportButton />
       </>

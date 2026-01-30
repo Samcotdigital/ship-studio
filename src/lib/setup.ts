@@ -47,6 +47,14 @@ export interface FullSetupStatus {
   items: SetupItem[];
 }
 
+/** Quick setup check result (fast Tier-1 check) */
+export interface QuickSetupCheck {
+  /** Whether all binaries and auth files exist */
+  allPresent: boolean;
+  /** Whether we have a cached setup_complete state */
+  setupCompleteCached: boolean;
+}
+
 /** Progress event emitted during installation */
 export interface SetupProgress {
   /** Item being worked on */
@@ -209,6 +217,29 @@ export async function startClaudeAuth(): Promise<string> {
  */
 export async function checkClaudeAuthStatus(): Promise<boolean> {
   return invoke<boolean>('check_claude_auth_status');
+}
+
+/**
+ * Quick setup check - only checks binary/file existence (no subprocess calls).
+ * Returns in ~10ms vs 2-5 seconds for full setup check.
+ */
+export async function quickSetupCheck(): Promise<QuickSetupCheck> {
+  return invoke<QuickSetupCheck>('quick_setup_check');
+}
+
+/**
+ * Mark setup as complete (persists to disk).
+ * Called when onboarding finishes successfully.
+ */
+export async function markSetupComplete(): Promise<void> {
+  return invoke('mark_setup_complete');
+}
+
+/**
+ * Reset setup state (for testing/debugging).
+ */
+export async function resetSetupState(): Promise<void> {
+  return invoke('reset_setup_state');
 }
 
 /**

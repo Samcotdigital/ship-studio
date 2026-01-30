@@ -5,12 +5,69 @@
 use crate::commands::claude::find_claude_binary;
 use crate::commands::github::get_gh_command;
 use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
-use crate::types::{FullSetupStatus, SetupItemInfo, SetupItemStatus};
+use crate::types::{AppState, FullSetupStatus, QuickSetupCheck, SetupItemInfo, SetupItemStatus};
 use crate::utils::{check_homebrew, find_executable, get_brew_command};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
+
+// ============ App State Persistence ============
+
+/// Get the app state file path
+fn get_app_state_path() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::home_dir()
+            .map(|h| h.join("Library/Application Support/ShipStudio/app_state.json"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/ship-studio-app-state.json"))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        dirs::data_local_dir()
+            .map(|d| d.join("ShipStudio/app_state.json"))
+            .unwrap_or_else(|| PathBuf::from("C:/temp/ship-studio-app-state.json"))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        dirs::data_local_dir()
+            .map(|d| d.join("ship-studio/app_state.json"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/ship-studio-app-state.json"))
+    }
+}
+
+/// Read the persisted app state
+fn read_app_state() -> AppState {
+    let path = get_app_state_path();
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        AppState::default()
+    }
+}
+
+/// Write the app state to disk
+fn write_app_state(state: &AppState) -> Result<(), String> {
+    let path = get_app_state_path();
+
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create app state directory: {}", e))?;
+    }
+
+    let json = serde_json::to_string_pretty(state)
+        .map_err(|e| format!("Failed to serialize app state: {}", e))?;
+
+    std::fs::write(&path, json).map_err(|e| format!("Failed to write app state: {}", e))
+}
 
 // Mock state for testing - tracks which items have been "installed" in debug mode
 lazy_static::lazy_static! {
@@ -470,6 +527,82 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         .all(|i| matches!(i.status, SetupItemStatus::Ready));
 
     FullSetupStatus { all_ready, items }
+}
+
+/// Quick setup check - only checks binary/file existence (no subprocess calls)
+/// This is ~10ms vs 2-5 seconds for full setup check
+#[tauri::command]
+pub async fn quick_setup_check() -> QuickSetupCheck {
+    // Check persisted state first
+    let app_state = read_app_state();
+
+    if !app_state.setup_complete {
+        return QuickSetupCheck {
+            all_present: false,
+            setup_complete_cached: false,
+        };
+    }
+
+    // Fast Tier-1 checks: binary existence only (no --version calls)
+    let brew_present = check_homebrew().0;
+    let node_present = find_executable("node").is_some();
+    let git_present = find_executable("git").is_some();
+    let gh_present = find_executable("gh").is_some();
+    let claude_present = find_claude_binary().is_some();
+    let vercel_present = find_vercel_binary().is_some();
+
+    // Fast auth checks: file/directory existence only
+    let claude_auth_present = if let Some(home) = dirs::home_dir() {
+        let claude_dir = home.join(".claude");
+        claude_dir.join("settings.json").exists()
+            || claude_dir.join("statsig").is_dir()
+            || claude_dir.join("projects").is_dir()
+    } else {
+        false
+    };
+
+    // For gh_auth and vercel_auth, we trust the cached state since checking requires subprocess
+    // These will be verified in the background after showing projects
+
+    let all_present = brew_present
+        && node_present
+        && git_present
+        && gh_present
+        && claude_present
+        && vercel_present
+        && claude_auth_present;
+
+    QuickSetupCheck {
+        all_present,
+        setup_complete_cached: true,
+    }
+}
+
+/// Mark setup as complete (persists to disk)
+#[tauri::command]
+pub async fn mark_setup_complete() -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    let state = AppState {
+        setup_complete: true,
+        setup_completed_at: Some(timestamp),
+    };
+
+    write_app_state(&state)?;
+    tracing::info!("Setup marked as complete");
+    Ok(())
+}
+
+/// Clear setup complete flag (for testing/reset)
+#[tauri::command]
+pub async fn reset_setup_state() -> Result<(), String> {
+    let state = AppState::default();
+    write_app_state(&state)?;
+    tracing::info!("Setup state reset");
+    Ok(())
 }
 
 /// Install Homebrew

@@ -624,3 +624,23 @@ pub struct FullSetupStatus {
     pub all_ready: bool,
     pub items: Vec<SetupItemInfo>,
 }
+
+/// Quick setup check result (fast binary/file existence only)
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickSetupCheck {
+    /// Whether all binaries and auth files exist (fast check)
+    pub all_present: bool,
+    /// Whether we have a cached setup_complete state
+    pub setup_complete_cached: bool,
+}
+
+/// Persisted app-level state (stored in app data directory)
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppState {
+    /// Whether full setup has been completed at least once
+    pub setup_complete: bool,
+    /// Timestamp when setup was completed (Unix ms)
+    pub setup_completed_at: Option<u64>,
+}

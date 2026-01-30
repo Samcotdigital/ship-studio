@@ -216,6 +216,9 @@ pub fn run() {
             commands::setup::check_claude_auth_status,
             commands::setup::start_vercel_auth,
             commands::setup::cleanup_auth_processes,
+            commands::setup::quick_setup_check,
+            commands::setup::mark_setup_complete,
+            commands::setup::reset_setup_state,
             // Assets
             commands::assets::list_assets,
             commands::assets::upload_asset,
