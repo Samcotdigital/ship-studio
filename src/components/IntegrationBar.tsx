@@ -24,7 +24,14 @@ import {
 } from './icons';
 import { getFullSetupStatus, SetupItem, SETUP_ITEM_ORDER } from '../lib/setup';
 
-export function IntegrationBar() {
+interface IntegrationBarProps {
+  /** Callback to connect GitHub account */
+  onGitHubConnect?: () => void;
+  /** Callback to connect Vercel account */
+  onVercelConnect?: () => void;
+}
+
+export function IntegrationBar({ onGitHubConnect, onVercelConnect }: IntegrationBarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [setupItems, setSetupItems] = useState<SetupItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +85,13 @@ export function IntegrationBar() {
     return item.status === 'not_installed' ? 'Not installed' : 'Not connected';
   };
 
+  // Get connect handler for auth items
+  const getConnectHandler = (itemId: string) => {
+    if (itemId === 'gh_auth') return onGitHubConnect;
+    if (itemId === 'vercel_auth') return onVercelConnect;
+    return undefined;
+  };
+
   return (
     <div className={`integration-bar ${isExpanded ? 'expanded' : ''}`}>
       <button className="integration-bar-toggle" onClick={() => setIsExpanded(!isExpanded)}>
@@ -107,22 +121,38 @@ export function IntegrationBar() {
 
       {isExpanded && (
         <div className="integration-bar-content">
-          {setupItems.map((item) => (
-            <div
-              key={item.id}
-              className={`integration-bar-item ${item.status === 'ready' ? 'connected' : ''}`}
-            >
-              <div className="integration-bar-item-icon">{getItemIcon(item.id)}</div>
-              <div className="integration-bar-item-info">
-                <span className="integration-bar-item-name">{item.friendlyName}</span>
-                <span
-                  className={`integration-bar-item-status ${item.status === 'ready' ? 'success' : ''}`}
-                >
-                  {getStatusText(item)}
-                </span>
+          {setupItems.map((item) => {
+            const connectHandler = getConnectHandler(item.id);
+            const showConnectButton = item.status !== 'ready' && connectHandler;
+
+            return (
+              <div
+                key={item.id}
+                className={`integration-bar-item ${item.status === 'ready' ? 'connected' : ''}`}
+              >
+                <div className="integration-bar-item-icon">{getItemIcon(item.id)}</div>
+                <div className="integration-bar-item-info">
+                  <span className="integration-bar-item-name">{item.friendlyName}</span>
+                  <span
+                    className={`integration-bar-item-status ${item.status === 'ready' ? 'success' : ''}`}
+                  >
+                    {getStatusText(item)}
+                  </span>
+                </div>
+                {showConnectButton && (
+                  <button
+                    className="integration-bar-item-connect"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      connectHandler();
+                    }}
+                  >
+                    Connect
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

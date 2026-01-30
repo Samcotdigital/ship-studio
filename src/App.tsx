@@ -521,6 +521,14 @@ function App() {
     });
   }, []);
 
+  const handleVercelConnectFromOverlay = useCallback(() => {
+    setAuthTerminalConfig({
+      service: 'vercel',
+      command: 'vercel',
+      args: ['login'],
+    });
+  }, []);
+
   // Handle auth terminal exit
   const handleAuthTerminalExit = useCallback(
     async (exitCode: number | null) => {
@@ -1266,6 +1274,8 @@ function App() {
             onImportProject={handleImportProject}
             isGitHubAuthenticated={integrations.github.cliStatus.authenticated}
             onGitHubConnectForImport={() => void handleGitHubConnectFromOverlay()}
+            onGitHubConnect={handleGitHubConnectFromOverlay}
+            onVercelConnect={handleVercelConnectFromOverlay}
           />
           {showCreateModal && (
             <CreateProject

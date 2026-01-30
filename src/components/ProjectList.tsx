@@ -70,6 +70,10 @@ interface ProjectListProps {
   isGitHubAuthenticated?: boolean;
   /** Callback when user tries to import without GitHub auth */
   onGitHubConnectForImport?: () => void;
+  /** Callback to connect GitHub account */
+  onGitHubConnect?: () => void;
+  /** Callback to connect Vercel account */
+  onVercelConnect?: () => void;
 }
 
 export function ProjectList({
@@ -78,6 +82,8 @@ export function ProjectList({
   onImportProject,
   isGitHubAuthenticated = true,
   onGitHubConnectForImport,
+  onGitHubConnect,
+  onVercelConnect,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -459,7 +465,7 @@ export function ProjectList({
         </div>
       )}
 
-      <IntegrationBar />
+      <IntegrationBar onGitHubConnect={onGitHubConnect} onVercelConnect={onVercelConnect} />
 
       {/* New Folder Modal */}
       <NewFolderModal

@@ -451,6 +451,24 @@
   cursor: not-allowed;
 }
 
+.integration-bar-item-connect {
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+}
+
+.integration-bar-item-connect:hover {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
 /* ============ Folder Card Styles ============ */
 
 .folder-card {
