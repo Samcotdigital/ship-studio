@@ -27,6 +27,7 @@ const TYPECHECK_PATTERNS: &[&str] = &[
     "tsc:check",
     "check:types",
     "types:check",
+    "check", // SvelteKit uses "check" for svelte-check
 ];
 const FORMAT_PATTERNS: &[&str] = &[
     "format:check",
@@ -113,7 +114,16 @@ fn generate_suggestions(
 
     // Typecheck suggestions
     if existing_typecheck.is_none() {
-        if is_package_installed(package_json, "typescript") {
+        // SvelteKit uses svelte-check
+        if is_package_installed(package_json, "svelte-check") {
+            suggestions.push(ScriptSuggestion {
+                category: ScriptCategory::Typecheck,
+                script_name: "check".to_string(),
+                script_command: "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+                    .to_string(),
+                reason: "svelte-check is installed".to_string(),
+            });
+        } else if is_package_installed(package_json, "typescript") {
             suggestions.push(ScriptSuggestion {
                 category: ScriptCategory::Typecheck,
                 script_name: "typecheck".to_string(),
