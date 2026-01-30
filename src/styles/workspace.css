@@ -176,6 +176,9 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 4px;
+  /* Establish stacking context so dropdowns appear above preview iframe */
+  position: relative;
+  z-index: 10;
 }
 
 .preview-tabs-bar-simple {

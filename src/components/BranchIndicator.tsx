@@ -54,7 +54,9 @@ export function BranchIndicator({
 }: BranchIndicatorProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const dropdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMainBranch = currentBranch === 'main' || currentBranch === 'master';
 
   const handleMouseEnter = useCallback(() => {
@@ -70,6 +72,7 @@ export function BranchIndicator({
   const handleMouseLeave = useCallback(() => {
     dropdownTimeoutRef.current = setTimeout(() => {
       setShowDropdown(false);
+      setConfirmDiscard(false); // Reset confirmation when dropdown closes
     }, 150);
   }, []);
 
@@ -77,11 +80,24 @@ export function BranchIndicator({
     e.stopPropagation();
     if (isDiscarding) return;
 
-    const confirmed = window.confirm(
-      'Are you sure you want to discard all changes? This cannot be undone.'
-    );
-    if (!confirmed) return;
+    // First click: show confirmation state
+    if (!confirmDiscard) {
+      setConfirmDiscard(true);
+      // Reset confirmation after 3 seconds if not clicked
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmDiscard(false);
+      }, 3000);
+      return;
+    }
 
+    // Second click: perform the discard
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+    }
+    setConfirmDiscard(false);
     setIsDiscarding(true);
     try {
       await invoke('discard_changes', { projectPath });
@@ -180,12 +196,14 @@ export function BranchIndicator({
               Save
             </button>
             <button
-              className="branch-changes-discard-btn"
-              onClick={(e) => void handleDiscardAll(e)}
+              className={`branch-changes-discard-btn ${confirmDiscard ? 'confirming' : ''}`}
+              onClick={(e) => {
+                handleDiscardAll(e);
+              }}
               disabled={isDiscarding}
             >
               <TrashIcon size={12} />
-              {isDiscarding ? 'Discarding...' : 'Discard All'}
+              {isDiscarding ? 'Discarding...' : confirmDiscard ? 'Click to Confirm' : 'Discard All'}
             </button>
           </div>
         </div>
