@@ -1279,6 +1279,30 @@ function App() {
               onCancel={() => setShowImportModal(false)}
             />
           )}
+
+          {/* Auth Terminal Modal (for GitHub connect from projects view) */}
+          {authTerminalConfig && (
+            <div className="onboarding-terminal-overlay">
+              <div className="onboarding-terminal-modal">
+                <div className="onboarding-terminal-header">
+                  <span className="onboarding-terminal-title">
+                    {authTerminalConfig.service === 'github' ? 'GitHub Account' : 'Vercel Account'}
+                  </span>
+                  <button
+                    className="onboarding-terminal-cancel"
+                    onClick={() => setAuthTerminalConfig(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <OnboardingTerminal
+                  command={authTerminalConfig.command}
+                  args={authTerminalConfig.args}
+                  onExit={(exitCode) => void handleAuthTerminalExit(exitCode)}
+                />
+              </div>
+            </div>
+          )}
         </div>
         <BugReportButton />
       </>
