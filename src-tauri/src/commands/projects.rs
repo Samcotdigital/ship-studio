@@ -90,7 +90,33 @@ fn ensure_gitignore_has_shipstudio_sync(project: &std::path::Path) -> Result<(),
     Ok(())
 }
 
-fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<PageInfo>, String> {
+/// Detect if this is a SvelteKit project
+fn is_sveltekit_project(project_path: &std::path::Path) -> bool {
+    // Check for svelte.config.js or svelte.config.ts
+    if project_path.join("svelte.config.js").exists()
+        || project_path.join("svelte.config.ts").exists()
+    {
+        return true;
+    }
+
+    // Check package.json for @sveltejs/kit
+    let pkg_path = project_path.join("package.json");
+    if pkg_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if contents.contains("\"@sveltejs/kit\"") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Scan Next.js pages (app/ directory with page.tsx/js/jsx files)
+fn scan_nextjs_pages(
+    dir: &std::path::Path,
+    base_dir: &std::path::Path,
+) -> Result<Vec<PageInfo>, String> {
     let mut pages = Vec::new();
 
     if !dir.exists() {
@@ -109,17 +135,37 @@ fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<P
                 continue;
             }
 
-            let mut sub_pages = scan_pages(&path, base_dir)?;
+            let mut sub_pages = scan_nextjs_pages(&path, base_dir)?;
             pages.append(&mut sub_pages);
         } else {
             let file_name = entry.file_name().to_string_lossy().to_string();
             if file_name == "page.tsx" || file_name == "page.js" || file_name == "page.jsx" {
                 let parent = path.parent().unwrap_or(&path);
                 let relative = parent.strip_prefix(base_dir).unwrap_or(parent);
-                let route = if relative.as_os_str().is_empty() {
+
+                // Filter out route group directories (parenthesized like "(dashboard)")
+                // These are for organization only and don't affect the URL path
+                let filtered_components: Vec<_> = relative
+                    .components()
+                    .filter_map(|c| {
+                        if let std::path::Component::Normal(s) = c {
+                            let segment = s.to_string_lossy();
+                            // Skip route groups: directories starting with '(' and ending with ')'
+                            if segment.starts_with('(') && segment.ends_with(')') {
+                                None
+                            } else {
+                                Some(segment.to_string())
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let route = if filtered_components.is_empty() {
                     "/".to_string()
                 } else {
-                    format!("/{}", relative.to_string_lossy().replace('\\', "/"))
+                    format!("/{}", filtered_components.join("/"))
                 };
 
                 let display_route = route.replace('[', ":").replace(']', "");
@@ -132,6 +178,83 @@ fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<P
         }
     }
 
+    Ok(pages)
+}
+
+/// Scan SvelteKit pages (src/routes/ directory with +page.svelte files)
+fn scan_sveltekit_pages(
+    dir: &std::path::Path,
+    base_dir: &std::path::Path,
+) -> Result<Vec<PageInfo>, String> {
+    let mut pages = Vec::new();
+
+    if !dir.exists() {
+        return Ok(pages);
+    }
+
+    let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            // Skip hidden directories and SvelteKit special directories
+            if dir_name.starts_with('.') {
+                continue;
+            }
+
+            let mut sub_pages = scan_sveltekit_pages(&path, base_dir)?;
+            pages.append(&mut sub_pages);
+        } else {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            // SvelteKit uses +page.svelte for page components
+            if file_name == "+page.svelte" {
+                let parent = path.parent().unwrap_or(&path);
+                let relative = parent.strip_prefix(base_dir).unwrap_or(parent);
+
+                // Filter out route group directories (parenthesized like "(marketing)")
+                // These are for organization only and don't affect the URL path
+                let filtered_components: Vec<_> = relative
+                    .components()
+                    .filter_map(|c| {
+                        if let std::path::Component::Normal(s) = c {
+                            let segment = s.to_string_lossy();
+                            // Skip route groups: directories starting with '(' and ending with ')'
+                            if segment.starts_with('(') && segment.ends_with(')') {
+                                None
+                            } else {
+                                Some(segment.to_string())
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let route = if filtered_components.is_empty() {
+                    "/".to_string()
+                } else {
+                    format!("/{}", filtered_components.join("/"))
+                };
+
+                // Convert SvelteKit dynamic route syntax [slug] to :slug for display
+                let display_route = route.replace('[', ":").replace(']', "");
+
+                pages.push(PageInfo {
+                    route: display_route,
+                    file_path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(pages)
+}
+
+/// Sort pages with root first, then alphabetically
+fn sort_pages(pages: &mut Vec<PageInfo>) {
     pages.sort_by(|a, b| {
         if a.route == "/" {
             return std::cmp::Ordering::Less;
@@ -141,8 +264,6 @@ fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<P
         }
         a.route.cmp(&b.route)
     });
-
-    Ok(pages)
 }
 
 // ============ Tauri Commands ============
@@ -233,7 +354,8 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
             };
             let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
             let auto_accept_mode = metadata.as_ref().and_then(|m| m.auto_accept_mode);
-            let hide_main_branch_warning = metadata.as_ref().and_then(|m| m.hide_main_branch_warning);
+            let hide_main_branch_warning =
+                metadata.as_ref().and_then(|m| m.hide_main_branch_warning);
 
             // Ensure .shipstudio/ is gitignored
             let _ = ensure_gitignore_has_shipstudio_sync(&path);
@@ -272,21 +394,38 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
     Ok(projects)
 }
 
-/// Scans a Next.js project's app directory for page routes.
+/// Scans a project's pages/routes directory for page routes.
+/// Supports both Next.js (app/ directory) and SvelteKit (src/routes/ directory).
 #[tauri::command]
 pub async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
     let project = validate_project_path(&project_path)?;
-    let app_dir = project.join("app");
 
+    // Check if this is a SvelteKit project
+    if is_sveltekit_project(&project) {
+        let routes_dir = project.join("src").join("routes");
+        if routes_dir.exists() {
+            let mut pages = scan_sveltekit_pages(&routes_dir, &routes_dir)?;
+            sort_pages(&mut pages);
+            return Ok(pages);
+        }
+        return Ok(Vec::new());
+    }
+
+    // Default to Next.js app router
+    let app_dir = project.join("app");
     if !app_dir.exists() {
         let src_app_dir = project.join("src").join("app");
         if !src_app_dir.exists() {
             return Ok(Vec::new());
         }
-        return scan_pages(&src_app_dir, &src_app_dir);
+        let mut pages = scan_nextjs_pages(&src_app_dir, &src_app_dir)?;
+        sort_pages(&mut pages);
+        return Ok(pages);
     }
 
-    scan_pages(&app_dir, &app_dir)
+    let mut pages = scan_nextjs_pages(&app_dir, &app_dir)?;
+    sort_pages(&mut pages);
+    Ok(pages)
 }
 
 #[tauri::command]
@@ -523,6 +662,7 @@ pub async fn clear_project_cache(project_path: String) -> Result<(), String> {
     // List of cache directories to clear
     let cache_dirs = [
         ".next",               // Next.js build cache
+        ".svelte-kit",         // SvelteKit build cache
         "node_modules/.cache", // Various build tool caches (babel, eslint, etc.)
         ".turbo",              // Turborepo cache
         ".swc",                // SWC compiler cache
@@ -618,7 +758,10 @@ pub async fn get_hide_main_branch_warning(project_path: String) -> Result<bool, 
 
 /// Sets whether the main branch warning banner should be hidden for this project
 #[tauri::command]
-pub async fn set_hide_main_branch_warning(project_path: String, hidden: bool) -> Result<(), String> {
+pub async fn set_hide_main_branch_warning(
+    project_path: String,
+    hidden: bool,
+) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
     let shipstudio_dir = project.join(".shipstudio");
     let metadata_path = shipstudio_dir.join("project.json");

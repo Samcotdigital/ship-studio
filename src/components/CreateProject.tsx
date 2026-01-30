@@ -43,6 +43,12 @@ const TEMPLATES: Template[] = [
     description: 'A minimal Next.js starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/static-marketing-site-starter',
   },
+  {
+    id: 'sveltekit-basic',
+    name: 'SvelteKit Basic',
+    description: 'A minimal SvelteKit starter with Tailwind CSS',
+    repo: 'https://github.com/ship-studio/sveltekit-static-marketing-site-starter',
+  },
 ];
 
 /** Form wizard steps before creation starts */
