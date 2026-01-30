@@ -233,6 +233,7 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
             };
             let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
             let auto_accept_mode = metadata.as_ref().and_then(|m| m.auto_accept_mode);
+            let hide_main_branch_warning = metadata.as_ref().and_then(|m| m.hide_main_branch_warning);
 
             // Ensure .shipstudio/ is gitignored
             let _ = ensure_gitignore_has_shipstudio_sync(&path);
@@ -256,6 +257,7 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                 last_deployed,
                 deployment_state,
                 auto_accept_mode,
+                hide_main_branch_warning,
             });
         }
     }

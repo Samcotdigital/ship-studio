@@ -15,7 +15,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { DashboardProject, getDashboardProjects, setAutoAcceptMode } from '../lib/project';
+import {
+  DashboardProject,
+  getDashboardProjects,
+  setAutoAcceptMode,
+  setHideMainBranchWarning,
+} from '../lib/project';
 import {
   FolderInfo,
   Folder,
@@ -246,6 +251,19 @@ export function ProjectList({
     }
   };
 
+  const handleToggleMainBranchWarning = async (projectPath: string, hidden: boolean) => {
+    try {
+      await setHideMainBranchWarning(projectPath, hidden);
+      // Update local state immediately for responsive UI
+      setProjects((prev) =>
+        prev.map((p) => (p.path === projectPath ? { ...p, hide_main_branch_warning: hidden } : p))
+      );
+    } catch (error) {
+      console.error('Failed to toggle main branch warning:', error);
+      alert('Failed to update main branch warning: ' + String(error));
+    }
+  };
+
   const handleCreateFolder = async (name: string) => {
     await createFolder(name);
     await loadFolders();
@@ -416,6 +434,9 @@ export function ProjectList({
               onSelect={() => onSelectProject(project)}
               onDelete={() => setDeleteConfirm(project)}
               onToggleAutoAccept={(enabled) => void handleToggleAutoAccept(project.path, enabled)}
+              onToggleMainBranchWarning={(hidden) =>
+                void handleToggleMainBranchWarning(project.path, hidden)
+              }
               onMoveToFolder={() => void handleOpenMoveModal(project)}
               onOpenSite={
                 project.production_url

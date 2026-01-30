@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { ZapIcon, TrashIcon, FolderIcon } from './icons';
+import { ZapIcon, TrashIcon, FolderIcon, WarningIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Local storage key for tracking if user has seen the auto-accept warning */
@@ -22,6 +22,10 @@ interface ProjectCardMenuProps {
   autoAcceptMode: boolean;
   /** Callback when auto-accept mode is toggled */
   onToggleAutoAccept: (enabled: boolean) => void;
+  /** Whether main branch warning is hidden */
+  hideMainBranchWarning: boolean;
+  /** Callback when main branch warning toggle is clicked */
+  onToggleMainBranchWarning: (hidden: boolean) => void;
   /** Callback to move project to a folder */
   onMoveToFolder?: () => void;
   /** Callback when delete is clicked */
@@ -31,6 +35,8 @@ interface ProjectCardMenuProps {
 export function ProjectCardMenu({
   autoAcceptMode,
   onToggleAutoAccept,
+  hideMainBranchWarning,
+  onToggleMainBranchWarning,
   onMoveToFolder,
   onDelete,
 }: ProjectCardMenuProps) {
@@ -80,6 +86,12 @@ export function ProjectCardMenu({
     onMoveToFolder?.();
   };
 
+  const handleToggleMainBranchWarning = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleMainBranchWarning(!hideMainBranchWarning);
+    setIsOpen(false);
+  };
+
   const handleMenuButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsOpen(!isOpen);
@@ -106,6 +118,16 @@ export function ProjectCardMenu({
               <span>Auto-accept mode</span>
               <span className={`toggle-indicator ${autoAcceptMode ? 'on' : 'off'}`}>
                 {autoAcceptMode ? 'ON' : 'OFF'}
+              </span>
+            </button>
+            <button
+              className={`project-card-dropdown-item ${!hideMainBranchWarning ? 'active' : ''}`}
+              onClick={handleToggleMainBranchWarning}
+            >
+              <WarningIcon size={14} />
+              <span>Main branch warning</span>
+              <span className={`toggle-indicator ${!hideMainBranchWarning ? 'on' : 'off'}`}>
+                {!hideMainBranchWarning ? 'ON' : 'OFF'}
               </span>
             </button>
             {onMoveToFolder && (

@@ -24,6 +24,8 @@ interface ProjectCardProps {
   onDelete: () => void;
   /** Callback when auto-accept mode is toggled */
   onToggleAutoAccept: (enabled: boolean) => void;
+  /** Callback when main branch warning is toggled */
+  onToggleMainBranchWarning: (hidden: boolean) => void;
   /** Callback to open the production URL in browser (if deployed) */
   onOpenSite?: () => void;
   /** Callback to open the project in VS Code or Cursor */
@@ -38,12 +40,14 @@ export function ProjectCard({
   onSelect,
   onDelete,
   onToggleAutoAccept,
+  onToggleMainBranchWarning,
   onOpenSite,
   onOpenIde,
   onMoveToFolder,
 }: ProjectCardProps) {
   const hasChanges = project.uncommitted_count !== null && project.uncommitted_count > 0;
   const autoAcceptMode = project.auto_accept_mode === true;
+  const hideMainBranchWarning = project.hide_main_branch_warning === true;
 
   return (
     <div className="project-card">
@@ -135,6 +139,8 @@ export function ProjectCard({
         <ProjectCardMenu
           autoAcceptMode={autoAcceptMode}
           onToggleAutoAccept={onToggleAutoAccept}
+          hideMainBranchWarning={hideMainBranchWarning}
+          onToggleMainBranchWarning={onToggleMainBranchWarning}
           onMoveToFolder={onMoveToFolder}
           onDelete={onDelete}
         />

@@ -48,6 +48,8 @@ export interface DashboardProject {
   deployment_state: string | null;
   /** Whether to run Claude in auto-accept mode */
   auto_accept_mode: boolean | null;
+  /** Whether to hide the main branch warning banner */
+  hide_main_branch_warning: boolean | null;
 }
 
 /** System prerequisite check result */

@@ -46,6 +46,8 @@ pub struct DashboardProject {
     pub deployment_state: Option<String>,
     /// Whether to run Claude in auto-accept mode
     pub auto_accept_mode: Option<bool>,
+    /// Whether to hide the main branch warning banner
+    pub hide_main_branch_warning: Option<bool>,
 }
 
 /// Next.js page route information
