@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.26
+
+- **Optional GitHub/Vercel auth** - Users can now start projects without GitHub or Vercel accounts during onboarding. Features requiring these services show a 'Connect' overlay when accessed.
+
 ## What's New in v0.3.25
 
 - **File diff viewer** - Click any file in the unsaved changes dropdown to see what changed
