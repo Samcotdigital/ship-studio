@@ -26,7 +26,9 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/ShipStudio/**"]
+        "scope": [
+          "$HOME/ShipStudio/**"
+        ]
       }
     }
   },
@@ -34,11 +36,7 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.icns"
     ],
     "resources": {
       "fonts/*": "fonts/"
@@ -54,7 +52,9 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["shipstudio"]
+        "schemes": [
+          "shipstudio"
+        ]
       }
     }
   }
