@@ -639,67 +639,71 @@ pub async fn capture_fullpage_playwright(
     // Create a script that scrolls the page before capturing
     // This triggers lazy-loaded content and scroll animations (GSAP, etc.)
     // Also hides Next.js dev tools and other overlays
+    // Uses try/finally to ensure browser is always closed (prevents zombie processes)
     let script = format!(
         r#"
 const {{ chromium }} = require('playwright');
 
 (async () => {{
-    const browser = await chromium.launch();
-    const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
+    let browser;
+    try {{
+        browser = await chromium.launch();
+        const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
 
-    await page.goto('{}', {{ waitUntil: 'networkidle' }});
+        await page.goto('{}', {{ waitUntil: 'networkidle', timeout: 30000 }});
 
-    // Hide dev tools and feedback overlays
-    await page.evaluate(() => {{
-        const selectors = [
-            'nextjs-portal',
-            '[data-nextjs-toast]',
-            '[data-nextjs-dialog]',
-            '#__next-build-watcher',
-            '[class*="nextjs-"]',
-            '[data-feedback-toolbar]',
-            '[data-feedback-toolbar="true"]',
-            '[class*="feedback-toolbar"]',
-            '[class*="styles-module__toolbar"]'
-        ];
-        selectors.forEach(sel => {{
-            document.querySelectorAll(sel).forEach(el => {{
-                el.style.setProperty('display', 'none', 'important');
-                el.style.setProperty('visibility', 'hidden', 'important');
+        // Hide dev tools and feedback overlays
+        await page.evaluate(() => {{
+            const selectors = [
+                'nextjs-portal',
+                '[data-nextjs-toast]',
+                '[data-nextjs-dialog]',
+                '#__next-build-watcher',
+                '[class*="nextjs-"]',
+                '[data-feedback-toolbar]',
+                '[data-feedback-toolbar="true"]',
+                '[class*="feedback-toolbar"]',
+                '[class*="styles-module__toolbar"]'
+            ];
+            selectors.forEach(sel => {{
+                document.querySelectorAll(sel).forEach(el => {{
+                    el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                }});
             }});
         }});
-    }});
 
-    // Scroll slowly through the page to trigger lazy content and animations
-    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-    const viewportHeight = 800;
+        // Scroll slowly through the page to trigger lazy content and animations
+        const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+        const viewportHeight = 800;
 
-    for (let y = 0; y < scrollHeight; y += viewportHeight / 2) {{
-        await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
-        await page.waitForTimeout(300); // Pause for animations to trigger
+        for (let y = 0; y < scrollHeight; y += viewportHeight / 2) {{
+            await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
+            await page.waitForTimeout(300); // Pause for animations to trigger
+        }}
+
+        // Scroll back to top and hide overlays again (they may have reappeared)
+        await page.evaluate(() => {{
+            window.scrollTo(0, 0);
+            const selectors = [
+                'nextjs-portal', '[data-nextjs-toast]', '[class*="nextjs-"]',
+                '[data-feedback-toolbar]', '[data-feedback-toolbar="true"]',
+                '[class*="feedback-toolbar"]', '[class*="styles-module__toolbar"]'
+            ];
+            selectors.forEach(sel => {{
+                document.querySelectorAll(sel).forEach(el => {{
+                    el.style.setProperty('display', 'none', 'important');
+                }});
+            }});
+        }});
+        await page.waitForTimeout(500);
+
+        // Take full-page screenshot
+        await page.screenshot({{ path: '{}', fullPage: true }});
+        console.log('Screenshot saved successfully');
+    }} finally {{
+        if (browser) await browser.close();
     }}
-
-    // Scroll back to top and hide overlays again (they may have reappeared)
-    await page.evaluate(() => {{
-        window.scrollTo(0, 0);
-        const selectors = [
-            'nextjs-portal', '[data-nextjs-toast]', '[class*="nextjs-"]',
-            '[data-feedback-toolbar]', '[data-feedback-toolbar="true"]',
-            '[class*="feedback-toolbar"]', '[class*="styles-module__toolbar"]'
-        ];
-        selectors.forEach(sel => {{
-            document.querySelectorAll(sel).forEach(el => {{
-                el.style.setProperty('display', 'none', 'important');
-            }});
-        }});
-    }});
-    await page.waitForTimeout(500);
-
-    // Take full-page screenshot
-    await page.screenshot({{ path: '{}', fullPage: true }});
-
-    await browser.close();
-    console.log('Screenshot saved successfully');
 }})();
 "#,
         url,
@@ -767,44 +771,48 @@ pub async fn capture_viewport_playwright(
     let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
 
     // Create a script that hides overlays and captures viewport
+    // Uses try/finally to ensure browser is always closed (prevents zombie processes)
     let script = format!(
         r#"
 const {{ chromium }} = require('playwright');
 
 (async () => {{
-    const browser = await chromium.launch();
-    const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
+    let browser;
+    try {{
+        browser = await chromium.launch();
+        const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
 
-    await page.goto('{}', {{ waitUntil: 'networkidle' }});
+        await page.goto('{}', {{ waitUntil: 'networkidle', timeout: 30000 }});
 
-    // Hide dev tools and feedback overlays
-    await page.evaluate(() => {{
-        const selectors = [
-            'nextjs-portal',
-            '[data-nextjs-toast]',
-            '[data-nextjs-dialog]',
-            '#__next-build-watcher',
-            '[class*="nextjs-"]',
-            '[data-feedback-toolbar]',
-            '[data-feedback-toolbar="true"]',
-            '[class*="feedback-toolbar"]',
-            '[class*="styles-module__toolbar"]'
-        ];
-        selectors.forEach(sel => {{
-            document.querySelectorAll(sel).forEach(el => {{
-                el.style.setProperty('display', 'none', 'important');
-                el.style.setProperty('visibility', 'hidden', 'important');
+        // Hide dev tools and feedback overlays
+        await page.evaluate(() => {{
+            const selectors = [
+                'nextjs-portal',
+                '[data-nextjs-toast]',
+                '[data-nextjs-dialog]',
+                '#__next-build-watcher',
+                '[class*="nextjs-"]',
+                '[data-feedback-toolbar]',
+                '[data-feedback-toolbar="true"]',
+                '[class*="feedback-toolbar"]',
+                '[class*="styles-module__toolbar"]'
+            ];
+            selectors.forEach(sel => {{
+                document.querySelectorAll(sel).forEach(el => {{
+                    el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                }});
             }});
         }});
-    }});
 
-    // Wait for animations to complete
-    await page.waitForTimeout(3000);
+        // Wait for animations to complete
+        await page.waitForTimeout(3000);
 
-    // Take viewport screenshot (not full page)
-    await page.screenshot({{ path: '{}' }});
-
-    await browser.close();
+        // Take viewport screenshot (not full page)
+        await page.screenshot({{ path: '{}' }});
+    }} finally {{
+        if (browser) await browser.close();
+    }}
 }})();
 "#,
         url,
