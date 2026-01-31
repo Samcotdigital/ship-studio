@@ -57,7 +57,7 @@
   background: var(--bg-tertiary);
   border-color: var(--border);
   color: var(--text-muted);
-  cursor: default;
+  cursor: pointer;
 }
 
 .publish-dropdown-menu {
