@@ -108,7 +108,7 @@ button:hover {
 .btn-primary {
   background: var(--action);
   color: var(--action-text);
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
@@ -120,7 +120,7 @@ button:hover {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   border: 1px solid var(--border);
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .btn-secondary:hover {

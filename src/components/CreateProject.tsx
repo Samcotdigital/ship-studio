@@ -74,7 +74,7 @@ const STATUS_MESSAGES: Record<Step, string> = {
 
 export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
   const [formStep, setFormStep] = useState<FormStep>('select-template');
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(TEMPLATES[0]);
   const [projectName, setProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('clone');

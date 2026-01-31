@@ -34,6 +34,10 @@ interface CodeHealthPanelProps {
   onToast?: (message: string, type?: 'success' | 'error') => void;
   onAskClaude?: (prompt: string) => void;
   onHealthOutput?: (output: string) => void;
+  /** Content to render on the left of the toolbar (e.g., Restart Server button) */
+  toolbarLeft?: React.ReactNode;
+  /** Content to render on the right of the toolbar (e.g., Show Preview button) */
+  toolbarRight?: React.ReactNode;
 }
 
 export interface CodeHealthPanelRef {
@@ -58,7 +62,10 @@ const CATEGORY_LABELS: Record<ScriptCategory, string> = {
 };
 
 export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelProps>(
-  function CodeHealthPanel({ projectPath, onToast, onAskClaude, onHealthOutput }, ref) {
+  function CodeHealthPanel(
+    { projectPath, onToast, onAskClaude, onHealthOutput, toolbarLeft, toolbarRight },
+    ref
+  ) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [detectedScripts, setDetectedScripts] = useState<DetectedScripts | null>(null);
     const [checkStates, setCheckStates] = useState<Record<ScriptCategory, CheckState>>({
@@ -372,16 +379,9 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
       }
     };
 
-    // Don't render if no package.json
-    if (!detectedScripts?.hasPackageJson) {
-      return null;
-    }
-
-    // Check if any scripts are available
+    // Check if health panel should show (has package.json with scripts)
     const hasAnyScripts = CATEGORIES.some((cat) => checkStates[cat].scriptName);
-    if (!hasAnyScripts) {
-      return null;
-    }
+    const showHealthPanel = detectedScripts?.hasPackageJson && hasAnyScripts;
 
     // Count status summary for collapsed view
     const passingCount = CATEGORIES.filter((cat) => checkStates[cat].status === 'pass').length;
@@ -394,26 +394,63 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
 
     return (
       <>
-        <div className="health-panel">
-          <button
-            className="health-toggle"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            {isExpanded ? <ChevronIcon size={10} /> : <ChevronRightIcon size={10} />}
-            <span className="health-label">Health</span>
-            {!isExpanded && (
-              <span className="health-summary">
-                {CATEGORIES.map((cat) => {
-                  const state = checkStates[cat];
-                  if (state.status === 'missing') return null;
-                  return <StatusDot key={cat} status={state.status} size={6} />;
-                })}
-              </span>
-            )}
-          </button>
+        {/* Main toolbar row with Restart Server, Health indicator, and preview actions */}
+        <div className="terminal-toolbar">
+          {toolbarLeft}
+          {showHealthPanel && (
+            <>
+              <button
+                className="health-toggle"
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? 'Collapse health panel' : 'Expand health panel'}
+              >
+                {isExpanded ? <ChevronIcon size={10} /> : <ChevronRightIcon size={10} />}
+                <span className="health-label">Health</span>
+                <span className="health-summary">
+                  {CATEGORIES.map((cat) => {
+                    const state = checkStates[cat];
+                    if (state.status === 'missing') return null;
+                    return <StatusDot key={cat} status={state.status} size={6} />;
+                  })}
+                </span>
+                {!isExpanded && (
+                  <span className="health-collapsed-info">
+                    {passingCount > 0 && (
+                      <span className="health-count pass">{passingCount} passing</span>
+                    )}
+                    {failingCount > 0 && (
+                      <span className="health-count fail">{failingCount} failing</span>
+                    )}
+                    {notRunCount > 0 && (
+                      <span className="health-count idle">{notRunCount} not run</span>
+                    )}
+                  </span>
+                )}
+              </button>
+              {isAutoRunEnabled && (
+                <span className="health-countdown" title="Auto-run countdown">
+                  <svg
+                    width={10}
+                    height={10}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <span>{formatCountdown(autoRunSecondsRemaining)}</span>
+                </span>
+              )}
+            </>
+          )}
+          {toolbarRight}
+        </div>
 
-          {isExpanded && (
+        {/* Expanded health toolbar row */}
+        {showHealthPanel && isExpanded && (
+          <div className="health-panel">
             <div className="health-buttons">
               {CATEGORIES.map((category) => {
                 const state = checkStates[category];
@@ -534,36 +571,8 @@ export const CodeHealthPanel = forwardRef<CodeHealthPanelRef, CodeHealthPanelPro
                 </button>
               )}
             </div>
-          )}
-
-          {!isExpanded && (
-            <div className="health-collapsed-info">
-              {passingCount > 0 && (
-                <span className="health-count pass">{passingCount} passing</span>
-              )}
-              {failingCount > 0 && (
-                <span className="health-count fail">{failingCount} failing</span>
-              )}
-              {notRunCount > 0 && <span className="health-count idle">{notRunCount} not run</span>}
-              {isAutoRunEnabled && (
-                <span className="health-countdown" title="Auto-run countdown">
-                  <svg
-                    width={10}
-                    height={10}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
-                  <span>{formatCountdown(autoRunSecondsRemaining)}</span>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Error Modal */}
         {errorModalCategory && checkStates[errorModalCategory].result && (

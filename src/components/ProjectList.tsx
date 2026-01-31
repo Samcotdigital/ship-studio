@@ -195,7 +195,9 @@ export function ProjectList({
 
   // Filtered and sorted projects
   const filteredProjects = useMemo(() => {
-    let result = [...displayedProjects];
+    // When searching, search ALL projects (not just displayed ones)
+    // This lets users find projects inside folders from the root view
+    let result = searchQuery ? [...projects] : [...displayedProjects];
 
     // Filter by search query
     if (searchQuery) {
@@ -227,7 +229,7 @@ export function ProjectList({
     });
 
     return result;
-  }, [displayedProjects, searchQuery, sortBy]);
+  }, [projects, displayedProjects, searchQuery, sortBy]);
 
   // Filter folders by search query
   const filteredFolders = useMemo(() => {

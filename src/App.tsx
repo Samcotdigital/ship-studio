@@ -1456,45 +1456,45 @@ function App() {
             rightCollapsed={isPreviewHidden}
             left={
               <div className="terminal-pane">
-                <div className="terminal-toolbar">
-                  <button
-                    className="show-preview-btn"
-                    onClick={() => void handleRestartDevServer()}
-                    disabled={isRestartingDevServer || !devServerRef.current}
-                    title="Restart dev server"
-                  >
-                    {isRestartingDevServer ? (
-                      <div className="capture-spinner" />
-                    ) : (
-                      <ResetIcon size={14} />
-                    )}
-                    <span>Restart Server</span>
-                  </button>
-                  {isPreviewHidden && (
-                    <div
-                      style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}
-                    >
-                      <BrowserDropdown
-                        url={`http://localhost:${devServerPort}`}
-                        buttonClassName="show-preview-btn"
-                      />
-                      <button
-                        className="show-preview-btn"
-                        onClick={() => setIsPreviewHidden(false)}
-                        title="Show Preview"
-                      >
-                        <PanelRightIcon size={14} />
-                        <span>Show Preview</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
                 <CodeHealthPanel
                   ref={healthPanelRef}
                   projectPath={currentProject?.path || ''}
                   onToast={showToast}
                   onAskClaude={sendToClaude}
                   onHealthOutput={handleHealthOutput}
+                  toolbarLeft={
+                    <button
+                      className="show-preview-btn"
+                      onClick={() => void handleRestartDevServer()}
+                      disabled={isRestartingDevServer || !devServerRef.current}
+                      title="Restart dev server"
+                    >
+                      {isRestartingDevServer ? (
+                        <div className="capture-spinner" />
+                      ) : (
+                        <ResetIcon size={14} />
+                      )}
+                      <span>Restart Server</span>
+                    </button>
+                  }
+                  toolbarRight={
+                    isPreviewHidden ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <BrowserDropdown
+                          url={`http://localhost:${devServerPort}`}
+                          buttonClassName="show-preview-btn"
+                        />
+                        <button
+                          className="show-preview-btn"
+                          onClick={() => setIsPreviewHidden(false)}
+                          title="Show Preview"
+                        >
+                          <PanelRightIcon size={14} />
+                          <span>Show Preview</span>
+                        </button>
+                      </div>
+                    ) : undefined
+                  }
                 />
                 <div className="terminal-tabs-bar">
                   <div className="terminal-tabs">

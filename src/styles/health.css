@@ -1,25 +1,15 @@
 /* Code Health Panel Styles */
 
-.health-panel {
-  display: flex;
-  align-items: center;
-  padding: 9px 12px;
-  background: #252525;
-  border-bottom: 1px solid var(--border);
-  gap: 8px;
-  min-height: 48px;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-
+/* Health toggle button - appears inline in the terminal toolbar */
 .health-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 10px;
   background: transparent;
-  border: none;
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
@@ -32,6 +22,7 @@
 .health-toggle:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .health-label {
@@ -42,7 +33,20 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: 4px;
+  margin-left: 2px;
+}
+
+/* Expanded health panel - shows below toolbar when expanded */
+.health-panel {
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
+  background: #252525;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-height: 48px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .health-buttons {
@@ -260,8 +264,10 @@
 .health-collapsed-info {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: 8px;
+  gap: 6px;
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
 }
 
 .health-count {
