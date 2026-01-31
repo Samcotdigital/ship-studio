@@ -5,7 +5,9 @@
 use crate::commands::claude::find_claude_binary;
 use crate::commands::github::get_gh_command;
 use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
-use crate::types::{AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus};
+use crate::types::{
+    AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
+};
 use crate::utils::{check_homebrew, find_executable, get_brew_command};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -256,7 +258,13 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 
         // Required items for setup completion (GitHub and Vercel auth are optional)
         const REQUIRED_ITEMS_MOCK: &[&str] = &[
-            "homebrew", "node", "git", "gh", "claude", "claude_auth", "vercel",
+            "homebrew",
+            "node",
+            "git",
+            "gh",
+            "claude",
+            "claude_auth",
+            "vercel",
         ];
 
         let all_ready = mock_items
@@ -546,7 +554,13 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 
     // Required items for setup completion (GitHub and Vercel auth are optional)
     const REQUIRED_ITEMS: &[&str] = &[
-        "homebrew", "node", "git", "gh", "claude", "claude_auth", "vercel",
+        "homebrew",
+        "node",
+        "git",
+        "gh",
+        "claude",
+        "claude_auth",
+        "vercel",
     ];
 
     let all_ready = items
