@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.30
+
+- **Improved publish dropdown UI** - Wider dropdown with compact badges for better URL visibility
+
 ## What's New in v0.3.29
 
 - **Template zip import** - Create projects from downloaded template zip files via drag-and-drop or file picker
