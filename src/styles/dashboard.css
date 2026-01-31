@@ -73,17 +73,18 @@
   gap: 8px;
 }
 
-/* Compact button styles for dashboard header */
+/* Compact button styles for dashboard header - matches editor UI */
 .dashboard-header-actions button {
-  padding: 7px 14px;
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
 .dashboard-header-actions .btn-icon {
-  padding: 7px;
+  padding: 6px;
 }
 
 .dashboard-settings-btn {
-  padding: 7px;
+  padding: 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 6px;

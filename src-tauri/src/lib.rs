@@ -130,6 +130,7 @@ pub fn run() {
             commands::projects::set_auto_accept_mode,
             commands::projects::get_hide_main_branch_warning,
             commands::projects::set_hide_main_branch_warning,
+            commands::projects::extract_template_zip,
             // Environment variables
             commands::env::list_env_files,
             commands::env::read_env_file,

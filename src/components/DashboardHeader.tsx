@@ -72,7 +72,7 @@ export function DashboardHeader({
       <div className="dashboard-header-actions">
         {onCreateFolder && (
           <button className="btn-secondary btn-icon" onClick={onCreateFolder} title="New Folder">
-            <FolderPlusIcon size={16} />
+            <FolderPlusIcon size={14} />
           </button>
         )}
         {onImportProject && (
@@ -95,7 +95,7 @@ export function DashboardHeader({
         </button>
         {onOpenSettings && (
           <button className="dashboard-settings-btn" onClick={onOpenSettings} title="Settings">
-            <SettingsIcon />
+            <SettingsIcon size={14} />
           </button>
         )}
       </div>

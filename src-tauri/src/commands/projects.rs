@@ -7,7 +7,9 @@ use crate::types::{
     DashboardProject, PageInfo, ProjectInfo, ProjectMetadata, PROJECT_METADATA_SCHEMA_VERSION,
 };
 use crate::utils::validate_project_path;
+use std::io::{Read, Write};
 use std::process::Command;
+use zip::ZipArchive;
 
 // ============ Helper Functions ============
 
@@ -788,4 +790,181 @@ pub async fn set_hide_main_branch_warning(
         .map_err(|e| format!("Failed to write project metadata: {}", e))?;
 
     Ok(())
+}
+
+/// Extracts a zip template file to create a new project.
+/// The zip file should contain a single root directory (like GitHub downloads).
+/// Returns the path to the created project.
+///
+/// Accepts either:
+/// - `zip_data`: Raw zip bytes (from browser File API)
+/// - `zip_path`: Path to a zip file on disk (from Tauri drag-drop)
+#[tauri::command]
+pub async fn extract_template_zip(
+    project_name: String,
+    zip_data: Option<Vec<u8>>,
+    zip_path: Option<String>,
+) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+
+    // Ensure ShipStudio directory exists
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create ShipStudio directory: {}", e))?;
+    }
+
+    // Sanitize project name
+    let safe_name = project_name
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')
+        .collect::<String>();
+
+    if safe_name.is_empty() {
+        return Err("Invalid project name".to_string());
+    }
+
+    let project_path = shipstudio_dir.join(&safe_name);
+
+    // Check if project already exists
+    if project_path.exists() {
+        return Err(format!("A project named '{}' already exists", safe_name));
+    }
+
+    // Get zip data either from direct bytes or by reading from path
+    let data = if let Some(bytes) = zip_data {
+        bytes
+    } else if let Some(path) = zip_path {
+        std::fs::read(&path).map_err(|e| format!("Failed to read zip file: {}", e))?
+    } else {
+        return Err("No zip data or path provided".to_string());
+    };
+
+    // Create a cursor from the zip data
+    let cursor = std::io::Cursor::new(data);
+    let mut archive =
+        ZipArchive::new(cursor).map_err(|e| format!("Failed to open zip file: {}", e))?;
+
+    if archive.is_empty() {
+        return Err("Zip file is empty".to_string());
+    }
+
+    // Detect if zip has a single root directory (GitHub-style download)
+    // by checking the first entry
+    let first_entry_name = archive
+        .by_index(0)
+        .map_err(|e| format!("Failed to read zip entry: {}", e))?
+        .name()
+        .to_string();
+
+    let root_prefix = if first_entry_name.contains('/') {
+        // Get the root directory name (e.g., "repo-main/")
+        let parts: Vec<&str> = first_entry_name.split('/').collect();
+        if parts.len() > 1 && !parts[0].is_empty() {
+            Some(format!("{}/", parts[0]))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Verify all entries have the same root prefix if we detected one
+    let strip_root = if let Some(ref prefix) = root_prefix {
+        let all_have_prefix = (0..archive.len()).all(|i| {
+            archive
+                .by_index(i)
+                .map(|f| f.name().starts_with(prefix))
+                .unwrap_or(false)
+        });
+        all_have_prefix
+    } else {
+        false
+    };
+
+    // Create project directory
+    std::fs::create_dir_all(&project_path)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+
+    // Extract files
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry: {}", e))?;
+
+        let mut outpath = file.name().to_string();
+
+        // Strip root directory if present
+        if strip_root {
+            if let Some(ref prefix) = root_prefix {
+                outpath = outpath.strip_prefix(prefix).unwrap_or(&outpath).to_string();
+            }
+        }
+
+        // Skip empty paths (the root directory itself)
+        if outpath.is_empty() {
+            continue;
+        }
+
+        // Security: prevent path traversal
+        if outpath.contains("..") {
+            continue;
+        }
+
+        let dest_path = project_path.join(&outpath);
+
+        if file.is_dir() {
+            std::fs::create_dir_all(&dest_path)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        } else {
+            // Ensure parent directory exists
+            if let Some(parent) = dest_path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+                }
+            }
+
+            // Extract file
+            let mut outfile = std::fs::File::create(&dest_path)
+                .map_err(|e| format!("Failed to create file: {}", e))?;
+
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)
+                .map_err(|e| format!("Failed to read file from zip: {}", e))?;
+
+            outfile
+                .write_all(&buffer)
+                .map_err(|e| format!("Failed to write file: {}", e))?;
+
+            // Set executable permission for scripts on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Some(mode) = file.unix_mode() {
+                    if mode & 0o111 != 0 {
+                        // Has execute bit
+                        let mut perms = std::fs::metadata(&dest_path)
+                            .map_err(|e| format!("Failed to get file metadata: {}", e))?
+                            .permissions();
+                        perms.set_mode(mode);
+                        std::fs::set_permissions(&dest_path, perms).ok();
+                    }
+                }
+            }
+        }
+    }
+
+    // Verify it's a valid project (has package.json)
+    if !project_path.join("package.json").exists() {
+        // Clean up invalid project
+        std::fs::remove_dir_all(&project_path).ok();
+        return Err(
+            "Invalid template: no package.json found. Please use a valid Node.js project template."
+                .to_string(),
+        );
+    }
+
+    Ok(project_path.to_string_lossy().to_string())
 }
