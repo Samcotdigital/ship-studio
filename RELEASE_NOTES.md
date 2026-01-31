@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.29
+
+- **Template zip import** - Create projects from downloaded template zip files via drag-and-drop or file picker
+- **Dev server timeout handling** - Prevents UI hangs when restarting dev server (thanks Tyler!)
+- **Dashboard UI consistency** - Header buttons now match editor styling
+
+
 ## What's New in v0.3.28
 
 - **Resizable preview** - Drag the handle to resize the preview panel and test responsive breakpoints
