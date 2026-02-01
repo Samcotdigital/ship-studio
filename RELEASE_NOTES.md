@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.31
+
+- **Fixed Vercel domain display** - Projects with team scopes or personal accounts now properly show their live site URLs in the publish dropdown
+
 ## What's New in v0.3.30
 
 - **Improved publish dropdown UI** - Wider dropdown with compact badges for better URL visibility
