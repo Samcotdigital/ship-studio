@@ -161,11 +161,11 @@ jobs:
       - name: Read release notes
         id: release_notes
         run: |
-          # Read RELEASE_NOTES.md and extract the content (skip the HTML comment)
+          # Read RELEASE_NOTES.md and extract ONLY the current version's notes
           # Use a delimiter for multiline output
           echo "notes<<EOF" >> $GITHUB_OUTPUT
-          # Extract everything after "## What's New" line, strip markdown headers
-          sed -n '/^## What/,$ p' RELEASE_NOTES.md | tail -n +2 | sed 's/^- /• /' >> $GITHUB_OUTPUT
+          # Extract only the first "## What's New" section (stop at the next version header)
+          awk '/^## What/{if(found)exit; found=1; next} found{print}' RELEASE_NOTES.md | sed 's/^- /• /' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create latest.json
