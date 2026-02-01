@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.33
+
+- **Export project as template** - Save any project as a reusable template zip file
+- **Fixed update banner** - Release notes now display correctly for all releases
+
 ## What's New in v0.3.32
 
 - **Added preview breakpoints** - Now includes 5 responsive breakpoints: Full (100%), Desktop (1440px), Laptop (1024px), Tablet (768px), and Mobile (375px)
