@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.32
+
+- **Added preview breakpoints** - Now includes 5 responsive breakpoints: Full (100%), Desktop (1440px), Laptop (1024px), Tablet (768px), and Mobile (375px)
+
 ## What's New in v0.3.31
 
 - **Fixed Vercel domain display** - Projects with team scopes or personal accounts now properly show their live site URLs in the publish dropdown
