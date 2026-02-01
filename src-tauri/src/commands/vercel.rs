@@ -10,6 +10,7 @@ use crate::types::{
 };
 use crate::utils::{format_relative_time, get_extended_path, validate_project_path};
 use std::process::Command;
+use tracing::{debug, info, warn};
 
 /// Default timeout for Vercel CLI commands (30 seconds)
 const VERCEL_CLI_TIMEOUT_SECS: u64 = 30;
@@ -519,80 +520,30 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
         None => return not_linked,
     };
 
-    // Verify the project actually exists on Vercel by running `vercel ls`
-    // This will fail if the project was deleted or the local config is stale
-    // Use --scope if we have an orgId (team project)
-    let mut verify_cmd = get_vercel_command();
-    verify_cmd.args(["ls"]);
-    if let Some(ref org) = org_id {
-        verify_cmd.args(["--scope", org]);
-    }
-    let verify_output = verify_cmd.current_dir(&project).output();
+    // Skip the strict project verification - it fails for team projects where user
+    // may have deploy access but not list access. Instead, just try to fetch aliases
+    // and let that determine if we can get URLs.
 
-    let project_exists = match verify_output {
-        Ok(output) => {
-            // If the command succeeds and doesn't contain error messages about missing project
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let combined = format!("{}{}", stdout, stderr);
+    // Filter out invalid org_id values - "personal" is not a valid scope
+    // Valid scopes are team IDs (team_xxx) or team slugs (alphanumeric with dashes)
+    let valid_org_id = org_id.as_ref().filter(|org| {
+        let org_str = org.as_str();
+        // "personal" is not a valid scope - skip it
+        // Valid: team_xxx, or team slugs like "memberstack", "tbell511s-projects"
+        org_str != "personal" && !org_str.is_empty()
+    });
 
-            // Check for various error indicators that mean the project doesn't exist
-            !combined.contains("not linked")
-                && !combined.contains("Could not find")
-                && !combined.contains("No project found")
-                && !combined.contains("does not exist")
-                && output.status.success()
-        }
-        Err(_) => false,
-    };
-
-    if !project_exists {
-        // Don't delete the .vercel directory - the user might have access
-        // but verification failed for other reasons (auth scope, network, etc.)
-        // Trust that if .vercel/project.json exists with valid content, it's likely connected
-        // The user can always re-link via the Vercel button if needed
-        return ProjectVercelStatus {
-            status: "connected".to_string(),
-            project_name,
-            vercel_org: org_id,
-            production_url: None,
-            staging_url: None,
-        };
-    }
-
-    // Check if Vercel is connected to GitHub
-    // Use --scope if we have an orgId (team project)
-    let mut git_cmd = get_vercel_command();
-    git_cmd.args(["git", "connect", "--yes"]);
-    if let Some(ref org) = org_id {
-        git_cmd.args(["--scope", org]);
-    }
-    let git_connect_output = git_cmd.current_dir(&project).output();
-
-    let is_git_connected = match git_connect_output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let full_output = stdout + &stderr;
-            full_output.contains("already connected")
-        }
-        Err(_) => false,
-    };
-
-    if !is_git_connected {
-        return ProjectVercelStatus {
-            status: "not-git-connected".to_string(),
-            project_name,
-            vercel_org: None,
-            production_url: None,
-            staging_url: None,
-        };
-    }
+    info!(
+        project_name = %project_name_str,
+        org_id = ?org_id,
+        valid_org_id = ?valid_org_id,
+        "Fetching Vercel project URLs"
+    );
 
     // Get URLs from `vercel alias ls`
     let mut alias_cmd = get_vercel_command();
     alias_cmd.args(["alias", "ls"]);
-    if let Some(ref org) = org_id {
+    if let Some(ref org) = valid_org_id {
         alias_cmd.args(["--scope", org]);
     }
     let alias_output = alias_cmd.current_dir(&project).output().ok();
@@ -601,11 +552,23 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
     let mut staging_url: Option<String> = None;
     let mut production_url: Option<String> = None;
     let mut production_candidates: Vec<String> = Vec::new();
+    let mut all_urls_found: Vec<String> = Vec::new();
+
+    info!(
+        project_name = %project_name_str,
+        "Fetching Vercel aliases for project"
+    );
 
     if let Some(output) = alias_output {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let full_output = stdout + &stderr;
+
+        debug!(
+            project_name = %project_name_str,
+            alias_output = %full_output,
+            "Raw vercel alias ls output"
+        );
 
         // Extract org from "Fetching aliases under {org}"
         for line in full_output.lines() {
@@ -619,13 +582,28 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
         }
 
         // Parse alias table for URLs belonging to this project
+        // Expected format: project-name.vercel.app or project-name-xxx.vercel.app
+        let project_prefix_dot = format!("{}.", project_name_str);
+        let project_prefix_dash = format!("{}-", project_name_str);
+
         for line in full_output.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
                 let url = parts[1];
-                if url.starts_with(&format!("{}.", project_name_str))
-                    || url.starts_with(&format!("{}-", project_name_str))
-                {
+                // Collect all URLs for logging
+                if url.contains('.') && !url.contains("Alias") {
+                    all_urls_found.push(url.to_string());
+                }
+
+                let matches_project = url.starts_with(&project_prefix_dot)
+                    || url.starts_with(&project_prefix_dash);
+
+                if matches_project {
+                    debug!(
+                        url = %url,
+                        project_name = %project_name_str,
+                        "URL matches project name pattern"
+                    );
                     if url.contains("-git-staging-") {
                         if staging_url.is_none() {
                             staging_url = Some(url.to_string());
@@ -633,6 +611,16 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
                     } else if !url.contains("-git-") {
                         production_candidates.push(url.to_string());
                     }
+                } else if url.contains('.') && !url.contains("Alias") {
+                    // Log URLs that don't match the project name pattern
+                    // This helps debug custom domain issues
+                    debug!(
+                        url = %url,
+                        project_name = %project_name_str,
+                        expected_prefix_dot = %project_prefix_dot,
+                        expected_prefix_dash = %project_prefix_dash,
+                        "URL does NOT match project name pattern - may be custom domain"
+                    );
                 }
             }
         }
@@ -642,10 +630,30 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
             production_candidates.sort_by_key(|s| s.len());
             production_url = Some(production_candidates[0].clone());
         }
+
+        info!(
+            project_name = %project_name_str,
+            all_urls_count = all_urls_found.len(),
+            all_urls = ?all_urls_found,
+            production_candidates = ?production_candidates,
+            staging_url = ?staging_url,
+            production_url = ?production_url,
+            "Alias parsing complete"
+        );
+    } else {
+        warn!(
+            project_name = %project_name_str,
+            "Failed to get vercel alias ls output"
+        );
     }
 
     // If no staging URL from aliases, check vercel list for Preview deployments
     if staging_url.is_none() {
+        debug!(
+            project_name = %project_name_str,
+            "No staging URL from aliases, checking vercel list for Preview deployments"
+        );
+
         let mut list_cmd = get_vercel_command();
         list_cmd.args(["list"]);
         if let Some(ref org) = org_id {
@@ -654,19 +662,74 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
         let list_output = list_cmd.current_dir(&project).output().ok();
 
         if let Some(output) = list_output {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let full_list_output = format!("{}{}", stdout, stderr);
 
-            for line in stderr.lines() {
+            debug!(
+                project_name = %project_name_str,
+                list_output = %full_list_output,
+                "Raw vercel list output"
+            );
+
+            for line in full_list_output.lines() {
                 if line.contains("Preview") && !line.contains("Production") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     for part in parts {
                         if part.contains(".vercel.app") {
                             let url = part.trim_start_matches("https://");
                             staging_url = Some(url.to_string());
+                            debug!(
+                                project_name = %project_name_str,
+                                staging_url = %url,
+                                "Found staging URL from vercel list"
+                            );
                             break;
                         }
                     }
                     if staging_url.is_some() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // If still no production URL, try to get it from vercel list (for Production deployments)
+    if production_url.is_none() {
+        debug!(
+            project_name = %project_name_str,
+            "No production URL from aliases, checking vercel list for Production deployments"
+        );
+
+        let mut list_cmd = get_vercel_command();
+        list_cmd.args(["list"]);
+        if let Some(ref org) = org_id {
+            list_cmd.args(["--scope", org]);
+        }
+        let list_output = list_cmd.current_dir(&project).output().ok();
+
+        if let Some(output) = list_output {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let full_list_output = format!("{}{}", stdout, stderr);
+
+            for line in full_list_output.lines() {
+                if line.contains("Production") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    for part in parts {
+                        if part.contains(".vercel.app") || part.contains("https://") {
+                            let url = part.trim_start_matches("https://");
+                            production_url = Some(url.to_string());
+                            debug!(
+                                project_name = %project_name_str,
+                                production_url = %url,
+                                "Found production URL from vercel list"
+                            );
+                            break;
+                        }
+                    }
+                    if production_url.is_some() {
                         break;
                     }
                 }
@@ -714,6 +777,14 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
             let _ = std::fs::write(&metadata_path, contents);
         }
     }
+
+    info!(
+        project_name = ?project_name,
+        vercel_org = ?vercel_org,
+        production_url = ?production_url,
+        staging_url = ?staging_url,
+        "Returning Vercel status for project"
+    );
 
     ProjectVercelStatus {
         status: "connected".to_string(),

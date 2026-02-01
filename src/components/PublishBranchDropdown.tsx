@@ -98,6 +98,23 @@ export function PublishBranchDropdown({
   const hasVercel = projectVercelStatus?.status === 'connected';
   const isMainBranch = currentBranch === 'main' || currentBranch === 'master';
 
+  // Debug logging for Vercel status
+  useEffect(() => {
+    if (projectVercelStatus) {
+      logger.debug('PublishBranchDropdown: Vercel status received', {
+        status: projectVercelStatus.status,
+        project_name: projectVercelStatus.project_name,
+        vercel_org: projectVercelStatus.vercel_org,
+        production_url: projectVercelStatus.production_url,
+        staging_url: projectVercelStatus.staging_url,
+        hasVercel,
+        willShowLiveSites: hasVercel && (projectVercelStatus.production_url || projectVercelStatus.staging_url),
+      });
+    } else {
+      logger.debug('PublishBranchDropdown: No Vercel status available');
+    }
+  }, [projectVercelStatus, hasVercel]);
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {

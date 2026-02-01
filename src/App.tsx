@@ -1052,6 +1052,18 @@ function App() {
           getProjectGitHubStatus(project.path).catch(() => null),
           getProjectVercelStatus(project.path).catch(() => null),
         ]);
+        // Log Vercel status for debugging domain display issues
+        if (vcStatus) {
+          logger.info('[OpenProject] Vercel status received', {
+            project: project.name,
+            status: vcStatus.status,
+            project_name: vcStatus.project_name,
+            production_url: vcStatus.production_url,
+            staging_url: vcStatus.staging_url,
+          });
+        } else {
+          logger.info('[OpenProject] No Vercel status for project', { project: project.name });
+        }
         dispatch({ type: 'SET_PROJECT_STATUSES', payload: { github: ghStatus, vercel: vcStatus } });
       } catch {
         dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
