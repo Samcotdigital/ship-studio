@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.36
+
+- **Responsive breakpoints** - Breakpoint options now hide when they don't fit in the preview viewport
+- **Cleaner UI** - Hide workspace tabs (Preview/Branches/PRs) when GitHub not connected
+- **Fixed viewport screenshots** - Screenshots now capture actual visible content
+- **Fixed dev server retry** - Retry button on error screen now works correctly
+
+
 ## What's New in v0.3.35
 
 - **Image Preview** - Clicking on untracked image files in the Unsaved Changes dropdown now shows an image preview instead of an error
