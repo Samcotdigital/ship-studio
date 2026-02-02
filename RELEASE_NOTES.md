@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.35
+
+- **Image Preview** - Clicking on untracked image files in the Unsaved Changes dropdown now shows an image preview instead of an error
+
 ## What's New in v0.3.34
 
 - **Improved page selector styling** - Selected page now uses a subtle highlight with accent bar instead of jarring white background
