@@ -60,6 +60,7 @@ export function DiffModal({ projectPath, filePath, fileStatus, onClose }: DiffMo
   const getStatusLabel = () => {
     switch (fileStatus) {
       case 'added':
+      case 'untracked':
         return 'New File';
       case 'deleted':
         return 'Deleted';

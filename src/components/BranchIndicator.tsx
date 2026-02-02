@@ -126,6 +126,7 @@ export function BranchIndicator({
   const getStatusIndicator = (status: string) => {
     switch (status) {
       case 'added':
+      case 'untracked':
         return <span className="change-status change-added">+</span>;
       case 'deleted':
         return <span className="change-status change-deleted">-</span>;

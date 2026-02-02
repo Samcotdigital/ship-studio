@@ -262,9 +262,9 @@ pub async fn get_changed_files(project_path: String) -> Result<Vec<ChangedFile>,
         return Ok(vec![]);
     }
 
-    // Run git status --porcelain -uno (exclude untracked files)
+    // Run git status --porcelain (include untracked files)
     let output = Command::new("git")
-        .args(["status", "--porcelain", "-uno"])
+        .args(["status", "--porcelain"])
         .current_dir(&project)
         .output()
         .map_err(|e| e.to_string())?;
@@ -293,6 +293,7 @@ pub async fn get_changed_files(project_path: String) -> Result<Vec<ChangedFile>,
 
         // Determine the status based on git status codes
         let status = match status_chars.chars().collect::<Vec<char>>().as_slice() {
+            ['?', '?'] => "untracked",
             ['D', _] | [_, 'D'] => "deleted",
             ['A', _] | [_, 'A'] => "added",
             ['R', _] | [_, 'R'] => "renamed",

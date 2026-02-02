@@ -10,7 +10,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 /** Status type for a changed file */
-export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed';
+export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked';
 
 /** A file with uncommitted changes */
 export interface ChangedFile {
