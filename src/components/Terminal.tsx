@@ -57,6 +57,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const fitAddonRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<IPty | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
 
   // Use ref for onExit to prevent effect re-runs when callback reference changes
   const onExitRef = useRef(onExit);
@@ -209,6 +210,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    // Track terminal focus state for dimming overlay
+    // xterm.js doesn't have onBlur/onFocus - use the underlying textarea
+    const textarea = container.querySelector('textarea');
+    if (textarea) {
+      textarea.addEventListener('focus', () => setIsFocused(true));
+      textarea.addEventListener('blur', () => setIsFocused(false));
+    }
 
     // Track if this effect instance is still mounted (handles StrictMode/HMR)
     let mounted = true;
@@ -371,16 +380,33 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   );
 
   return (
-    <div
-      ref={containerRef}
-      onClick={handleClick}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      style={{
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#1e1e1e',
-      }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div
+        ref={containerRef}
+        onClick={handleClick}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        style={{
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#1e1e1e',
+          filter: isFocused ? 'none' : 'grayscale(100%)',
+          transition: 'filter 150ms ease-in-out',
+        }}
+      />
+      {/* Dimming overlay when terminal is not focused */}
+      <div
+        onClick={handleClick}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundColor: 'rgba(30, 30, 30, 0.4)',
+          pointerEvents: isFocused ? 'none' : 'auto',
+          opacity: isFocused ? 0 : 1,
+          transition: 'opacity 150ms ease-in-out',
+          cursor: 'text',
+        }}
+      />
+    </div>
   );
 });
