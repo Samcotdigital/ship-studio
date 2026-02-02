@@ -595,8 +595,8 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
                     all_urls_found.push(url.to_string());
                 }
 
-                let matches_project = url.starts_with(&project_prefix_dot)
-                    || url.starts_with(&project_prefix_dash);
+                let matches_project =
+                    url.starts_with(&project_prefix_dot) || url.starts_with(&project_prefix_dash);
 
                 if matches_project {
                     debug!(
