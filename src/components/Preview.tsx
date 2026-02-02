@@ -43,6 +43,12 @@ const BREAKPOINTS: Record<Breakpoint, { width: string; label: string }> = {
   mobile: { width: '375px', label: 'Mobile' },
 };
 
+/** Pixel widths for fixed breakpoints (excludes 'full' which is 100%) */
+const BREAKPOINT_WIDTHS: number[] = [1440, 1024, 768, 375];
+
+/** Space reserved for the resize handle on the right side of the viewport */
+const VIEWPORT_PADDING_PX = 12;
+
 // SVG icons for breakpoints
 const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
   if (type === 'full') {
@@ -213,7 +219,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cmsModalRef = useRef<HTMLDivElement>(null);
   const cropOverlayRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
 
   // Dev server URL (for health checks and page loading)
   const devServerUrl = `http://localhost:${port}`;
@@ -624,6 +630,47 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // Resize state
   const [isResizing, setIsResizing] = useState(false);
 
+  // Track viewport width to hide breakpoints that won't fit
+  // ResizeObserver fires efficiently (not on every frame) so no debouncing needed
+  const [viewportWidth, setViewportWidth] = useState<number>(0);
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  // Callback ref to set up ResizeObserver when viewport element mounts/unmounts
+  const setViewportRefs = useCallback((node: HTMLDivElement | null) => {
+    // Update the regular ref for other code that uses viewportRef
+    viewportRef.current = node;
+
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    if (node) {
+      // Set initial width (subtract padding for resize handle)
+      setViewportWidth(node.offsetWidth - VIEWPORT_PADDING_PX);
+
+      // Observe future size changes
+      observerRef.current = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setViewportWidth(entry.contentRect.width - VIEWPORT_PADDING_PX);
+        }
+      });
+      observerRef.current.observe(node);
+    }
+  }, []);
+
+  // Auto-switch to a fitting breakpoint if current selection no longer fits
+  useEffect(() => {
+    if (viewportWidth === 0 || customWidth === null) return;
+
+    if (customWidth > viewportWidth) {
+      // Current breakpoint doesn't fit - switch to largest that does
+      const fittingWidth = BREAKPOINT_WIDTHS.find((w) => w <= viewportWidth);
+      setCustomWidth(fittingWidth ?? null); // null = full width if nothing fits
+    }
+  }, [viewportWidth, customWidth]);
+
   // Handle resize drag - like SplitPane
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -955,19 +1002,29 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         )}
 
         <div className="preview-breakpoints">
-          {(Object.keys(BREAKPOINTS) as Breakpoint[]).map((bp) => (
-            <button
-              key={bp}
-              className={`breakpoint-btn ${getActiveBreakpoint() === bp ? 'active' : ''}`}
-              onClick={() => handleBreakpointClick(bp)}
-              title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
-            >
-              <BreakpointIcon type={bp} />
-            </button>
-          ))}
+          {(Object.keys(BREAKPOINTS) as Breakpoint[]).map((bp) => {
+            // Always show 'full' - it adapts to any size
+            // Hide other breakpoints if they won't fit in the viewport
+            if (bp !== 'full') {
+              const bpWidth = parseInt(BREAKPOINTS[bp].width, 10);
+              if (viewportWidth > 0 && bpWidth > viewportWidth) {
+                return null;
+              }
+            }
+            return (
+              <button
+                key={bp}
+                className={`breakpoint-btn ${getActiveBreakpoint() === bp ? 'active' : ''}`}
+                onClick={() => handleBreakpointClick(bp)}
+                title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
+              >
+                <BreakpointIcon type={bp} />
+              </button>
+            );
+          })}
         </div>
       </div>
-      <div className="preview-viewport" ref={viewportRef}>
+      <div className="preview-viewport" ref={setViewportRefs}>
         {/* Overlay to capture mouse events during resize */}
         {isResizing && <div className="preview-resize-overlay" />}
         <div
