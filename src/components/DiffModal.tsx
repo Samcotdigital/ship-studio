@@ -15,7 +15,18 @@ import { getFileDiff, FileDiff, ChangeStatus } from '../lib/git';
 import { CloseIcon, FileIcon } from './icons';
 
 // Image extensions to detect for preview
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif'];
+const IMAGE_EXTENSIONS = [
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.ico',
+  '.bmp',
+  '.tiff',
+  '.tif',
+];
 
 function isImageFile(filePath: string): boolean {
   const lower = filePath.toLowerCase();

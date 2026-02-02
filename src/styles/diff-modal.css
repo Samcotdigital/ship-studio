@@ -281,23 +281,26 @@
   padding: 24px;
   min-height: 200px;
   background: var(--bg-tertiary);
-  background-image: repeating-linear-gradient(
-    45deg,
-    var(--bg-primary) 25%,
-    transparent 25%,
-    transparent 75%,
-    var(--bg-primary) 75%,
-    var(--bg-primary)
-  ),
-  repeating-linear-gradient(
-    45deg,
-    var(--bg-primary) 25%,
-    var(--bg-tertiary) 25%,
-    var(--bg-tertiary) 75%,
-    var(--bg-primary) 75%,
-    var(--bg-primary)
-  );
-  background-position: 0 0, 8px 8px;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      var(--bg-primary) 25%,
+      transparent 25%,
+      transparent 75%,
+      var(--bg-primary) 75%,
+      var(--bg-primary)
+    ),
+    repeating-linear-gradient(
+      45deg,
+      var(--bg-primary) 25%,
+      var(--bg-tertiary) 25%,
+      var(--bg-tertiary) 75%,
+      var(--bg-primary) 75%,
+      var(--bg-primary)
+    );
+  background-position:
+    0 0,
+    8px 8px;
   background-size: 16px 16px;
 }
 
