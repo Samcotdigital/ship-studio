@@ -826,7 +826,18 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       <div className="preview-error">
         <p>Could not connect to dev server</p>
         <p className="hint">Ask Claude to run: npm run dev</p>
-        <button onClick={() => setRetryCount(0)}>Retry</button>
+        <button
+          onClick={() => {
+            // Reset state and trigger fresh retry cycle
+            // Set to -1 first (useEffect skips negative values), then 0 to ensure re-trigger
+            setHasError(false);
+            setIsLoading(true);
+            setRetryCount(-1);
+            setTimeout(() => setRetryCount(0), 50);
+          }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
