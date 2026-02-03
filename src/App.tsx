@@ -43,6 +43,7 @@ import { ConnectOverlay } from './components/ConnectOverlay';
 import { CodeHealthPanel, CodeHealthPanelRef } from './components/CodeHealthPanel';
 import { ScreenshotToast, ScreenshotPreviewModal } from './components/ScreenshotPreview';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
+import { HelpModal } from './components/HelpModal';
 import { EducationOverlay } from './components/EducationOverlay';
 import {
   NotificationSettings,
@@ -82,6 +83,7 @@ import {
   PinIcon,
   ExpandIcon,
   ArrowLeftIcon,
+  HelpIcon,
   GraduationCapIcon,
 } from './components/icons';
 import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
@@ -397,6 +399,9 @@ function App({ initialProjectPath }: AppProps) {
   // Conflict resolution modal state
   const [showConflictResolution, setShowConflictResolution] = useState(false);
 
+  // Help modal state
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
   // Workspace tab state (preview/branches/prs)
   const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'branches' | 'prs'>('preview');
 
@@ -440,6 +445,23 @@ function App({ initialProjectPath }: AppProps) {
     void invoke<{ vscode: boolean; cursor: boolean }>('check_ide_availability')
       .then(setIdeAvailability)
       .catch(() => setIdeAvailability({ vscode: false, cursor: false }));
+  }, []);
+
+  // Keyboard shortcut for help modal (Cmd+/ or F1)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+/ (Mac) or Ctrl+/ (Windows) or F1
+      if (
+        ((e.metaKey || e.ctrlKey) && e.key === '/') ||
+        e.key === 'F1'
+      ) {
+        e.preventDefault();
+        setShowHelpModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Open project in IDE
@@ -2106,6 +2128,13 @@ function App({ initialProjectPath }: AppProps) {
                           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                         </svg>
                       </button>
+                      <button
+                        className="workspace-tab icon-only"
+                        onClick={() => setShowHelpModal(true)}
+                        title="Help & Commands"
+                      >
+                        <HelpIcon size={12} />
+                      </button>
                     </div>
 
                     {/* Compact mode controls - visible only at narrow widths via CSS */}
@@ -2541,6 +2570,13 @@ function App({ initialProjectPath }: AppProps) {
             onClose={() => setShowNotificationSettings(false)}
           />
         )}
+
+        {/* Help Modal */}
+        <HelpModal
+          isOpen={showHelpModal}
+          onClose={() => setShowHelpModal(false)}
+          projectPath={currentProject?.path}
+        />
 
         {/* Submit for Review Modal */}
         {showSubmitReview && (
