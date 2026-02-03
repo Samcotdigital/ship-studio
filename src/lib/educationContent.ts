@@ -152,6 +152,23 @@ export const educationContent: Record<string, EducationItem> = {
       'Capture the entire page, including parts you need to scroll to see. Great for showing Claude a complete page layout.',
   },
 
+  // Terminal header buttons
+  'notification-settings': {
+    title: 'Notification Sounds',
+    description:
+      'Turn sound alerts on or off. Get notified when Claude finishes a task or needs your attention.',
+  },
+  'skills-manager': {
+    title: 'Manage Skills',
+    description:
+      'Install and manage skills that give Claude specialized abilities. Skills add commands for specific tasks like React patterns or code review.',
+  },
+  'help-commands': {
+    title: 'Help & Commands',
+    description:
+      'See keyboard shortcuts and all the commands available in the terminal. Find quick ways to navigate and control the app.',
+  },
+
   // Education mode button itself
   'education-button': {
     title: 'Learn Mode',

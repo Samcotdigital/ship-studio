@@ -44,6 +44,7 @@ import { CodeHealthPanel, CodeHealthPanelRef } from './components/CodeHealthPane
 import { ScreenshotToast, ScreenshotPreviewModal } from './components/ScreenshotPreview';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { HelpModal } from './components/HelpModal';
+import { SkillsModal } from './components/SkillsModal';
 import { EducationOverlay } from './components/EducationOverlay';
 import {
   NotificationSettings,
@@ -85,6 +86,9 @@ import {
   ArrowLeftIcon,
   HelpIcon,
   GraduationCapIcon,
+  ZapIcon,
+  BellIcon,
+  ActivityIcon,
 } from './components/icons';
 import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
 import {
@@ -136,9 +140,19 @@ const SCREENSHOT_RETRY_DELAY_MS = 3000;
 const PREFERRED_DEV_SERVER_PORT = 3000;
 
 /** Fallback GitHub status when the check fails or times out (shows "Create Repo" instead of stuck "Checking...") */
-const GITHUB_STATUS_FALLBACK: ProjectGitHubStatus = { status: 'no-remote', github_repo: null, github_url: null };
+const GITHUB_STATUS_FALLBACK: ProjectGitHubStatus = {
+  status: 'no-remote',
+  github_repo: null,
+  github_url: null,
+};
 /** Fallback Vercel status when the check fails or times out (shows "Connect" instead of stuck "Checking...") */
-const VERCEL_STATUS_FALLBACK: ProjectVercelStatus = { status: 'not-linked', project_name: null, vercel_org: null, production_url: null, staging_url: null };
+const VERCEL_STATUS_FALLBACK: ProjectVercelStatus = {
+  status: 'not-linked',
+  project_name: null,
+  vercel_org: null,
+  production_url: null,
+  staging_url: null,
+};
 
 /** Current application view/screen */
 type AppView = 'loading' | 'onboarding' | 'projects' | 'project-loading' | 'workspace';
@@ -409,6 +423,9 @@ function App({ initialProjectPath }: AppProps) {
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState(false);
 
+  // Skills modal state
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
+
   // Workspace tab state (preview/branches/prs)
   const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'branches' | 'prs'>('preview');
 
@@ -458,10 +475,7 @@ function App({ initialProjectPath }: AppProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+/ (Mac) or Ctrl+/ (Windows) or F1
-      if (
-        ((e.metaKey || e.ctrlKey) && e.key === '/') ||
-        e.key === 'F1'
-      ) {
+      if (((e.metaKey || e.ctrlKey) && e.key === '/') || e.key === 'F1') {
         e.preventDefault();
         setShowHelpModal(true);
       }
@@ -1694,7 +1708,9 @@ function App({ initialProjectPath }: AppProps) {
       // If we have a vercel deployed URL, optimistically set Vercel as connected
       // This avoids race conditions where the status check runs before Vercel's state propagates
       if (vercelDeployedUrl) {
-        const ghStatus = await getProjectGitHubStatus(currentProject.path).catch(() => GITHUB_STATUS_FALLBACK);
+        const ghStatus = await getProjectGitHubStatus(currentProject.path).catch(
+          () => GITHUB_STATUS_FALLBACK
+        );
         dispatch({
           type: 'SET_PROJECT_STATUSES',
           payload: {
@@ -1738,7 +1754,9 @@ function App({ initialProjectPath }: AppProps) {
     }
     // Otherwise refresh project Vercel status
     if (currentProject) {
-      const status = await getProjectVercelStatus(currentProject.path).catch(() => VERCEL_STATUS_FALLBACK);
+      const status = await getProjectVercelStatus(currentProject.path).catch(
+        () => VERCEL_STATUS_FALLBACK
+      );
       dispatch({ type: 'SET_PROJECT_VERCEL', payload: status });
     }
   };
@@ -2076,7 +2094,7 @@ function App({ initialProjectPath }: AppProps) {
                     </div>
                     <div className="terminal-logs-tabs">
                       <button
-                        className={`workspace-tab ${showDevServerLogs && !showHealthLogs ? 'active' : ''}`}
+                        className={`workspace-tab icon-only ${showDevServerLogs && !showHealthLogs ? 'active' : ''}`}
                         onClick={() => {
                           setShowDevServerLogs(true);
                           setShowHealthLogs(false);
@@ -2085,10 +2103,9 @@ function App({ initialProjectPath }: AppProps) {
                         data-education-id="server-logs"
                       >
                         <TerminalIcon size={12} />
-                        <span>Server</span>
                       </button>
                       <button
-                        className={`workspace-tab ${showHealthLogs ? 'active' : ''}`}
+                        className={`workspace-tab icon-only ${showHealthLogs ? 'active' : ''}`}
                         onClick={() => {
                           setShowDevServerLogs(true);
                           setShowHealthLogs(true);
@@ -2096,39 +2113,29 @@ function App({ initialProjectPath }: AppProps) {
                         title="View health check logs"
                         data-education-id="health-logs"
                       >
-                        <svg
-                          width={12}
-                          height={12}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                        </svg>
-                        <span>Health</span>
+                        <ActivityIcon size={12} />
                       </button>
                       <button
-                        className={`workspace-tab icon-only ${notificationSettings.enabled ? 'active' : ''}`}
+                        className="workspace-tab icon-only"
                         onClick={() => setShowNotificationSettings(true)}
                         title="Notification sounds"
+                        data-education-id="notification-settings"
                       >
-                        <svg
-                          width={12}
-                          height={12}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                        </svg>
+                        <BellIcon size={12} />
+                      </button>
+                      <button
+                        className="workspace-tab icon-only"
+                        onClick={() => setShowSkillsModal(true)}
+                        title="Manage Skills"
+                        data-education-id="skills-manager"
+                      >
+                        <ZapIcon size={12} />
                       </button>
                       <button
                         className="workspace-tab icon-only"
                         onClick={() => setShowHelpModal(true)}
                         title="Help & Commands"
+                        data-education-id="help-commands"
                       >
                         <HelpIcon size={12} />
                       </button>
@@ -2601,6 +2608,13 @@ function App({ initialProjectPath }: AppProps) {
         <HelpModal
           isOpen={showHelpModal}
           onClose={() => setShowHelpModal(false)}
+          projectPath={currentProject?.path}
+        />
+
+        {/* Skills Modal */}
+        <SkillsModal
+          isOpen={showSkillsModal}
+          onClose={() => setShowSkillsModal(false)}
           projectPath={currentProject?.path}
         />
 

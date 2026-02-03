@@ -204,6 +204,10 @@ pub fn run() {
             commands::claude::install_claude_cli,
             // Claude skills
             commands::skills::list_claude_skills,
+            commands::skills::check_skills_cli,
+            commands::skills::search_skills,
+            commands::skills::install_skill,
+            commands::skills::remove_skill,
             // Vercel integration
             commands::vercel::check_vercel_cli_status,
             commands::vercel::get_vercel_username,

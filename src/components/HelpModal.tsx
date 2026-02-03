@@ -21,6 +21,19 @@ interface HelpModalProps {
 export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
   const [skills, setSkills] = useState<ClaudeSkill[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+  const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set());
+
+  const toggleSkillExpanded = (skillKey: string) => {
+    setExpandedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(skillKey)) {
+        next.delete(skillKey);
+      } else {
+        next.add(skillKey);
+      }
+      return next;
+    });
+  };
 
   // Handle Escape key to close
   useEffect(() => {
@@ -72,21 +85,43 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
               <div className="help-section">
                 <div className="help-section-title">Your Skills</div>
                 <div className="help-command-list">
-                  {userSkills.map((skill) => (
-                    <div key={`${skill.plugin}-${skill.name}`} className="help-command">
-                      <span className="help-command-name">/{skill.name}</span>
-                      <span className="help-command-desc">{skill.description}</span>
-                    </div>
-                  ))}
-                  {projectSkills.map((skill) => (
-                    <div key={`${skill.plugin}-${skill.name}`} className="help-command">
-                      <span className="help-command-name">/{skill.name}</span>
-                      <span className="help-command-desc">
-                        {skill.description}
-                        <span className="help-skill-badge">project</span>
-                      </span>
-                    </div>
-                  ))}
+                  {userSkills.map((skill) => {
+                    const skillKey = `${skill.plugin}-${skill.name}`;
+                    const isExpanded = expandedSkills.has(skillKey);
+                    return (
+                      <div
+                        key={skillKey}
+                        className={`help-skill ${isExpanded ? 'expanded' : ''}`}
+                        onClick={() => toggleSkillExpanded(skillKey)}
+                      >
+                        <div className="help-skill-header">
+                          <span className="help-skill-name">/{skill.name}</span>
+                          <span className="help-skill-toggle">{isExpanded ? '−' : '+'}</span>
+                        </div>
+                        {isExpanded && <div className="help-skill-desc">{skill.description}</div>}
+                      </div>
+                    );
+                  })}
+                  {projectSkills.map((skill) => {
+                    const skillKey = `${skill.plugin}-${skill.name}`;
+                    const isExpanded = expandedSkills.has(skillKey);
+                    return (
+                      <div
+                        key={skillKey}
+                        className={`help-skill ${isExpanded ? 'expanded' : ''}`}
+                        onClick={() => toggleSkillExpanded(skillKey)}
+                      >
+                        <div className="help-skill-header">
+                          <span className="help-skill-name">
+                            /{skill.name}
+                            <span className="help-skill-badge">project</span>
+                          </span>
+                          <span className="help-skill-toggle">{isExpanded ? '−' : '+'}</span>
+                        </div>
+                        {isExpanded && <div className="help-skill-desc">{skill.description}</div>}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <div className="help-divider" />
@@ -211,9 +246,7 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
           <div className="help-section">
             <div className="help-section-title">Ship Studio Tips</div>
             <div className="help-tip-list">
-              <div className="help-tip">
-                Drag files onto the terminal to paste their paths
-              </div>
+              <div className="help-tip">Drag files onto the terminal to paste their paths</div>
               <div className="help-tip">
                 Use <span className="help-shortcut">Shift</span> +{' '}
                 <span className="help-shortcut">Enter</span> for multiline input
@@ -221,9 +254,7 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
               <div className="help-tip">
                 Status dot shows Claude state: thinking, waiting, or idle
               </div>
-              <div className="help-tip">
-                Use numbered tabs to run multiple Claude sessions
-              </div>
+              <div className="help-tip">Use numbered tabs to run multiple Claude sessions</div>
             </div>
           </div>
 
@@ -234,14 +265,24 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
             <div className="help-section-title">Example Prompts</div>
             <div className="help-example-list">
               <div className="help-example-category">Fix & Improve</div>
-              <div className="help-example">"The contact form isn't sending emails, can you fix it?"</div>
-              <div className="help-example">"The page is loading really slowly, can you speed it up?"</div>
-              <div className="help-example">"The images look blurry on mobile, can you fix that?"</div>
+              <div className="help-example">
+                "The contact form isn't sending emails, can you fix it?"
+              </div>
+              <div className="help-example">
+                "The page is loading really slowly, can you speed it up?"
+              </div>
+              <div className="help-example">
+                "The images look blurry on mobile, can you fix that?"
+              </div>
 
               <div className="help-example-category">Design & Content</div>
-              <div className="help-example">"Change the hero section background color to dark blue"</div>
+              <div className="help-example">
+                "Change the hero section background color to dark blue"
+              </div>
               <div className="help-example">"Make the website look good on phones and tablets"</div>
-              <div className="help-example">"Add a new testimonials section below the pricing page"</div>
+              <div className="help-example">
+                "Add a new testimonials section below the pricing page"
+              </div>
 
               <div className="help-example-category">Add Features</div>
               <div className="help-example">"Add a newsletter signup form to the footer"</div>
