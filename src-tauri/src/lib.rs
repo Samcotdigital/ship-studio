@@ -144,6 +144,8 @@ pub fn run() {
             commands::git::git_pull,
             commands::git::pull_and_merge,
             commands::git::delete_branch,
+            commands::git::get_backups,
+            commands::git::restore_backup,
             // Projects
             commands::projects::list_projects,
             commands::projects::get_dashboard_projects,

@@ -55,6 +55,11 @@ export const educationContent: Record<string, EducationItem> = {
     description:
       'Store private information like API keys and passwords. These values are used by your app but stay hidden and secure.',
   },
+  'backups-button': {
+    title: 'Backups',
+    description:
+      'View and restore previous versions of your project. Every time you save, a backup is created automatically. You can go back to any earlier state.',
+  },
   'ide-button': {
     title: 'Open in Code Editor',
     description:

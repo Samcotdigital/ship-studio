@@ -63,6 +63,7 @@ import { CodeHealthPanel, CodeHealthPanelRef } from './components/CodeHealthPane
 import { ScreenshotToast, ScreenshotPreviewModal } from './components/ScreenshotPreview';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { HelpModal } from './components/HelpModal';
+import { BackupsModal } from './components/BackupsModal';
 import { SkillsModal } from './components/SkillsModal';
 import { EducationOverlay } from './components/EducationOverlay';
 import {
@@ -108,6 +109,8 @@ import {
   ZapIcon,
   BellIcon,
   ActivityIcon,
+  HistoryIcon,
+  DollarIcon,
 } from './components/icons';
 import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
 import { getProjectGitHubStatus } from './lib/github';
@@ -271,6 +274,9 @@ function App({ initialProjectPath }: AppProps) {
 
   // Env editor modal
   const [showEnvEditor, setShowEnvEditor] = useState(false);
+
+  // Backups modal
+  const [showBackupsModal, setShowBackupsModal] = useState(false);
 
   // Assets panel modal
   const [showAssetsPanel, setShowAssetsPanel] = useState(false);
@@ -1575,11 +1581,10 @@ function App({ initialProjectPath }: AppProps) {
             <button
               className="assets-button"
               onClick={() => setShowAssetsPanel(true)}
-              title="Manage Assets"
+              title="Assets"
               data-education-id="assets-button"
             >
               <ImageIcon size={14} />
-              Assets
             </button>
             <div
               className="ide-dropdown-container"
@@ -1624,8 +1629,15 @@ function App({ initialProjectPath }: AppProps) {
               title="Environment Variables"
               data-education-id="env-button"
             >
-              <span className="env-button-icon">$</span>
-              .env
+              <DollarIcon size={14} />
+            </button>
+            <button
+              className="backups-button"
+              onClick={() => setShowBackupsModal(true)}
+              title="Backups"
+              data-education-id="backups-button"
+            >
+              <HistoryIcon size={14} />
             </button>
             <span data-education-id="github-button">
               <GitHubButton
@@ -2232,6 +2244,23 @@ function App({ initialProjectPath }: AppProps) {
             focusActiveTerminal();
           }}
           onToast={showToast}
+        />
+
+        <BackupsModal
+          projectPath={currentProject?.path || ''}
+          isOpen={showBackupsModal}
+          onClose={() => {
+            setShowBackupsModal(false);
+            focusActiveTerminal();
+          }}
+          onRestore={() => {
+            // Refresh branches and status after restore creates a new branch
+            if (currentProject) void fetchBranchInfo(currentProject.path);
+            void handleGitHubStatusChange();
+          }}
+          onCreatePR={(branchName) => {
+            setShowSubmitReview(branchName);
+          }}
         />
 
         <AssetsPanel

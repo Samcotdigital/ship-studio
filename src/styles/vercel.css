@@ -52,6 +52,19 @@
   color: var(--text-secondary);
 }
 
+.vercel-button.vercel-linked:hover {
+  background: var(--border);
+  border-color: var(--text-muted);
+}
+
+.vercel-button.vercel-linked svg {
+  color: var(--text-muted);
+}
+
+.vercel-button.vercel-linked:hover svg {
+  color: var(--text-secondary);
+}
+
 .vercel-button.vercel-disabled {
   background: var(--bg-tertiary);
   color: var(--text-muted);

@@ -23,6 +23,14 @@
   border-color: var(--text-muted);
 }
 
+.ide-button svg {
+  color: var(--text-muted);
+}
+
+.ide-button:hover svg {
+  color: var(--text-secondary);
+}
+
 .ide-dropdown {
   position: absolute;
   top: 100%;

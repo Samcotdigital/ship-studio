@@ -383,21 +383,18 @@
   transition: all 0.15s;
 }
 
-.env-button-icon {
-  font-family: monospace;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.env-button:hover .env-button-icon {
-  color: var(--text-secondary);
-}
-
 .env-button:hover {
   background: var(--border);
   color: var(--text-primary);
   border-color: var(--text-muted);
+}
+
+.env-button svg {
+  color: var(--text-muted);
+}
+
+.env-button:hover svg {
+  color: var(--text-secondary);
 }
 
 /* Env Sync Warning */

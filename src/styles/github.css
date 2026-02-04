@@ -107,12 +107,20 @@
 }
 
 .github-button.github-link {
-  padding: 6px 8px;
+  padding: 6px 10px;
   background: var(--bg-tertiary);
 }
 
 .github-button.github-link:hover {
   background: var(--border);
+}
+
+.github-button.github-link svg {
+  color: var(--text-muted);
+}
+
+.github-button.github-link:hover svg {
+  color: var(--text-secondary);
 }
 
 .github-button.github-creating,

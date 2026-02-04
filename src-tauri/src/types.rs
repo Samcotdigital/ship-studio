@@ -86,6 +86,30 @@ pub struct StashInfo {
     pub stashed_at: u64,
 }
 
+/// A backup entry representing a git commit
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Backup {
+    /// Git commit hash (short form)
+    pub hash: String,
+    /// Full commit hash
+    pub full_hash: String,
+    /// Commit message
+    pub message: String,
+    /// Unix timestamp (seconds) when the commit was made
+    pub timestamp: i64,
+    /// Relative time string (e.g., "2 hours ago")
+    pub relative_time: String,
+}
+
+/// Result of restoring a backup
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RestoreResult {
+    /// The name of the new branch created for the restore
+    pub branch_name: String,
+    /// The commit message used for the restore commit
+    pub commit_message: String,
+}
+
 /// Current schema version for project metadata.
 /// Increment this when making breaking changes to the schema.
 pub const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;

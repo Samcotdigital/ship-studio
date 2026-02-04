@@ -607,16 +607,18 @@ export function PublishBranchDropdown({
                 <span>All changes synced</span>
               </div>
 
-              {/* Live Sites */}
+              {/* Live Domains */}
               {hasVercel && (productionUrl || stagingUrl) && (
                 <div className="publish-live-sites">
-                  <div className="publish-live-sites-header">Live Sites</div>
+                  <div className="publish-live-sites-header">Live Domains</div>
                   {productionUrl && (
                     <button
                       className="publish-live-site-link"
                       onClick={() => void openUrl(productionUrl)}
                     >
-                      <span className="publish-live-site-badge">Prod</span>
+                      <span className="publish-live-site-badge publish-live-site-badge-prod">
+                        Prod
+                      </span>
                       <span className="publish-live-site-url">
                         {projectVercelStatus?.production_url}
                       </span>
@@ -628,7 +630,9 @@ export function PublishBranchDropdown({
                       className="publish-live-site-link"
                       onClick={() => void openUrl(stagingUrl)}
                     >
-                      <span className="publish-live-site-badge">Stage</span>
+                      <span className="publish-live-site-badge publish-live-site-badge-preview">
+                        Preview
+                      </span>
                       <span className="publish-live-site-url">
                         {projectVercelStatus?.staging_url}
                       </span>
