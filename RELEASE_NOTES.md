@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.46
+
+- **Safe Backup Restore** - Restoring a backup now creates a new branch for review via PR instead of pushing directly
+- **UI Polish** - Standardized toolbar icons, fixed spinner wobble, colored domain badges
+- **Education Mode** - Added backups button to education mode
+
+
 ## What's New in v0.3.45
 
 - **Astro support** - Added Astro Basic template for creating new projects
