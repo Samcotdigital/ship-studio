@@ -508,10 +508,6 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
             />
           </div>
 
-          <div className="import-warning">
-            Ship Studio is optimized for Next.js. Other projects may not work as intended.
-          </div>
-
           <div className="import-repo-list">
             {loadingRepos ? (
               <div className="import-repo-loading">
