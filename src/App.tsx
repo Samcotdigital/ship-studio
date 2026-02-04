@@ -1966,6 +1966,7 @@ function App({ initialProjectPath }: AppProps) {
                 onModalClose={focusTerminal}
                 onToast={showToast}
                 isAutoConnecting={isVercelAutoConnecting}
+                currentBranch={currentBranch || 'main'}
               />
             </span>
             <PublishBranchDropdown

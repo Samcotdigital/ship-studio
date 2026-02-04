@@ -60,8 +60,11 @@ export function MainBranchBanner({ projectPath, onCreateBranch }: MainBranchBann
       <div className="main-branch-banner-content">
         <WarningIcon size={16} />
         <span className="main-branch-banner-text">
-          You're editing <strong>main</strong> directly. Changes will go live immediately when
-          published.
+          You're editing <strong>main</strong> directly.
+          <span className="main-branch-banner-text-extra">
+            {' '}
+            Changes will go live immediately when published.
+          </span>
         </span>
         {onCreateBranch && (
           <button className="main-branch-banner-action" onClick={onCreateBranch}>

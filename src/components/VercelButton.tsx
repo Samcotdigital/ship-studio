@@ -25,6 +25,7 @@ import {
 import { ProjectGitHubStatus } from '../lib/github';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { OnboardingTerminal } from './setup';
+import { ExternalLinkIcon } from './icons';
 
 /** Props for the VercelButton component */
 interface VercelButtonProps {
@@ -48,6 +49,8 @@ interface VercelButtonProps {
   onToast?: (message: string, type?: 'success' | 'error') => void;
   /** Whether Vercel is being auto-connected after GitHub repo creation */
   isAutoConnecting?: boolean;
+  /** Current git branch name (for generating preview URLs) */
+  currentBranch?: string;
 }
 
 export function VercelButton({
@@ -61,6 +64,7 @@ export function VercelButton({
   onModalClose,
   onToast,
   isAutoConnecting,
+  currentBranch,
 }: VercelButtonProps) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -71,6 +75,7 @@ export function VercelButton({
   const [teams, setTeams] = useState<VercelTeam[]>([]);
   const [selectedScope, setSelectedScope] = useState<string | undefined>(undefined);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
+  const [showSiteDropdown, setShowSiteDropdown] = useState(false);
   const isLoggingInRef = useRef(false);
   // Stable reference for terminal args to prevent effect re-runs
   const vercelLoginArgs = useRef(['login']).current;
@@ -229,14 +234,63 @@ export function VercelButton({
       projectVercelStatus.vercel_org && projectVercelStatus.project_name
         ? `https://vercel.com/${projectVercelStatus.vercel_org}/${projectVercelStatus.project_name}`
         : 'https://vercel.com/dashboard';
+    const productionUrl = projectVercelStatus.production_url;
+    const branch = currentBranch || 'main';
+    const isMainBranch = branch === 'main' || branch === 'master';
+
+    // Generate preview URL for feature branches (Vercel's git branch URL pattern)
+    const previewUrl =
+      !isMainBranch && projectVercelStatus.project_name
+        ? `${projectVercelStatus.project_name}-git-${branch.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}.vercel.app`
+        : null;
+
+    const hasUrls = productionUrl || previewUrl;
+
     return (
-      <button
-        className="vercel-button vercel-linked"
-        onClick={() => void openUrl(dashboardUrl)}
-        title="Open Vercel dashboard"
+      <div
+        className="vercel-button-container"
+        onMouseEnter={() => hasUrls && setShowSiteDropdown(true)}
+        onMouseLeave={() => setShowSiteDropdown(false)}
       >
-        <VercelIcon />
-      </button>
+        <button
+          className="vercel-button vercel-linked"
+          onClick={() => void openUrl(dashboardUrl)}
+          title="Open Vercel dashboard"
+        >
+          <VercelIcon />
+        </button>
+
+        {showSiteDropdown && hasUrls && (
+          <div className="vercel-site-dropdown">
+            <div className="vercel-site-dropdown-inner">
+              {productionUrl && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void openUrl(`https://${productionUrl}`);
+                  }}
+                >
+                  <span className="vercel-site-badge vercel-site-badge-prod">Prod</span>
+                  <span className="vercel-site-url">{productionUrl}</span>
+                  <ExternalLinkIcon size={12} />
+                </button>
+              )}
+              {previewUrl && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void openUrl(`https://${previewUrl}`);
+                  }}
+                >
+                  <span className="vercel-site-badge vercel-site-badge-preview">Preview</span>
+                  <span className="vercel-site-url">{previewUrl}</span>
+                  <ExternalLinkIcon size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 

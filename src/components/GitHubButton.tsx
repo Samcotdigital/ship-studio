@@ -295,6 +295,11 @@ export function GitHubButton({
                             // Refresh status first, then end connecting state to avoid flash of "Connect Vercel"
                             await onStatusChange(deployedUrl);
                             onVercelAutoConnectEnd?.();
+                            // Show toast with the live domain
+                            if (deployedUrl) {
+                              const domain = deployedUrl.replace(/^https?:\/\//, '');
+                              onToast?.(`Live at ${domain}`, 'success');
+                            }
                           })
                           .catch(async (e) => {
                             console.error('Failed to auto-connect to Vercel:', e);

@@ -181,6 +181,8 @@
   background: #000;
   color: #fff;
   cursor: wait;
+  height: 32px;
+  box-sizing: border-box;
 }
 
 .vercel-button.vercel-deploying .deploying-text {
@@ -234,4 +236,85 @@
 
 .vercel-button.vercel-checking .checking-text {
   animation: deployPulse 1.5s ease-in-out infinite;
+}
+
+/* Vercel Site Dropdown (hover to show site URLs) */
+.vercel-button-container {
+  position: relative;
+}
+
+.vercel-site-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  padding-top: 4px;
+  z-index: 100;
+}
+
+.vercel-site-dropdown-inner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 200px;
+  max-width: 320px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.vercel-site-dropdown-inner button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.vercel-site-dropdown-inner button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.vercel-site-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.vercel-site-badge-prod {
+  color: rgba(74, 222, 128, 0.9);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.vercel-site-badge-preview {
+  color: rgba(96, 165, 250, 0.9);
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.vercel-site-url {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vercel-site-dropdown-inner button svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.vercel-site-dropdown-inner button:hover svg {
+  opacity: 1;
 }

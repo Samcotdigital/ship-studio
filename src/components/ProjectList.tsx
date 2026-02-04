@@ -40,7 +40,7 @@ import { FolderCard } from './FolderCard';
 import { IntegrationBar } from './IntegrationBar';
 import { NewFolderModal } from './NewFolderModal';
 import { MoveFolderModal } from './MoveFolderModal';
-import { ChevronIcon, CheckIcon, ArrowLeftIcon } from './icons';
+import { ChevronIcon, CheckIcon, ArrowLeftIcon, SlackIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Basic project info for selection callback */
@@ -386,6 +386,26 @@ export function ProjectList({
   return (
     <div className="dashboard-scroll-container">
       <div className="project-list dashboard">
+        <div className="slack-cta">
+          <div className="slack-cta-content">
+            <SlackIcon />
+            <span>
+              <strong>Join our community</strong> — suggest features, share what you're building,
+              and shape the future of how we build for the web.
+            </span>
+          </div>
+          <button
+            className="slack-cta-join"
+            onClick={() =>
+              void openUrl(
+                'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ'
+              )
+            }
+          >
+            Join Slack
+          </button>
+        </div>
+
         <DashboardHeader
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
