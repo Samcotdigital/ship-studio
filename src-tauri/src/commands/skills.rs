@@ -310,7 +310,7 @@ pub async fn search_skills(query: String) -> Result<Vec<SkillSearchResult>, Stri
 
 /// Parse the output of `npx skills find` command
 /// The actual format from the CLI is:
-/// ```
+/// ```text
 /// owner/repo@skill-name
 /// └ https://skills.sh/...
 /// ```
