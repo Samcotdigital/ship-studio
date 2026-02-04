@@ -51,6 +51,12 @@ const TEMPLATES: Template[] = [
     description: 'A minimal SvelteKit starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/sveltekit-static-marketing-site-starter',
   },
+  {
+    id: 'astro-basic',
+    name: 'Astro Basic',
+    description: 'A minimal Astro starter with Tailwind CSS',
+    repo: 'https://github.com/ship-studio/astro-static-marketing-site-starter',
+  },
 ];
 
 /** Form wizard steps before creation starts */
