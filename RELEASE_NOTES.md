@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.48
+
+- **Nuxt/Vue support** - New Nuxt Basic template for project creation
+- **Page selector tracks navigation** - Page selector now updates when navigating within the preview iframe (all frameworks)
+- **Faster onboarding** - Batched Homebrew installs and better error messages
+
+
 ## What's New in v0.3.47
 
 - **Dashboard changelog sidebar** - See What's New on the dashboard
