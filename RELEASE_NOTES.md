@@ -6,6 +6,12 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.50
+
+- **Fixed npm cache permissions** - Setup now detects and fixes npm cache permission errors
+- **Slack community banner** - Added banner to welcome screen
+
+
 ## What's New in v0.3.49
 
 - **Import local folders** - Open existing projects from anywhere on your computer via the new Import picker
