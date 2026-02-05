@@ -313,10 +313,11 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
                 }
             })
     });
+    let node_installed = node_path.is_some();
     items.push(SetupItemInfo {
         id: "node".to_string(),
         friendly_name: "Node.js".to_string(),
-        status: if node_path.is_some() {
+        status: if node_installed {
             SetupItemStatus::Ready
         } else {
             SetupItemStatus::NotInstalled
@@ -325,6 +326,40 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         username: None,
         error_message: None,
     });
+
+    // 2b. npm cache permissions (only check if Node is installed)
+    if node_installed {
+        let npm_cache_ok = if let Some(home) = dirs::home_dir() {
+            let npm_cache = home.join(".npm");
+            if !npm_cache.exists() {
+                true
+            } else {
+                let test_file = npm_cache.join(".shipstudio-write-test");
+                match std::fs::write(&test_file, "test") {
+                    Ok(_) => {
+                        let _ = std::fs::remove_file(&test_file);
+                        true
+                    }
+                    Err(_) => false,
+                }
+            }
+        } else {
+            true
+        };
+
+        if !npm_cache_ok {
+            items.push(SetupItemInfo {
+                id: "npm_fix".to_string(),
+                friendly_name: "Fix npm Permissions".to_string(),
+                status: SetupItemStatus::NotInstalled,
+                version: None,
+                username: None,
+                error_message: Some(
+                    "npm cache has incorrect permissions. Click to fix.".to_string(),
+                ),
+            });
+        }
+    }
 
     // 3. Git
     let git_path = find_executable("git");
@@ -565,7 +600,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 
     let all_ready = items
         .iter()
-        .filter(|i| REQUIRED_ITEMS.contains(&i.id.as_str()))
+        .filter(|i| REQUIRED_ITEMS.contains(&i.id.as_str()) || i.id == "npm_fix")
         .all(|i| matches!(i.status, SetupItemStatus::Ready));
 
     // Track optional auth status separately
@@ -870,6 +905,30 @@ pub async fn install_brew_packages(
     }
 
     Ok(())
+}
+
+/// Check if the npm cache directory (~/.npm) is writable by the current user.
+/// Returns "ok" if writable or doesn't exist, "not_writable" if it exists but isn't writable.
+#[tauri::command]
+pub async fn check_npm_cache_permissions() -> String {
+    if let Some(home) = dirs::home_dir() {
+        let npm_cache = home.join(".npm");
+        if !npm_cache.exists() {
+            return "ok".to_string();
+        }
+
+        // Try to create and delete a temp file to test write access
+        let test_file = npm_cache.join(".shipstudio-write-test");
+        match std::fs::write(&test_file, "test") {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&test_file);
+                "ok".to_string()
+            }
+            Err(_) => "not_writable".to_string(),
+        }
+    } else {
+        "ok".to_string()
+    }
 }
 
 /// Start GitHub authentication (opens browser)

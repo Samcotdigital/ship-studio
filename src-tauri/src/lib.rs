@@ -278,6 +278,7 @@ pub fn run() {
             commands::setup::start_github_auth,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
+            commands::setup::check_npm_cache_permissions,
             commands::setup::start_vercel_auth,
             commands::setup::cleanup_auth_processes,
             commands::setup::quick_setup_check,
