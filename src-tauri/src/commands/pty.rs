@@ -57,8 +57,19 @@ pub async fn spawn_pty(
     std::thread::spawn(move || {
         let label = label_for_thread;
         let result = (|| -> Result<i32, String> {
-            let mut child = Command::new(&options.command)
-                .args(&options.args)
+            // On Windows, commands like npm/npx are .cmd batch scripts,
+            // so we must run them through cmd.exe to resolve them.
+            #[cfg(windows)]
+            let (cmd, cmd_args) = {
+                let mut args = vec!["/C".to_string(), options.command.clone()];
+                args.extend(options.args.iter().cloned());
+                ("cmd".to_string(), args)
+            };
+            #[cfg(not(windows))]
+            let (cmd, cmd_args) = (options.command.clone(), options.args.clone());
+
+            let mut child = Command::new(&cmd)
+                .args(&cmd_args)
                 .current_dir(&options.cwd)
                 .env("PATH", get_extended_path())
                 .stdout(Stdio::piped())
@@ -250,8 +261,9 @@ fn kill_process(pid: u32) {
 
     #[cfg(windows)]
     {
+        // /T kills the entire process tree (cmd.exe + child node.exe, etc.)
         let _ = Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
+            .args(["/F", "/T", "/PID", &pid.to_string()])
             .output();
     }
 }
@@ -314,7 +326,7 @@ pub fn kill_window_pty_sync(window_label: &str) -> u32 {
         #[cfg(windows)]
         {
             let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
+                .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output();
         }
 
@@ -358,7 +370,7 @@ pub async fn kill_window_pty(window_label: String) -> Result<u32, String> {
         #[cfg(windows)]
         {
             let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
+                .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output();
         }
 
@@ -394,7 +406,7 @@ pub async fn kill_all_pty() -> Result<u32, String> {
         #[cfg(windows)]
         {
             let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
+                .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output();
         }
     }
@@ -601,4 +613,49 @@ pub fn release_reserved_port(window_label: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_shell_path() -> String {
     get_extended_path()
+}
+
+/// Get essential system environment variables needed for the dev server PTY.
+///
+/// On Windows, the PTY env replaces the parent environment, so we need to
+/// forward critical system vars (SystemRoot, COMSPEC, PATHEXT, TEMP, etc.)
+/// that Node.js and cmd.exe require to function.
+/// On macOS/Linux, returns an empty map (the Unix env vars are hardcoded in the frontend).
+#[tauri::command]
+pub fn get_system_env() -> std::collections::HashMap<String, String> {
+    let mut env = std::collections::HashMap::new();
+
+    #[cfg(windows)]
+    {
+        // These are required for Node.js, npm, and cmd.exe to work on Windows
+        let keys = [
+            "PATH",
+            "SystemRoot",
+            "COMSPEC",
+            "PATHEXT",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramData",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "CommonProgramFiles",
+            "windir",
+            "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE",
+            "OS",
+            "USERNAME",
+        ];
+        for key in keys {
+            if let Ok(val) = std::env::var(key) {
+                env.insert(key.to_string(), val);
+            }
+        }
+    }
+
+    env
 }

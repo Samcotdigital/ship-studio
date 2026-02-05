@@ -64,7 +64,7 @@ pub fn is_registered_external_path(canonical: &Path) -> Result<bool, String> {
     let config = load_config()?;
     for project in &config.projects {
         let project_path = Path::new(&project.path);
-        if let Ok(project_canonical) = project_path.canonicalize() {
+        if let Ok(project_canonical) = dunce::canonicalize(project_path) {
             if canonical.starts_with(&project_canonical) {
                 return Ok(true);
             }
@@ -98,9 +98,8 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
     }
 
     // Canonicalize the path
-    let canonical = folder_path
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical =
+        dunce::canonicalize(&folder_path).map_err(|e| format!("Invalid path: {}", e))?;
     let canonical_str = canonical.to_string_lossy().to_string();
 
     // Check if already inside ~/ShipStudio
@@ -116,8 +115,7 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
     // Check if already registered
     let mut config = load_config()?;
     if config.projects.iter().any(|p| {
-        Path::new(&p.path)
-            .canonicalize()
+        dunce::canonicalize(Path::new(&p.path))
             .map(|c| c == canonical)
             .unwrap_or(false)
     }) {
@@ -145,15 +143,12 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
 pub async fn unregister_external_project(path: String) -> Result<(), String> {
     let mut config = load_config()?;
 
-    let canonical = Path::new(&path)
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(&path));
+    let canonical = dunce::canonicalize(Path::new(&path)).unwrap_or_else(|_| PathBuf::from(&path));
 
     let initial_len = config.projects.len();
     config.projects.retain(|p| {
-        let project_canonical = Path::new(&p.path)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(&p.path));
+        let project_canonical =
+            dunce::canonicalize(Path::new(&p.path)).unwrap_or_else(|_| PathBuf::from(&p.path));
         project_canonical != canonical
     });
 
@@ -168,14 +163,13 @@ pub async fn unregister_external_project(path: String) -> Result<(), String> {
 /// Check if a project path is an external project.
 #[tauri::command]
 pub async fn is_project_external(path: String) -> Result<bool, String> {
-    let canonical = Path::new(&path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical =
+        dunce::canonicalize(Path::new(&path)).map_err(|e| format!("Invalid path: {}", e))?;
 
     let config = load_config()?;
     for project in &config.projects {
         let project_path = Path::new(&project.path);
-        if let Ok(project_canonical) = project_path.canonicalize() {
+        if let Ok(project_canonical) = dunce::canonicalize(project_path) {
             if canonical == project_canonical {
                 return Ok(true);
             }

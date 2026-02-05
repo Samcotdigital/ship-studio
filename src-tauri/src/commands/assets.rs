@@ -22,9 +22,7 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
     // Canonicalize to resolve any symlinks and ensure it's within public
     // For new files that don't exist yet, we need to check the parent
     let check_path = if full_path.exists() {
-        full_path
-            .canonicalize()
-            .map_err(|e| format!("Invalid path: {}", e))?
+        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {}", e))?
     } else {
         // For non-existent paths, verify parent exists and is within public
         let parent = full_path
@@ -33,13 +31,10 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
         if !parent.exists() {
             return Err("Parent directory does not exist".to_string());
         }
-        let canonical_parent = parent
-            .canonicalize()
-            .map_err(|e| format!("Invalid path: {}", e))?;
+        let canonical_parent =
+            dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
         let canonical_public = if public_dir.exists() {
-            public_dir
-                .canonicalize()
-                .map_err(|e| format!("Invalid path: {}", e))?
+            dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?
         } else {
             return Err("Public directory does not exist".to_string());
         };
@@ -49,9 +44,8 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
         return Ok(full_path);
     };
 
-    let canonical_public = public_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_public =
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
 
     if !check_path.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
@@ -186,12 +180,10 @@ pub async fn upload_asset(
     let file_path = dest_dir.join(&file_name);
 
     // Ensure final path is within public directory
-    let canonical_public = public_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-    let canonical_dest = dest_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_public =
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_dest =
+        dunce::canonicalize(&dest_dir).map_err(|e| format!("Invalid path: {}", e))?;
     if !canonical_dest.starts_with(&canonical_public) {
         return Err("Security error: destination is outside public directory".to_string());
     }
@@ -210,12 +202,10 @@ pub async fn delete_asset(project_path: String, asset_path: String) -> Result<()
     let full_path = validate_asset_path(&project, &asset_path)?;
 
     // Double-check it's within public
-    let canonical_public = public_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-    let canonical_path = full_path
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_public =
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_path =
+        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {}", e))?;
     if !canonical_path.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
     }
@@ -256,12 +246,10 @@ pub async fn rename_asset(
     let new_path = parent.join(&new_name);
 
     // Check new path is still within public
-    let canonical_public = public_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-    let canonical_parent = parent
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_public =
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_parent =
+        dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
     if !canonical_parent.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
     }
@@ -302,16 +290,14 @@ pub async fn create_asset_folder(project_path: String, folder_path: String) -> R
     let full_path = public_dir.join(folder_name);
 
     // Ensure it's within public
-    let canonical_public = public_dir
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_public =
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
 
     // For the new folder, check parent is within public
     if let Some(parent) = full_path.parent() {
         if parent.exists() {
-            let canonical_parent = parent
-                .canonicalize()
-                .map_err(|e| format!("Invalid path: {}", e))?;
+            let canonical_parent =
+                dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
             if !canonical_parent.starts_with(&canonical_public) {
                 return Err("Security error: path is outside public directory".to_string());
             }

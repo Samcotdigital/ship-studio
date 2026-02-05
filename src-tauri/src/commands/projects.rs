@@ -997,7 +997,7 @@ pub async fn delete_project(path: String) -> Result<(), String> {
     let project_path = std::path::Path::new(&path);
 
     // Check if this is an external project
-    if let Ok(canonical) = project_path.canonicalize() {
+    if let Ok(canonical) = dunce::canonicalize(&project_path) {
         if crate::commands::external_projects::is_registered_external_path(&canonical)? {
             return Err(
                 "Cannot delete external projects. Use 'Remove from list' instead.".to_string(),

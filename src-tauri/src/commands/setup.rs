@@ -8,7 +8,10 @@ use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
 use crate::types::{
     AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
 };
-use crate::utils::{check_homebrew, find_executable, get_brew_command};
+use crate::utils::{check_winget, find_executable, get_brew_command, get_winget_command};
+
+#[cfg(not(windows))]
+use crate::utils::check_homebrew;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
@@ -283,17 +286,26 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 
     let mut items = Vec::new();
 
-    // 1. Homebrew
-    let (brew_installed, brew_version) = check_homebrew();
+    // 1. Package Manager (Homebrew on macOS/Linux, Winget on Windows)
+    #[cfg(windows)]
+    let (pkg_mgr_installed, pkg_mgr_version) = check_winget();
+    #[cfg(not(windows))]
+    let (pkg_mgr_installed, pkg_mgr_version) = check_homebrew();
+
+    #[cfg(windows)]
+    let pkg_mgr_name = "Winget";
+    #[cfg(not(windows))]
+    let pkg_mgr_name = "Package Manager";
+
     items.push(SetupItemInfo {
-        id: "homebrew".to_string(),
-        friendly_name: "Package Manager".to_string(),
-        status: if brew_installed {
+        id: "homebrew".to_string(), // Keep ID for backward compatibility
+        friendly_name: pkg_mgr_name.to_string(),
+        status: if pkg_mgr_installed {
             SetupItemStatus::Ready
         } else {
             SetupItemStatus::NotInstalled
         },
-        version: brew_version,
+        version: pkg_mgr_version,
         username: None,
         error_message: None,
     });
@@ -606,7 +618,11 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     }
 
     // Fast Tier-1 checks: binary existence only (no --version calls)
-    let brew_present = check_homebrew().0;
+    #[cfg(windows)]
+    let pkg_mgr_present = check_winget().0;
+    #[cfg(not(windows))]
+    let pkg_mgr_present = check_homebrew().0;
+
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
@@ -626,7 +642,7 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     // For gh_auth and vercel_auth, we trust the cached state since checking requires subprocess
     // These will be verified in the background after showing projects
 
-    let all_present = brew_present
+    let all_present = pkg_mgr_present
         && node_present
         && git_present
         && gh_present
@@ -870,6 +886,103 @@ pub async fn install_brew_packages(
     }
 
     Ok(())
+}
+
+/// Batch install multiple packages via Winget (Windows only).
+/// This is the Windows equivalent of install_brew_packages.
+///
+/// Mapping from item IDs to winget package IDs:
+/// - node -> OpenJS.NodeJS
+/// - git -> Git.Git
+/// - gh -> GitHub.cli
+/// - vercel -> N/A (installed via npm after node)
+#[cfg(windows)]
+#[tauri::command]
+pub async fn install_winget_packages(
+    app: tauri::AppHandle,
+    packages: Vec<String>,
+) -> Result<(), String> {
+    if packages.is_empty() {
+        return Ok(());
+    }
+
+    let _ = app.emit(
+        "setup-progress",
+        serde_json::json!({
+            "itemId": "winget_batch",
+            "message": format!("Installing {}...", packages.join(", "))
+        }),
+    );
+
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        for pkg in &packages {
+            mock_install(pkg);
+        }
+        return Ok(());
+    }
+
+    let winget = get_winget_command().ok_or("Winget not found")?;
+
+    // Map item IDs to actual winget package IDs
+    let winget_packages: Vec<&str> = packages
+        .iter()
+        .filter_map(|p| match p.as_str() {
+            "node" => Some("OpenJS.NodeJS"),
+            "git" => Some("Git.Git"),
+            "gh" => Some("GitHub.cli"),
+            "vercel" => None, // Installed via npm
+            _ => None,
+        })
+        .collect();
+
+    if winget_packages.is_empty() {
+        return Ok(());
+    }
+
+    // Install packages one at a time (winget doesn't support batch installs well)
+    for package in winget_packages {
+        let output = Command::new(&winget)
+            .args([
+                "install",
+                "--id",
+                package,
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run winget: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Don't fail if package is already installed
+            if !stdout.contains("already installed") && !stderr.contains("already installed") {
+                return Err(format!(
+                    "Failed to install {}: {}",
+                    package,
+                    stderr
+                        .lines()
+                        .next()
+                        .unwrap_or(&stdout.lines().next().unwrap_or("Unknown error"))
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Stub for non-Windows platforms
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn install_winget_packages(
+    _app: tauri::AppHandle,
+    _packages: Vec<String>,
+) -> Result<(), String> {
+    Err("Winget is only available on Windows".to_string())
 }
 
 /// Start GitHub authentication (opens browser)

@@ -12,8 +12,10 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { spawn, IPty } from 'tauri-pty';
 import { homeDir } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
 import { readDir, exists } from '@tauri-apps/plugin-fs';
 import { loadNerdFonts } from '../../lib/fonts';
+import { isWindows } from '../../lib/setup';
 import '@xterm/xterm/css/xterm.css';
 
 /** Props for the OnboardingTerminal component */
@@ -146,53 +148,96 @@ export function OnboardingTerminal({ command, args, cwd, onExit }: OnboardingTer
 
         // Get home directory for default cwd and PATH building
         const home = await homeDir();
-        const homeNormalized = home.endsWith('/') ? home : `${home}/`;
+        const isWin = isWindows();
+        const sep = isWin ? '\\' : '/';
+        const homeNormalized = home.endsWith(sep) ? home : `${home}${sep}`;
         const homePath = cwd || homeNormalized;
 
-        // Build PATH with user-local and system paths for freshly installed tools
-        const userPaths = [
-          `${homeNormalized}.npm-global/bin`,
-          `${homeNormalized}.local/bin`,
-          `${homeNormalized}.cargo/bin`,
-          `${homeNormalized}n/bin`, // n version manager
-        ];
+        let env: Record<string, string>;
+        let spawnCmd: string;
+        let spawnArgs: string[];
 
-        // Try to find nvm node versions and add their bin directories
-        const nvmNodeDir = `${homeNormalized}.nvm/versions/node`;
-        try {
-          const entries = await readDir(nvmNodeDir);
-          for (const entry of entries) {
-            const name = entry.name;
-            if (name && name.startsWith('v')) {
-              const binPath = `${nvmNodeDir}/${name}/bin`;
-              const pathExists = await exists(binPath);
-              if (pathExists) {
-                userPaths.push(binPath);
+        if (isWin) {
+          // Windows: get system env vars from backend and build Windows-compatible env
+          const systemEnv = await invoke<Record<string, string>>('get_system_env');
+
+          // Add extra tool installation paths to the front of PATH
+          const programFiles = systemEnv['ProgramFiles'] || 'C:\\Program Files';
+          const localAppData = systemEnv['LOCALAPPDATA'] || `${homeNormalized}AppData\\Local`;
+          const appData = systemEnv['APPDATA'] || `${homeNormalized}AppData\\Roaming`;
+
+          const extraPaths = [
+            `${appData}\\npm`,
+            `${localAppData}\\pnpm`,
+            `${homeNormalized}.cargo\\bin`,
+            `${programFiles}\\GitHub CLI`,
+            `${programFiles}\\Git\\cmd`,
+            `${programFiles}\\nodejs`,
+          ];
+
+          const systemPath = systemEnv['PATH'] || '';
+          const fullPath = `${extraPaths.join(';')};${systemPath}`;
+
+          env = {
+            ...systemEnv,
+            PATH: fullPath,
+            TERM: 'xterm-256color',
+          };
+
+          // Wrap command through cmd.exe /C for .cmd scripts (vercel, npx, etc.)
+          spawnCmd = 'cmd.exe';
+          spawnArgs = ['/C', command, ...args];
+        } else {
+          // macOS/Linux: existing Unix path and env logic
+          const userPaths = [
+            `${homeNormalized}.npm-global/bin`,
+            `${homeNormalized}.local/bin`,
+            `${homeNormalized}.cargo/bin`,
+            `${homeNormalized}n/bin`, // n version manager
+          ];
+
+          // Try to find nvm node versions and add their bin directories
+          const nvmNodeDir = `${homeNormalized}.nvm/versions/node`;
+          try {
+            const entries = await readDir(nvmNodeDir);
+            for (const entry of entries) {
+              const name = entry.name;
+              if (name && name.startsWith('v')) {
+                const binPath = `${nvmNodeDir}/${name}/bin`;
+                const pathExists = await exists(binPath);
+                if (pathExists) {
+                  userPaths.push(binPath);
+                }
               }
             }
+          } catch {
+            // nvm not installed or no versions - ignore
           }
-        } catch {
-          // nvm not installed or no versions - ignore
-        }
 
-        const systemPaths = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
-        const fullPath = `${userPaths.join(':')}:${systemPaths}`;
+          const systemPaths = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+          const fullPath = `${userPaths.join(':')}:${systemPaths}`;
 
-        // Spawn PTY using tauri-pty
-        // Must pass all essential env vars since env replaces (not merges with) parent environment
-        // eslint-disable-next-line @typescript-eslint/await-thenable
-        const pty = await spawn(command, args, {
-          cwd: homePath,
-          cols: term.cols,
-          rows: term.rows,
-          env: {
+          env = {
             PATH: fullPath,
             HOME: homeNormalized.slice(0, -1),
             USER: homeNormalized.split('/').filter(Boolean).pop() || 'user',
             TERM: 'xterm-256color',
             LANG: 'en_US.UTF-8',
             SHELL: '/bin/zsh',
-          },
+          };
+
+          spawnCmd = command;
+          spawnArgs = args;
+        }
+
+        // Spawn PTY using tauri-pty
+        // Must pass all essential env vars since env replaces (not merges with) parent environment
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        const pty = await spawn(spawnCmd, spawnArgs, {
+          cwd: homePath,
+          cols: term.cols,
+          rows: term.rows,
+          env,
         });
 
         // Check again after async operation
@@ -216,6 +261,19 @@ export function OnboardingTerminal({ command, args, cwd, onExit }: OnboardingTer
         // Handle terminal input -> PTY
         term.onData((data) => {
           ptyRef.current?.write(data);
+        });
+
+        // Intercept Ctrl+C: copy selection to clipboard instead of sending SIGINT
+        term.attachCustomKeyEventHandler((event) => {
+          if (event.key === 'c' && event.ctrlKey && !event.shiftKey && !event.altKey) {
+            const selection = term.getSelection();
+            if (selection) {
+              void navigator.clipboard.writeText(selection);
+              term.clearSelection();
+              return false; // Prevent sending to PTY
+            }
+          }
+          return true; // Allow all other keys
         });
 
         // Focus the terminal

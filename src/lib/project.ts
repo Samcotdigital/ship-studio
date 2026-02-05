@@ -11,9 +11,11 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { spawn, IPty } from 'tauri-pty';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { logger } from './logger';
+import { isWindows } from './setup';
 
 /** Basic project information */
 export interface Project {
@@ -254,21 +256,53 @@ export async function startDevServer(
     fullCommand: `${command} ${args.join(' ')}`,
   });
 
-  // Must pass all essential env vars since env replaces (not merges with) parent environment
-  const pty = spawn(command, args, {
+  // Must pass all essential env vars since env replaces (not merges with) parent environment.
+  // On Windows, many system env vars (SystemRoot, COMSPEC, PATHEXT, TEMP, etc.) are required
+  // for Node.js and cmd.exe to function, so we fetch them from the backend.
+  const systemEnv = await invoke<Record<string, string>>('get_system_env');
+  const env: Record<string, string> = isWindows()
+    ? {
+        ...systemEnv,
+        PATH: fullPath,
+        PORT: port.toString(),
+        NUXT_TELEMETRY_DISABLED: '1',
+      }
+    : {
+        PATH: fullPath,
+        HOME: homeNormalized.slice(0, -1),
+        USER: homeNormalized.split('/').filter(Boolean).pop() || 'user',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        SHELL: '/bin/zsh',
+        PORT: port.toString(),
+        NUXT_TELEMETRY_DISABLED: '1',
+      };
+
+  // On Windows, commands like npm/npx are .cmd batch scripts that CreateProcessW
+  // cannot execute directly (os error 193). Wrap through cmd.exe to resolve them.
+  const spawnCmd = isWindows() ? 'cmd.exe' : command;
+  const spawnArgs = isWindows() ? ['/C', command, ...args] : args;
+
+  logger.info('[DevServer] Actual spawn params', {
+    spawnCmd,
+    spawnArgs: spawnArgs.join(' '),
+    cwd: projectPath,
+    envKeys: Object.keys(env).join(', '),
+    isWindows: isWindows(),
+  });
+
+  // On Windows, tauri-plugin-pty's conpty doesn't reliably forward output.
+  // Use the backend spawn_pty (Command::new with pipes) which works on Windows.
+  // Pass original command/args since backend spawn_pty already wraps with cmd.exe /C.
+  if (isWindows()) {
+    return startDevServerWindows(command, args, projectPath, port, windowLabel, onOutput);
+  }
+
+  const pty = spawn(spawnCmd, spawnArgs, {
     cwd: projectPath,
     cols: 80,
     rows: 24,
-    env: {
-      PATH: fullPath,
-      HOME: homeNormalized.slice(0, -1),
-      USER: homeNormalized.split('/').filter(Boolean).pop() || 'user',
-      TERM: 'xterm-256color',
-      LANG: 'en_US.UTF-8',
-      SHELL: '/bin/zsh',
-      PORT: port.toString(), // Fallback for frameworks that respect PORT env var
-      NUXT_TELEMETRY_DISABLED: '1', // Prevent Nuxt telemetry prompt from blocking dev server
-    },
+    env,
   });
 
   // Generate a unique PTY ID and register with backend for cleanup on window close
@@ -327,8 +361,9 @@ export async function startDevServer(
   }, 50);
 
   // Unregister when PTY exits (if it exits normally before window close)
-  pty.onExit(() => {
+  pty.onExit((e) => {
     clearInterval(pidCheckInterval);
+    logger.info('[DevServer] PTY exited', { ptyId, exitCode: e.exitCode, signal: e.signal });
     invoke('unregister_external_pty', { ptyId }).catch(() => {
       // Ignore - might already be cleaned up by window close
     });
@@ -357,6 +392,81 @@ export async function startDevServer(
         pty.kill();
         // Unregister from backend
         await invoke('unregister_external_pty', { ptyId }).catch(() => {});
+      } catch {
+        // Ignore errors
+      }
+    },
+  };
+}
+
+/**
+ * Windows-specific dev server start using backend spawn_pty.
+ * tauri-plugin-pty's conpty doesn't reliably forward output on Windows,
+ * so we use the backend's Command::new with piped stdout/stderr instead.
+ */
+async function startDevServerWindows(
+  command: string,
+  args: string[],
+  projectPath: string,
+  port: number,
+  windowLabel: string,
+  onOutput?: (data: string) => void
+): Promise<DevServerHandle> {
+  // Spawn via backend spawn_pty (uses Command::new with piped stdout/stderr)
+  const ptyId = await invoke<number>('spawn_pty', {
+    options: {
+      cwd: projectPath,
+      command,
+      args,
+      rows: 24,
+      cols: 80,
+    },
+    windowLabel,
+  });
+
+  logger.info('[DevServer] Windows backend PTY spawned', {
+    ptyId,
+    command,
+    args: args.join(' '),
+    port,
+  });
+
+  // Listen for output events from the backend
+  let unlistenOutput: UnlistenFn | null = null;
+  let unlistenExit: UnlistenFn | null = null;
+
+  if (onOutput) {
+    unlistenOutput = await listen<{ id: number; data: string }>('pty-output', (event) => {
+      if (event.payload.id === ptyId) {
+        onOutput(event.payload.data);
+      }
+    });
+  }
+
+  // Listen for exit
+  unlistenExit = await listen<{ id: number; code: number | null }>('pty-exit', (event) => {
+    if (event.payload.id === ptyId) {
+      logger.info('[DevServer] Windows PTY exited', { ptyId, code: event.payload.code });
+      unlistenOutput?.();
+      unlistenExit?.();
+    }
+  });
+
+  // Create a minimal IPty-compatible object for the DevServerHandle interface
+  const fakePty = {
+    kill: () => {
+      void invoke('kill_pty', { id: ptyId });
+    },
+  } as IPty;
+
+  return {
+    pty: fakePty,
+    ptyId,
+    stop: async () => {
+      try {
+        await invoke('kill_pty', { id: ptyId });
+        unlistenOutput?.();
+        unlistenExit?.();
       } catch {
         // Ignore errors
       }

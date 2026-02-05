@@ -402,10 +402,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         setHasError(false);
         setServerReady(true);
       } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
         logger.info('[Preview] Server check failed', {
           retry: retryCount,
           maxRetries: SERVER_MAX_RETRIES,
-          error: err,
+          error: errorMsg,
+          url: devServerUrl,
         });
         if (retryCount < SERVER_MAX_RETRIES) {
           setTimeout(() => setRetryCount((c) => c + 1), 1000);

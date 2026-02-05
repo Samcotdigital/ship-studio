@@ -219,26 +219,77 @@ pub async fn install_vercel_cli() -> Result<(), String> {
         return Ok(());
     }
 
-    // Install Vercel CLI via Homebrew (more reliable than npm -g)
-    let brew = crate::utils::get_brew_command()
-        .ok_or("[VERCEL_INSTALL_001] Homebrew not found. Please install Homebrew first.")?;
+    #[cfg(windows)]
+    {
+        // Vercel CLI is not available on Winget, must use npm
+        // Find Node.js installation
+        let node_path = crate::utils::find_executable("node")
+            .ok_or("[VERCEL_INSTALL_001] Node.js not found. Please install Node.js first.")?;
 
-    let output = Command::new(&brew)
-        .args(["install", "vercel-cli"])
-        // Skip auto-update to speed up install (can save 10-30 seconds)
-        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .output()
-        .map_err(|e| format!("[VERCEL_INSTALL_002] Failed to run brew: {}", e))?;
+        // Build extended PATH with Node.js bin directory
+        let mut extended_path = crate::utils::get_extended_path();
+        if let Some(node_dir) = node_path.parent() {
+            let node_dir_str = node_dir.to_string_lossy();
+            extended_path = format!("{};{}", node_dir_str, extended_path);
+        }
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "[VERCEL_INSTALL_003] Failed to install Vercel CLI: {}",
-            stderr.lines().next().unwrap_or("Unknown error")
-        ));
+        // Find npm.cmd (should be in same directory as node.exe)
+        let npm_path = node_path
+            .parent()
+            .and_then(|p| {
+                let npm_exe = p.join("npm.cmd");
+                if npm_exe.exists() {
+                    Some(npm_exe)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| crate::utils::find_executable("npm"))
+            .ok_or("[VERCEL_INSTALL_002] npm not found")?;
+
+        // Run npm with Node.js directory explicitly in PATH
+        let output = Command::new(&npm_path)
+            .args(["install", "-g", "vercel"])
+            .env("PATH", extended_path)
+            .output()
+            .map_err(|e| format!("[VERCEL_INSTALL_003] Failed to run npm: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!(
+                "[VERCEL_INSTALL_004] Failed to install Vercel CLI via npm: {}\n{}",
+                stderr.lines().next().unwrap_or("Unknown error"),
+                stdout.lines().next().unwrap_or("")
+            ));
+        }
+
+        return Ok(());
     }
 
-    Ok(())
+    #[cfg(not(windows))]
+    {
+        // Install Vercel CLI via Homebrew (more reliable than npm -g on macOS)
+        let brew = crate::utils::get_brew_command()
+            .ok_or("[VERCEL_INSTALL_001] Homebrew not found. Please install Homebrew first.")?;
+
+        let output = Command::new(&brew)
+            .args(["install", "vercel-cli"])
+            // Skip auto-update to speed up install (can save 10-30 seconds)
+            .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .output()
+            .map_err(|e| format!("[VERCEL_INSTALL_002] Failed to run brew: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "[VERCEL_INSTALL_003] Failed to install Vercel CLI: {}",
+                stderr.lines().next().unwrap_or("Unknown error")
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 #[tauri::command]
