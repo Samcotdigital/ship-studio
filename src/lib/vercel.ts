@@ -93,15 +93,17 @@ export async function listVercelProjects(scope: string): Promise<VercelProject[]
 /**
  * Write .vercel/project.json to link a project to Vercel.
  * @param projectPath - Absolute path to the project directory
- * @param projectId - Vercel project ID/name
+ * @param projectId - Vercel project ID (prj_xxx)
  * @param orgId - Vercel organization/team ID
+ * @param projectName - Vercel project name (display name)
  */
 export async function writeVercelProjectJson(
   projectPath: string,
   projectId: string,
-  orgId: string
+  orgId: string,
+  projectName?: string
 ): Promise<void> {
-  return invoke('write_vercel_project_json', { projectPath, projectId, orgId });
+  return invoke('write_vercel_project_json', { projectPath, projectId, orgId, projectName });
 }
 
 /**

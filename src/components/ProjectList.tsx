@@ -21,6 +21,7 @@ import {
   setAutoAcceptMode,
   setHideMainBranchWarning,
 } from '../lib/project';
+import { unregisterExternalProject } from '../lib/external-projects';
 import { logger } from '../lib/logger';
 import {
   FolderInfo,
@@ -309,6 +310,16 @@ export function ProjectList({
     }
   };
 
+  const handleRemoveExternal = async (project: DashboardProject) => {
+    try {
+      await unregisterExternalProject(project.path);
+      await loadAll();
+    } catch (error) {
+      console.error('Failed to remove external project:', error);
+      alert('Failed to remove project: ' + String(error));
+    }
+  };
+
   const handleOpenInNewWindow = async (project: DashboardProject) => {
     try {
       await invoke('open_project_in_new_window', {
@@ -541,6 +552,10 @@ export function ProjectList({
                         void openUrl(url.startsWith('http') ? url : `https://${url}`);
                       }
                     : undefined
+                }
+                isExternal={project.is_external}
+                onRemove={
+                  project.is_external ? () => void handleRemoveExternal(project) : undefined
                 }
               />
             ))}

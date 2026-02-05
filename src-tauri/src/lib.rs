@@ -295,6 +295,10 @@ pub fn run() {
             commands::health::get_health_status,
             commands::health::clear_health_status,
             commands::health::get_package_json,
+            // External Projects
+            commands::external_projects::register_external_project,
+            commands::external_projects::unregister_external_project,
+            commands::external_projects::is_project_external,
             // Folders
             commands::folders::list_folders,
             commands::folders::create_folder,

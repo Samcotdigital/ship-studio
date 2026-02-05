@@ -1,0 +1,185 @@
+//! # External Project Management Commands
+//!
+//! Commands for registering and managing projects that live outside ~/ShipStudio.
+
+use crate::types::{
+    ExternalProject, ExternalProjectsConfig, EXTERNAL_PROJECTS_CONFIG_SCHEMA_VERSION,
+};
+use std::path::{Path, PathBuf};
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
+
+// ============ Helper Functions ============
+
+/// Get the path to the external projects config file
+fn get_config_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    Ok(home
+        .join("ShipStudio")
+        .join(".shipstudio")
+        .join("external-projects.json"))
+}
+
+/// Load the external projects config from disk
+pub fn load_config() -> Result<ExternalProjectsConfig, String> {
+    let config_path = get_config_path()?;
+
+    if !config_path.exists() {
+        return Ok(ExternalProjectsConfig {
+            schema_version: EXTERNAL_PROJECTS_CONFIG_SCHEMA_VERSION,
+            projects: Vec::new(),
+        });
+    }
+
+    let contents = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read external projects config: {}", e))?;
+
+    serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse external projects config: {}", e))
+}
+
+/// Save the external projects config to disk
+pub fn save_config(config: &ExternalProjectsConfig) -> Result<(), String> {
+    let config_path = get_config_path()?;
+
+    // Ensure parent directory exists
+    if let Some(parent) = config_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
+        }
+    }
+
+    let contents = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize external projects config: {}", e))?;
+
+    std::fs::write(&config_path, contents)
+        .map_err(|e| format!("Failed to write external projects config: {}", e))?;
+
+    Ok(())
+}
+
+/// Check if a canonical path is a registered external project path
+pub fn is_registered_external_path(canonical: &Path) -> Result<bool, String> {
+    let config = load_config()?;
+    for project in &config.projects {
+        let project_path = Path::new(&project.path);
+        if let Ok(project_canonical) = project_path.canonicalize() {
+            if canonical.starts_with(&project_canonical) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+// ============ Tauri Commands ============
+
+/// Opens a native folder picker and registers the selected folder as an external project.
+/// Returns the path of the registered project, or None if cancelled.
+#[tauri::command]
+pub async fn register_external_project(app: AppHandle) -> Result<Option<String>, String> {
+    let folder = app
+        .dialog()
+        .file()
+        .set_title("Select Project Folder")
+        .blocking_pick_folder();
+
+    let folder_path = match folder {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| format!("Invalid folder path: {}", e))?,
+        None => return Ok(None), // User cancelled
+    };
+
+    // Validate package.json exists
+    if !folder_path.join("package.json").exists() {
+        return Err("Selected folder is not a valid project: no package.json found.".to_string());
+    }
+
+    // Canonicalize the path
+    let canonical = folder_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_str = canonical.to_string_lossy().to_string();
+
+    // Check if already inside ~/ShipStudio
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+    if canonical.starts_with(&shipstudio_dir) {
+        return Err(
+            "This project is already inside ~/ShipStudio. It will appear automatically."
+                .to_string(),
+        );
+    }
+
+    // Check if already registered
+    let mut config = load_config()?;
+    if config.projects.iter().any(|p| {
+        Path::new(&p.path)
+            .canonicalize()
+            .map(|c| c == canonical)
+            .unwrap_or(false)
+    }) {
+        return Err("This project is already registered.".to_string());
+    }
+
+    // Register
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    config.projects.push(ExternalProject {
+        path: canonical_str.clone(),
+        registered_at: now,
+    });
+
+    save_config(&config)?;
+
+    Ok(Some(canonical_str))
+}
+
+/// Removes an external project from the registry (does not delete files).
+#[tauri::command]
+pub async fn unregister_external_project(path: String) -> Result<(), String> {
+    let mut config = load_config()?;
+
+    let canonical = Path::new(&path)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(&path));
+
+    let initial_len = config.projects.len();
+    config.projects.retain(|p| {
+        let project_canonical = Path::new(&p.path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(&p.path));
+        project_canonical != canonical
+    });
+
+    if config.projects.len() == initial_len {
+        return Err("Project not found in external projects list.".to_string());
+    }
+
+    save_config(&config)?;
+    Ok(())
+}
+
+/// Check if a project path is an external project.
+#[tauri::command]
+pub async fn is_project_external(path: String) -> Result<bool, String> {
+    let canonical = Path::new(&path)
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+
+    let config = load_config()?;
+    for project in &config.projects {
+        let project_path = Path::new(&project.path);
+        if let Ok(project_canonical) = project_path.canonicalize() {
+            if canonical == project_canonical {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}

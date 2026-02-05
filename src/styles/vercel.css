@@ -88,6 +88,67 @@
   max-width: 480px;
 }
 
+/* Link mode toggle */
+.vercel-link-mode-toggle {
+  display: flex;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 0;
+}
+
+.vercel-link-mode-toggle button {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.vercel-link-mode-toggle button:hover {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.vercel-link-mode-toggle button.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+  background: transparent;
+}
+
+/* Loading spinner (matches publish-loading pattern) */
+.vercel-form-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vercel-form-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-muted);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.vercel-form-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .vercel-form {
   display: flex;
   flex-direction: column;

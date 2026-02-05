@@ -52,6 +52,8 @@ export interface DashboardProject {
   auto_accept_mode: boolean | null;
   /** Whether to hide the main branch warning banner */
   hide_main_branch_warning: boolean | null;
+  /** Whether this project is an external (non-~/ShipStudio) project */
+  is_external: boolean;
 }
 
 /** System prerequisite check result */

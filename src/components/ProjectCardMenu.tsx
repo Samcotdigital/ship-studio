@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { ZapIcon, TrashIcon, FolderIcon, WarningIcon, DownloadIcon } from './icons';
+import { ZapIcon, TrashIcon, FolderIcon, WarningIcon, DownloadIcon, CloseIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Local storage key for tracking if user has seen the auto-accept warning */
@@ -32,6 +32,10 @@ interface ProjectCardMenuProps {
   onExportAsTemplate?: () => void;
   /** Callback when delete is clicked */
   onDelete: () => void;
+  /** Whether this is an external project (shows "Remove from list" instead of delete) */
+  isExternal?: boolean;
+  /** Callback when remove from list is clicked (for external projects) */
+  onRemove?: () => void;
 }
 
 export function ProjectCardMenu({
@@ -42,6 +46,8 @@ export function ProjectCardMenu({
   onMoveToFolder,
   onExportAsTemplate,
   onDelete,
+  isExternal,
+  onRemove,
 }: ProjectCardMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
@@ -81,6 +87,12 @@ export function ProjectCardMenu({
     e.stopPropagation();
     setIsOpen(false);
     onDelete();
+  };
+
+  const handleRemoveClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(false);
+    onRemove?.();
   };
 
   const handleMoveToFolderClick = (e: React.MouseEvent) => {
@@ -152,10 +164,17 @@ export function ProjectCardMenu({
               </button>
             )}
             <div className="project-card-dropdown-divider" />
-            <button className="project-card-dropdown-item danger" onClick={handleDeleteClick}>
-              <TrashIcon size={14} />
-              <span>Delete project</span>
-            </button>
+            {isExternal && onRemove ? (
+              <button className="project-card-dropdown-item danger" onClick={handleRemoveClick}>
+                <CloseIcon size={14} />
+                <span>Remove from list</span>
+              </button>
+            ) : (
+              <button className="project-card-dropdown-item danger" onClick={handleDeleteClick}>
+                <TrashIcon size={14} />
+                <span>Delete project</span>
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -36,6 +36,10 @@ interface ProjectCardProps {
   onExportAsTemplate?: () => void;
   /** Callback to open project in a new window */
   onOpenInNewWindow?: () => void;
+  /** Whether this is an external project */
+  isExternal?: boolean;
+  /** Callback when remove from list is clicked (for external projects) */
+  onRemove?: () => void;
 }
 
 export function ProjectCard({
@@ -50,6 +54,8 @@ export function ProjectCard({
   onMoveToFolder,
   onExportAsTemplate,
   onOpenInNewWindow,
+  isExternal,
+  onRemove,
 }: ProjectCardProps) {
   const hasChanges = project.uncommitted_count !== null && project.uncommitted_count > 0;
   const autoAcceptMode = project.auto_accept_mode === true;
@@ -163,6 +169,8 @@ export function ProjectCard({
           onMoveToFolder={onMoveToFolder}
           onExportAsTemplate={onExportAsTemplate}
           onDelete={onDelete}
+          isExternal={isExternal}
+          onRemove={onRemove}
         />
       </div>
     </div>

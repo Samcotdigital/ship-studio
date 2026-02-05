@@ -154,7 +154,8 @@ pub fn find_executable(cmd: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Validates that a project path is inside the ~/ShipStudio directory.
+/// Validates that a project path is inside the ~/ShipStudio directory
+/// or is a registered external project.
 /// Prevents path traversal attacks where frontend could pass arbitrary paths.
 pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(project_path);
@@ -165,14 +166,20 @@ pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, S
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let shipstudio_dir = home.join("ShipStudio");
 
-    if !canonical.starts_with(&shipstudio_dir) {
-        return Err(format!(
-            "Security error: path '{}' is outside ShipStudio directory",
-            project_path
-        ));
+    // Allow paths inside ~/ShipStudio
+    if canonical.starts_with(&shipstudio_dir) {
+        return Ok(canonical);
     }
 
-    Ok(canonical)
+    // Allow registered external project paths
+    if crate::commands::external_projects::is_registered_external_path(&canonical)? {
+        return Ok(canonical);
+    }
+
+    Err(format!(
+        "Security error: path '{}' is outside ShipStudio directory",
+        project_path
+    ))
 }
 
 /// Check if Homebrew is installed

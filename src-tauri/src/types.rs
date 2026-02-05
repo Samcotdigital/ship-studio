@@ -48,6 +48,8 @@ pub struct DashboardProject {
     pub auto_accept_mode: Option<bool>,
     /// Whether to hide the main branch warning banner
     pub hide_main_branch_warning: Option<bool>,
+    /// Whether this project is an external (non-~/ShipStudio) project
+    pub is_external: bool,
 }
 
 /// Next.js page route information
@@ -519,6 +521,26 @@ pub struct FolderInfo {
     /// Up to 4 thumbnails for grid preview (base64 encoded)
     pub preview_thumbnails: Vec<Option<String>>,
     pub updated_at: u64,
+}
+
+// ============ External Projects ============
+
+/// Current schema version for external projects config.
+pub const EXTERNAL_PROJECTS_CONFIG_SCHEMA_VERSION: u32 = 1;
+
+/// Configuration for external projects stored in ~/ShipStudio/.shipstudio/external-projects.json
+#[derive(Serialize, Deserialize, Default)]
+pub struct ExternalProjectsConfig {
+    pub schema_version: u32,
+    pub projects: Vec<ExternalProject>,
+}
+
+/// An external project registered from outside ~/ShipStudio
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExternalProject {
+    pub path: String,
+    /// Unix timestamp (ms) when the project was registered
+    pub registered_at: u64,
 }
 
 // ============ Assets ============

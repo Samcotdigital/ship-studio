@@ -371,82 +371,84 @@ pub async fn get_vercel_teams() -> Result<Vec<VercelTeam>, String> {
 
 /// List Vercel projects for a given scope (team/user).
 /// If scope is empty, lists projects for the personal account.
+/// Uses JSON output format with pagination to retrieve all projects.
 #[tauri::command]
 pub async fn list_vercel_projects(scope: String) -> Result<Vec<VercelProject>, String> {
-    let mut cmd = get_vercel_command();
-    cmd.args(["project", "ls"]);
-
-    // Add scope if provided
-    if !scope.is_empty() {
-        cmd.args(["--scope", &scope]);
-    }
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("[VERCEL_CLI_006] Failed to run Vercel CLI: {}", e))?;
-
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(parse_vercel_error(&stdout, &stderr, "List projects"));
-    }
-
-    // Parse the output - Vercel CLI outputs a table format to stderr
-    // Format:  Project Name    Latest Production URL    Updated
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let full_output = format!("{}{}", stdout, stderr);
-
-    let mut projects = Vec::new();
-    let mut in_table = false;
-
-    // Determine the org_id - use scope if provided, otherwise get from whoami
     let org_id = if scope.is_empty() {
-        // For personal account, org_id is the user's ID
-        // We'll use "personal" as a placeholder - the actual linking will work
         "personal".to_string()
     } else {
         scope.clone()
     };
 
-    for line in full_output.lines() {
-        // Skip empty lines and header lines
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
+    let mut all_projects = Vec::new();
+    let mut next_cursor: Option<u64> = None;
+
+    loop {
+        let mut cmd = get_vercel_command();
+        cmd.args(["project", "ls", "-F", "json"]);
+
+        if !scope.is_empty() {
+            cmd.args(["--scope", &scope]);
         }
 
-        // Detect start of table (after "Fetching projects" line)
-        if trimmed.starts_with("Fetching") || trimmed.contains("──") {
-            in_table = true;
-            continue;
+        if let Some(cursor) = next_cursor {
+            cmd.args(["-N", &cursor.to_string()]);
         }
 
-        // Skip header row
-        if trimmed.starts_with("Project Name") || trimmed.starts_with("Name") {
-            continue;
+        let output = cmd
+            .output()
+            .map_err(|e| format!("[VERCEL_CLI_006] Failed to run Vercel CLI: {}", e))?;
+
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(parse_vercel_error(&stdout, &stderr, "List projects"));
         }
 
-        if in_table {
-            // Parse project line - first column is the project name
-            // Split by multiple spaces to get columns
-            let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            if !parts.is_empty() {
-                let name = parts[0].to_string();
-                // Skip if it looks like a header or separator
-                if !name.is_empty() && !name.contains("─") && name != "Name" && name != "Project"
-                {
-                    projects.push(VercelProject {
-                        id: name.clone(), // Project name is used as ID for linking
+        // JSON output goes to stdout; stderr has the "Fetching projects" message
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+            .map_err(|e| format!("Failed to parse Vercel project list: {}", e))?;
+
+        if let Some(projects) = parsed.get("projects").and_then(|p| p.as_array()) {
+            for project in projects {
+                let name = project
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let id = project
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                if !name.is_empty() && !id.is_empty() {
+                    all_projects.push(VercelProject {
+                        id,
                         name,
                         org_id: org_id.clone(),
                     });
                 }
             }
         }
+
+        // Check for next page
+        let has_next = parsed
+            .get("pagination")
+            .and_then(|p| p.get("next"))
+            .and_then(|n| n.as_u64());
+
+        match has_next {
+            Some(cursor) if !all_projects.is_empty() => {
+                next_cursor = Some(cursor);
+            }
+            _ => break,
+        }
     }
 
-    Ok(projects)
+    Ok(all_projects)
 }
 
 /// Write .vercel/project.json to link a project to Vercel
@@ -455,6 +457,7 @@ pub async fn write_vercel_project_json(
     project_path: String,
     project_id: String,
     org_id: String,
+    project_name: Option<String>,
 ) -> Result<(), String> {
     let path = std::path::Path::new(&project_path);
     let vercel_dir = path.join(".vercel");
@@ -463,12 +466,12 @@ pub async fn write_vercel_project_json(
     std::fs::create_dir_all(&vercel_dir)
         .map_err(|e| format!("Failed to create .vercel directory: {}", e))?;
 
-    // Write project.json
-    // Include both projectId and projectName (same value) for compatibility
+    // Write project.json with projectId (real prj_xxx ID) and projectName
     let project_json = vercel_dir.join("project.json");
+    let name = project_name.unwrap_or_else(|| project_id.clone());
     let content = serde_json::json!({
         "projectId": project_id,
-        "projectName": project_id,
+        "projectName": name,
         "orgId": org_id
     });
 
@@ -650,10 +653,35 @@ pub async fn get_project_vercel_status(project_path: String) -> ProjectVercelSta
             .map(|s| s.to_string())
     });
 
-    let project_name_str = match &project_name {
-        Some(name) => name.clone(),
-        None => return not_linked,
-    };
+    // Check for projectId (standard Vercel CLI format from `vercel link`)
+    let project_id = project_json_content.as_ref().and_then(|json| {
+        json.get("projectId")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    });
+
+    // Need at least projectName or projectId to consider it linked
+    if project_name.is_none() && project_id.is_none() {
+        return not_linked;
+    }
+
+    // If we have projectId but no projectName, return connected without URL info.
+    // This handles projects linked via `vercel link` outside Ship Studio.
+    if project_name.is_none() {
+        info!(
+            project_id = ?project_id,
+            "get_project_vercel_status: linked via projectId (no projectName), returning connected without URLs"
+        );
+        return ProjectVercelStatus {
+            status: "connected".to_string(),
+            project_name: None,
+            vercel_org: None,
+            production_url: None,
+            staging_url: None,
+        };
+    }
+
+    let project_name_str = project_name.clone().unwrap();
 
     // Skip the strict project verification - it fails for team projects where user
     // may have deploy access but not list access. Instead, just try to fetch aliases

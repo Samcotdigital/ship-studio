@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.49
+
+- **Import local folders** - Open existing projects from anywhere on your computer via the new Import picker
+- **Link existing Vercel projects** - Connect to an existing Vercel project instead of only creating new ones
+- **Full Vercel project list** - Project selector now shows all your Vercel projects (previously limited to 20)
+
+
 ## What's New in v0.3.48
 
 - **Nuxt/Vue support** - New Nuxt Basic template for project creation

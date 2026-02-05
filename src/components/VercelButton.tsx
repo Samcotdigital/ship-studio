@@ -20,7 +20,10 @@ import {
   deployToVercel,
   checkVercelCliStatus,
   getVercelTeams,
+  listVercelProjects,
+  writeVercelProjectJson,
   VercelTeam,
+  VercelProject,
 } from '../lib/vercel';
 import { ProjectGitHubStatus } from '../lib/github';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -76,6 +79,12 @@ export function VercelButton({
   const [selectedScope, setSelectedScope] = useState<string | undefined>(undefined);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
   const [showSiteDropdown, setShowSiteDropdown] = useState(false);
+  const [linkMode, setLinkMode] = useState<'new' | 'existing'>('new');
+  const [existingProjects, setExistingProjects] = useState<VercelProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
+  const [optimisticLinked, setOptimisticLinked] = useState(false);
   const isLoggingInRef = useRef(false);
   // Stable reference for terminal args to prevent effect re-runs
   const vercelLoginArgs = useRef(['login']).current;
@@ -304,10 +313,54 @@ export function VercelButton({
     );
   }
 
+  // Optimistic: show connected state immediately after linking while backend refreshes
+  if (optimisticLinked) {
+    return (
+      <button className="vercel-button vercel-linked" disabled title="Connected to Vercel">
+        <VercelIcon />
+      </button>
+    );
+  }
+
+  const loadExistingProjects = async (scope: string | undefined) => {
+    setIsLoadingProjects(true);
+    setSelectedProjectId('');
+    try {
+      const projects = await listVercelProjects(scope || '');
+      setExistingProjects(projects);
+    } catch {
+      setExistingProjects([]);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  const handleLinkExisting = async () => {
+    const project = existingProjects.find((p) => p.id === selectedProjectId);
+    if (!project) return;
+
+    setIsLinking(true);
+    setError(null);
+    try {
+      await writeVercelProjectJson(projectPath, project.id, project.orgId, project.name);
+      setShowDeployModal(false);
+      setOptimisticLinked(true);
+      onStatusChange();
+      onToast?.('Linked to Vercel project!', 'success');
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
   const handleOpenDeployModal = async () => {
     setDeployName(projectName);
     setShowDeployModal(true);
     setError(null);
+    setLinkMode('new');
+    setExistingProjects([]);
+    setSelectedProjectId('');
     setIsLoadingTeams(true);
 
     try {
@@ -356,9 +409,32 @@ export function VercelButton({
             <h3>Connect to Vercel</h3>
             <p>Link this project to Vercel for automatic deployments when you publish.</p>
 
+            <div className="vercel-link-mode-toggle">
+              <button
+                className={linkMode === 'new' ? 'active' : ''}
+                onClick={() => setLinkMode('new')}
+              >
+                Create new project
+              </button>
+              <button
+                className={linkMode === 'existing' ? 'active' : ''}
+                onClick={() => {
+                  setLinkMode('existing');
+                  if (existingProjects.length === 0) {
+                    void loadExistingProjects(selectedScope);
+                  }
+                }}
+              >
+                Link existing project
+              </button>
+            </div>
+
             <div className="vercel-form">
               {isLoadingTeams ? (
-                <div className="vercel-teams-loading">Loading teams...</div>
+                <div className="vercel-form-loading">
+                  <div className="vercel-form-spinner" />
+                  <span>Loading teams...</span>
+                </div>
               ) : (
                 teams.length > 0 && (
                   <label>
@@ -366,7 +442,13 @@ export function VercelButton({
                     <select
                       className="owner-select"
                       value={selectedScope || ''}
-                      onChange={(e) => setSelectedScope(e.target.value || undefined)}
+                      onChange={(e) => {
+                        const newScope = e.target.value || undefined;
+                        setSelectedScope(newScope);
+                        if (linkMode === 'existing') {
+                          void loadExistingProjects(newScope);
+                        }
+                      }}
                     >
                       <option value="">Personal Account</option>
                       {teams.map((team) => (
@@ -379,29 +461,62 @@ export function VercelButton({
                 )
               )}
 
-              <label>
-                Vercel project name
-                <input
-                  type="text"
-                  value={deployName}
-                  onChange={(e) =>
-                    setDeployName(e.target.value.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase())
-                  }
-                  placeholder="my-project"
-                  autoFocus
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                />
-              </label>
+              {linkMode === 'new' ? (
+                <>
+                  <label>
+                    Vercel project name
+                    <input
+                      type="text"
+                      value={deployName}
+                      onChange={(e) =>
+                        setDeployName(e.target.value.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase())
+                      }
+                      placeholder="my-project"
+                      autoFocus
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                    />
+                  </label>
 
-              {projectGithubStatus?.github_repo && (
-                <div className="vercel-github-info">
-                  <span className="vercel-github-label">Connected to GitHub:</span>
-                  <span className="vercel-github-repo">{projectGithubStatus.github_repo}</span>
-                  <span className="vercel-github-note">Auto-deploys on push will be enabled</span>
-                </div>
+                  {projectGithubStatus?.github_repo && (
+                    <div className="vercel-github-info">
+                      <span className="vercel-github-label">Connected to GitHub:</span>
+                      <span className="vercel-github-repo">{projectGithubStatus.github_repo}</span>
+                      <span className="vercel-github-note">
+                        Auto-deploys on push will be enabled
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {isLoadingProjects ? (
+                    <div className="vercel-form-loading">
+                      <div className="vercel-form-spinner" />
+                      <span>Loading projects...</span>
+                    </div>
+                  ) : existingProjects.length === 0 ? (
+                    <div className="vercel-form-empty">No projects found for this scope</div>
+                  ) : (
+                    <label>
+                      Select project
+                      <select
+                        className="owner-select"
+                        value={selectedProjectId}
+                        onChange={(e) => setSelectedProjectId(e.target.value)}
+                      >
+                        <option value="">Choose a project...</option>
+                        {existingProjects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </>
               )}
 
               {error && <p className="vercel-error">{error}</p>}
@@ -413,17 +528,27 @@ export function VercelButton({
                   setShowDeployModal(false);
                   onModalClose?.();
                 }}
-                disabled={isDeploying}
+                disabled={isDeploying || isLinking}
               >
                 Cancel
               </button>
-              <button
-                className="btn-primary"
-                onClick={() => void handleDeploy()}
-                disabled={isDeploying || !deployName.trim()}
-              >
-                {isDeploying ? 'Connecting...' : 'Connect & Deploy'}
-              </button>
+              {linkMode === 'new' ? (
+                <button
+                  className="btn-primary"
+                  onClick={() => void handleDeploy()}
+                  disabled={isDeploying || !deployName.trim()}
+                >
+                  {isDeploying ? 'Connecting...' : 'Connect & Deploy'}
+                </button>
+              ) : (
+                <button
+                  className="btn-primary"
+                  onClick={() => void handleLinkExisting()}
+                  disabled={isLinking || !selectedProjectId}
+                >
+                  {isLinking ? 'Linking...' : 'Link Project'}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -41,6 +41,8 @@ import { Preview, PreviewHandle } from './components/Preview';
 import { ProjectList } from './components/ProjectList';
 import { CreateProject } from './components/CreateProject';
 import { ImportProject } from './components/ImportProject';
+import { ImportTypePicker } from './components/ImportTypePicker';
+import { registerExternalProject } from './lib/external-projects';
 import { Changelog } from './components/Changelog';
 import { OnboardingScreen, OnboardingTerminal } from './components/setup';
 import { SplitPane } from './components/SplitPane';
@@ -290,8 +292,8 @@ function App({ initialProjectPath }: AppProps) {
   // Create project modal
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // Import project modal
-  const [showImportModal, setShowImportModal] = useState(false);
+  // Import project view: 'none' | 'picker' | 'github'
+  const [importView, setImportView] = useState<'none' | 'picker' | 'github'>('none');
 
   // IDE dropdown
   const [showIdeDropdown, setShowIdeDropdown] = useState(false);
@@ -1205,13 +1207,26 @@ function App({ initialProjectPath }: AppProps) {
   };
 
   const handleImportProject = () => {
-    setShowImportModal(true);
+    setImportView('picker');
   };
 
   const handleProjectImported = (projectPath: string) => {
-    setShowImportModal(false);
+    setImportView('none');
     const projectName = projectPath.split('/').pop() || 'project';
     void handleSelectProject({ name: projectName, path: projectPath, thumbnail: null });
+  };
+
+  const handleImportLocalFolder = async () => {
+    setImportView('none');
+    try {
+      const path = await registerExternalProject();
+      if (path) {
+        const projectName = path.split('/').pop() || 'project';
+        void handleSelectProject({ name: projectName, path, thumbnail: null });
+      }
+    } catch (error) {
+      alert(String(error));
+    }
   };
 
   const handleBackToProjects = async () => {
@@ -1515,10 +1530,17 @@ function App({ initialProjectPath }: AppProps) {
               onCancel={() => setShowCreateModal(false)}
             />
           )}
-          {showImportModal && (
+          {importView === 'picker' && (
+            <ImportTypePicker
+              onSelectGitHub={() => setImportView('github')}
+              onSelectLocalFolder={() => void handleImportLocalFolder()}
+              onClose={() => setImportView('none')}
+            />
+          )}
+          {importView === 'github' && (
             <ImportProject
               onComplete={handleProjectImported}
-              onCancel={() => setShowImportModal(false)}
+              onCancel={() => setImportView('none')}
             />
           )}
 

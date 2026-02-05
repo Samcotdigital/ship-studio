@@ -15,6 +15,14 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.49',
+    items: [
+      'Import local folders as projects',
+      'Link existing Vercel projects',
+      'Vercel project list shows all projects (pagination)',
+    ],
+  },
+  {
     version: '0.3.48',
     items: [
       'Nuxt/Vue support - new Nuxt Basic template',

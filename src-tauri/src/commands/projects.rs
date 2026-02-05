@@ -501,6 +501,45 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         }
     }
 
+    // Append external projects
+    if let Ok(ext_config) = crate::commands::external_projects::load_config() {
+        for ext in &ext_config.projects {
+            let ext_path = std::path::Path::new(&ext.path);
+            if ext_path.exists() && ext_path.join("package.json").exists() {
+                let name = ext_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "external".to_string());
+
+                let thumbnail_path = ext_path.join(".shipstudio").join("thumbnail.png");
+                let thumbnail = if thumbnail_path.exists() {
+                    Some(thumbnail_path.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+
+                let metadata_path = ext_path.join(".shipstudio").join("project.json");
+                let last_opened = if metadata_path.exists() {
+                    std::fs::read_to_string(&metadata_path)
+                        .ok()
+                        .and_then(|contents| {
+                            serde_json::from_str::<ProjectMetadata>(&contents).ok()
+                        })
+                        .and_then(|m| m.last_opened)
+                } else {
+                    None
+                };
+
+                projects.push(ProjectInfo {
+                    name,
+                    path: ext_path.to_string_lossy().to_string(),
+                    thumbnail,
+                    last_opened,
+                });
+            }
+        }
+    }
+
     projects.sort_by(|a, b| match (a.last_opened, b.last_opened) {
         (Some(a_time), Some(b_time)) => b_time.cmp(&a_time),
         (Some(_), None) => std::cmp::Ordering::Less,
@@ -571,7 +610,66 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                 deployment_state,
                 auto_accept_mode,
                 hide_main_branch_warning,
+                is_external: false,
             });
+        }
+    }
+
+    // Append external projects
+    if let Ok(ext_config) = crate::commands::external_projects::load_config() {
+        for ext in &ext_config.projects {
+            let path = std::path::PathBuf::from(&ext.path);
+            if path.exists() && path.join("package.json").exists() {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "external".to_string());
+
+                let thumbnail_path = path.join(".shipstudio").join("thumbnail.png");
+                let thumbnail = if thumbnail_path.exists() {
+                    Some(thumbnail_path.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+
+                let metadata_path = path.join(".shipstudio").join("project.json");
+                let metadata = if metadata_path.exists() {
+                    std::fs::read_to_string(&metadata_path)
+                        .ok()
+                        .and_then(|contents| {
+                            serde_json::from_str::<ProjectMetadata>(&contents).ok()
+                        })
+                } else {
+                    None
+                };
+                let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
+                let auto_accept_mode = metadata.as_ref().and_then(|m| m.auto_accept_mode);
+                let hide_main_branch_warning =
+                    metadata.as_ref().and_then(|m| m.hide_main_branch_warning);
+
+                // Ensure .shipstudio/ is gitignored
+                let _ = ensure_gitignore_has_shipstudio_sync(&path);
+
+                let git_branch = get_git_branch(&path);
+                let uncommitted_count = get_uncommitted_count(&path);
+                let (production_url, last_deployed, deployment_state) =
+                    get_vercel_deployment_info(&path);
+
+                projects.push(DashboardProject {
+                    name,
+                    path: path.to_string_lossy().to_string(),
+                    thumbnail,
+                    last_opened,
+                    git_branch,
+                    uncommitted_count,
+                    production_url,
+                    last_deployed,
+                    deployment_state,
+                    auto_accept_mode,
+                    hide_main_branch_warning,
+                    is_external: true,
+                });
+            }
         }
     }
 
@@ -893,9 +991,19 @@ pub async fn remove_git_history(project_path: String) -> Result<(), String> {
 }
 
 /// Deletes a project directory. Only allows deletion from ~/ShipStudio.
+/// External projects cannot be deleted — use unregister_external_project instead.
 #[tauri::command]
 pub async fn delete_project(path: String) -> Result<(), String> {
     let project_path = std::path::Path::new(&path);
+
+    // Check if this is an external project
+    if let Ok(canonical) = project_path.canonicalize() {
+        if crate::commands::external_projects::is_registered_external_path(&canonical)? {
+            return Err(
+                "Cannot delete external projects. Use 'Remove from list' instead.".to_string(),
+            );
+        }
+    }
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let shipstudio_dir = home.join("ShipStudio");
