@@ -4031,6 +4031,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dirs 5.0.1",
+ "dunce",
  "http-body-util",
  "hyper",
  "hyper-util",

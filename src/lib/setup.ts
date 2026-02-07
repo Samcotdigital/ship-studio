@@ -2,7 +2,7 @@
  * Setup/onboarding types and utilities.
  *
  * Manages the dependency graph and status for all setup items:
- * - Package Manager (Homebrew)
+ * - Package Manager (Homebrew on macOS, Winget on Windows)
  * - Node.js
  * - Git
  * - GitHub CLI + auth
@@ -13,6 +13,31 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+
+/** Platform detection helpers using navigator.userAgent as fallback */
+const getPlatform = (): string => {
+  // Use navigator.userAgent for client-side platform detection
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.includes('win')) return 'windows';
+  if (userAgent.includes('mac')) return 'macos';
+  if (userAgent.includes('linux')) return 'linux';
+  return 'unknown';
+};
+
+// Cache the platform detection result
+let _platform: string | null = null;
+
+const platform = (): string => {
+  if (_platform === null) {
+    _platform = getPlatform();
+  }
+  return _platform;
+};
+
+/** Platform detection helpers */
+export const isWindows = () => platform() === 'windows';
+export const isMacOS = () => platform() === 'macos';
+export const isLinux = () => platform() === 'linux';
 
 /** Status of a single setup item */
 export type SetupItemStatus =
@@ -77,18 +102,25 @@ export interface SetupProgress {
 }
 
 /** Dependency graph: which items must be ready before each item can be installed */
-export const SETUP_DEPENDENCIES: Record<string, string[]> = {
-  homebrew: [],
-  node: ['homebrew'],
-  npm_fix: ['node'], // Conditional: only appears when ~/.npm has bad permissions
-  git: ['homebrew'],
-  gh: ['homebrew'],
-  gh_auth: ['gh'],
-  claude: [], // Uses its own installer, no Homebrew dependency
-  claude_auth: ['claude'],
-  vercel: ['homebrew'], // Installed via brew install vercel-cli
-  vercel_auth: ['vercel'],
-};
+export function getSetupDependencies(): Record<string, string[]> {
+  const isWin = isWindows();
+
+  return {
+    homebrew: [],
+    node: ['homebrew'],
+    npm_fix: ['node'], // Conditional: only appears when ~/.npm has bad permissions
+    git: ['homebrew'],
+    gh: ['homebrew'],
+    gh_auth: ['gh'],
+    claude: [], // Uses its own installer
+    claude_auth: ['claude'],
+    vercel: isWin ? ['node'] : ['homebrew'], // Windows: npm install, macOS: brew install
+    vercel_auth: ['vercel'],
+  };
+}
+
+/** Dependency graph for backward compatibility (uses current platform) */
+export const SETUP_DEPENDENCIES: Record<string, string[]> = getSetupDependencies();
 
 /** Order to display items (roughly in dependency order) */
 export const SETUP_ITEM_ORDER = [
@@ -262,6 +294,8 @@ export async function resetSetupState(): Promise<void> {
 
 /**
  * Install Vercel CLI.
+ * On Windows: installs via npm
+ * On macOS: installs via Homebrew
  */
 export async function installVercel(): Promise<void> {
   return invoke('install_vercel_cli');
@@ -278,8 +312,35 @@ export async function installBrewPackages(packages: string[]): Promise<void> {
   return invoke('install_brew_packages', { packages });
 }
 
+/**
+ * Batch install multiple Winget packages (Windows only).
+ * Similar to installBrewPackages but for Windows.
+ *
+ * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh'])
+ */
+export async function installWingetPackages(packages: string[]): Promise<void> {
+  return invoke('install_winget_packages', { packages });
+}
+
+/**
+ * Install packages using the appropriate package manager for the current platform.
+ * Automatically uses Homebrew on macOS/Linux or Winget on Windows.
+ *
+ * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh'])
+ */
+export async function installPackages(packages: string[]): Promise<void> {
+  if (isWindows()) {
+    return installWingetPackages(packages);
+  } else {
+    return installBrewPackages(packages);
+  }
+}
+
 /** Brew-installed packages that can be batched */
 export const BREW_PACKAGES = new Set(['node', 'git', 'gh', 'vercel']);
+
+/** Package manager-installed packages (Homebrew on macOS, Winget on Windows) */
+export const PKG_MGR_PACKAGES = new Set(['node', 'git', 'gh', ...(isWindows() ? [] : ['vercel'])]);
 
 /**
  * Check if the npm cache directory (~/.npm) is writable.
@@ -305,39 +366,88 @@ export interface TerminalCommand {
   args: string[];
 }
 
-/** Terminal commands for interactive installations/auth */
-export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = {
-  homebrew: {
-    command: '/bin/bash',
-    args: [
-      '-c',
-      'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash',
-    ],
-  },
-  npm_fix: {
-    command: '/bin/bash',
-    args: [
-      '-c',
-      'echo "Fixing npm cache permissions..." && sudo chown -R $(whoami) ~/.npm && echo "Done! npm permissions fixed."',
-    ],
-  },
-  gh_auth: {
-    command: 'gh',
-    args: ['auth', 'login', '--web', '--git-protocol', 'https'],
-  },
-  claude: {
-    command: '/bin/bash',
-    args: ['-c', 'curl -fsSL https://claude.ai/install.sh | bash'],
-  },
-  claude_auth: {
-    command: 'claude',
-    args: [],
-  },
-  vercel_auth: {
-    command: 'vercel',
-    args: ['login'],
-  },
-};
+/** Get terminal commands based on current platform */
+export function getTerminalCommands(): Record<string, TerminalCommand> {
+  const isWin = isWindows();
+
+  if (isWin) {
+    // Windows commands (using PowerShell where needed)
+    return {
+      homebrew: {
+        // Not applicable on Windows, but keep for compatibility
+        command: 'powershell',
+        args: [
+          '-Command',
+          'Write-Host "Winget should be pre-installed on Windows 10 21H2+. Please install from Microsoft Store if missing."',
+        ],
+      },
+      npm_fix: {
+        command: 'powershell',
+        args: [
+          '-Command',
+          'Write-Host "Fixing npm cache permissions..." ; icacls "$env:USERPROFILE\\.npm" /grant "$env:USERNAME:(OI)(CI)F" /T ; Write-Host "Done! npm permissions fixed."',
+        ],
+      },
+      gh_auth: {
+        command: 'gh',
+        args: ['auth', 'login', '--web', '--git-protocol', 'https'],
+      },
+      claude: {
+        // Windows requires manual installer download
+        command: 'powershell',
+        args: [
+          '-Command',
+          'Write-Host "Please download Claude Code from https://claude.ai"; Start-Process "https://claude.ai"',
+        ],
+      },
+      claude_auth: {
+        command: 'claude',
+        args: [],
+      },
+      vercel_auth: {
+        command: 'vercel',
+        args: ['login'],
+      },
+    };
+  } else {
+    // macOS/Linux commands (using bash)
+    return {
+      homebrew: {
+        command: '/bin/bash',
+        args: [
+          '-c',
+          'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash',
+        ],
+      },
+      npm_fix: {
+        command: '/bin/bash',
+        args: [
+          '-c',
+          'echo "Fixing npm cache permissions..." && sudo chown -R $(whoami) ~/.npm && echo "Done! npm permissions fixed."',
+        ],
+      },
+      gh_auth: {
+        command: 'gh',
+        args: ['auth', 'login', '--web', '--git-protocol', 'https'],
+      },
+      claude: {
+        command: '/bin/bash',
+        args: ['-c', 'curl -fsSL https://claude.ai/install.sh | bash'],
+      },
+      claude_auth: {
+        command: 'claude',
+        args: [],
+      },
+      vercel_auth: {
+        command: 'vercel',
+        args: ['login'],
+      },
+    };
+  }
+}
+
+/** Terminal commands for interactive installations/auth (uses current platform) */
+export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = getTerminalCommands();
 
 /** Set of item IDs that require interactive terminal */
 export const USES_TERMINAL = new Set([

@@ -19,8 +19,10 @@ pub mod state;
 pub mod types;
 pub mod utils;
 
-use std::process::Command;
 use tauri::Manager;
+
+#[cfg(unix)]
+use std::process::Command;
 
 // Kill orphaned Claude processes spawned by this app
 fn cleanup_claude_processes() {
@@ -267,6 +269,7 @@ pub fn run() {
             commands::pty::get_reserved_port_for_window,
             commands::pty::release_reserved_port,
             commands::pty::get_shell_path,
+            commands::pty::get_system_env,
             commands::pty::register_external_pty,
             commands::pty::unregister_external_pty,
             // Setup/Onboarding
@@ -276,6 +279,7 @@ pub fn run() {
             commands::setup::install_git_via_brew,
             commands::setup::install_gh_via_brew,
             commands::setup::install_brew_packages,
+            commands::setup::install_winget_packages,
             commands::setup::start_github_auth,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,

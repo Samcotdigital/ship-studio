@@ -39,6 +39,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zip = "2"
 tauri-plugin-dialog = "2"
 walkdir = "2"
+dunce = "1"
 urlencoding = "2"
 hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio", "http1", "server", "client-legacy"] }

@@ -3,9 +3,9 @@
 //! Commands for IDE integration, browser selection, preview webviews, and screenshots.
 
 use crate::types::{BrowserInfo, IdeAvailability};
-use crate::utils::validate_project_path;
+use crate::utils::{create_command, validate_project_path};
 use std::net::TcpStream;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{Manager, Webview, WebviewUrl};
@@ -21,6 +21,43 @@ const MACOS_BROWSERS: &[(&str, &str, &str)] = &[
     ("brave", "Brave", "/Applications/Brave Browser.app"),
     ("edge", "Microsoft Edge", "/Applications/Microsoft Edge.app"),
 ];
+
+/// Browser configurations for Windows
+/// Tuple: (id, display_name, registry_or_path_hint)
+#[cfg(target_os = "windows")]
+const WINDOWS_BROWSERS: &[(&str, &str, &str)] = &[
+    (
+        "chrome",
+        "Google Chrome",
+        r"Google\Chrome\Application\chrome.exe",
+    ),
+    (
+        "edge",
+        "Microsoft Edge",
+        r"Microsoft\Edge\Application\msedge.exe",
+    ),
+    (
+        "brave",
+        "Brave",
+        r"BraveSoftware\Brave-Browser\Application\brave.exe",
+    ),
+    ("firefox", "Firefox", r"Mozilla Firefox\firefox.exe"),
+];
+
+/// Find a browser executable on Windows by checking common install locations.
+#[cfg(target_os = "windows")]
+fn find_windows_browser(relative_path: &str) -> Option<PathBuf> {
+    let candidates: Vec<PathBuf> = [
+        std::env::var("ProgramFiles").ok(),
+        std::env::var("ProgramFiles(x86)").ok(),
+        std::env::var("LOCALAPPDATA").ok(),
+    ]
+    .iter()
+    .filter_map(|base| base.as_ref().map(|b| PathBuf::from(b).join(relative_path)))
+    .collect();
+
+    candidates.into_iter().find(|p| p.exists())
+}
 
 /// Tracks whether a preview webview currently exists
 static PREVIEW_WEBVIEW_EXISTS: Mutex<bool> = Mutex::new(false);
@@ -58,7 +95,7 @@ pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String
         };
 
         // Use 'open -a' on macOS which is more reliable
-        Command::new("open")
+        create_command("open")
             .args(["-a", app_name, path_str.as_ref()])
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", ide, e))?;
@@ -72,7 +109,7 @@ pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String
             _ => return Err(format!("Unknown IDE: {}", ide)),
         };
 
-        Command::new(cmd)
+        create_command(cmd)
             .arg(path_str.as_ref())
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", ide, e))?;
@@ -101,9 +138,25 @@ pub async fn check_browser_availability() -> Vec<BrowserInfo> {
             .collect()
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        // For non-macOS, return empty list (future: implement for Windows/Linux)
+        WINDOWS_BROWSERS
+            .iter()
+            .filter_map(|(id, name, relative_path)| {
+                if find_windows_browser(relative_path).is_some() {
+                    Some(BrowserInfo {
+                        id: id.to_string(),
+                        name: name.to_string(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
         vec![]
     }
 }
@@ -119,7 +172,7 @@ pub async fn open_url_in_browser(url: String, browser_id: String) -> Result<(), 
             .map(|(_, name, _)| *name)
             .ok_or_else(|| format!("Unknown browser: {}", browser_id))?;
 
-        Command::new("open")
+        create_command("open")
             .args(["-a", app_name, &url])
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", browser_id, e))?;
@@ -127,7 +180,26 @@ pub async fn open_url_in_browser(url: String, browser_id: String) -> Result<(), 
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let relative_path = WINDOWS_BROWSERS
+            .iter()
+            .find(|(id, _, _)| *id == browser_id)
+            .map(|(_, _, path)| *path)
+            .ok_or_else(|| format!("Unknown browser: {}", browser_id))?;
+
+        let browser_exe = find_windows_browser(relative_path)
+            .ok_or_else(|| format!("Browser not found: {}", browser_id))?;
+
+        create_command(browser_exe)
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open in {}: {}", browser_id, e))?;
+
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (url, browser_id);
         Err("Browser selection not supported on this platform".to_string())
@@ -387,6 +459,56 @@ pub async fn crop_and_save_screenshot(
     Ok(screenshot_path_str)
 }
 
+/// Find a Chromium-based browser for headless screenshots (cross-platform).
+fn find_chromium_browser() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        let mac_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ];
+        mac_paths.iter().map(PathBuf::from).find(|p| p.exists())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let chromium_hints = [
+            r"Google\Chrome\Application\chrome.exe",
+            r"Microsoft\Edge\Application\msedge.exe",
+            r"BraveSoftware\Brave-Browser\Application\brave.exe",
+        ];
+        chromium_hints
+            .iter()
+            .find_map(|hint| find_windows_browser(hint))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        // Linux: check PATH
+        which::which("google-chrome")
+            .or_else(|_| which::which("chromium"))
+            .or_else(|_| which::which("microsoft-edge"))
+            .ok()
+    }
+}
+
+/// Resize a PNG image to the given width (preserving aspect ratio) using the `image` crate.
+fn resize_thumbnail_image(path: &Path, target_width: u32) {
+    if let Ok(img) = image::open(path) {
+        if img.width() > target_width {
+            let aspect = img.height() as f64 / img.width() as f64;
+            let target_height = (target_width as f64 * aspect) as u32;
+            let resized = img.resize(
+                target_width,
+                target_height,
+                image::imageops::FilterType::Lanczos3,
+            );
+            let _ = resized.save(path);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn capture_project_thumbnail(
     project_path: String,
@@ -436,7 +558,7 @@ pub async fn capture_project_thumbnail(
     let thumbnail_path_str = thumbnail_path.to_string_lossy().to_string();
 
     // Try using Playwright first (more reliable viewport control)
-    let npx_result = Command::new("npx")
+    let npx_result = create_command("npx")
         .args([
             "playwright",
             "screenshot",
@@ -450,26 +572,16 @@ pub async fn capture_project_thumbnail(
 
     if let Ok(output) = npx_result {
         if output.status.success() && thumbnail_path.exists() {
-            // Resize to thumbnail width
-            let _ = Command::new("sips")
-                .args(["--resampleWidth", "640", &thumbnail_path_str])
-                .output();
+            // Resize to thumbnail width using image crate (cross-platform)
+            resize_thumbnail_image(&thumbnail_path, 640);
             return Ok(thumbnail_path_str);
         }
     }
 
-    // Fall back to Chrome CLI if Playwright not available
-    let chrome_paths = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    ];
+    // Fall back to Chrome/Edge CLI if Playwright not available
+    let browser_exe = find_chromium_browser();
 
-    let chrome_path = chrome_paths
-        .iter()
-        .find(|p| std::path::Path::new(p).exists());
-
-    if let Some(browser) = chrome_path {
+    if let Some(browser) = browser_exe {
         // Use a temp file for raw capture, then process
         let temp_path = shipstudio_dir.join("thumbnail_raw.png");
         let temp_path_str = temp_path.to_string_lossy().to_string();
@@ -477,7 +589,7 @@ pub async fn capture_project_thumbnail(
 
         // Use new headless mode with explicit viewport control
         // Set background to white so any extra captured area isn't black
-        let output = Command::new(browser)
+        let output = create_command(&browser)
             .args([
                 "--headless=new",
                 "--disable-gpu",
@@ -499,64 +611,28 @@ pub async fn capture_project_thumbnail(
             return Err(format!("Browser screenshot failed: {}", stderr));
         }
 
-        // Get actual image dimensions
-        let size_output = Command::new("sips")
-            .args(["-g", "pixelWidth", "-g", "pixelHeight", &temp_path_str])
-            .output()
-            .map_err(|e| format!("Failed to get image size: {}", e))?;
+        // Read the captured image and resize using the image crate (cross-platform)
+        if temp_path.exists() {
+            if let Ok(img) = image::open(&temp_path) {
+                let (width_val, height_val) = (img.width(), img.height());
 
-        let size_str = String::from_utf8_lossy(&size_output.stdout);
-        let mut width_val = 1280u32;
-        let mut height_val = 800u32;
+                // If captured at 2x (Retina) or oversized, resize to 1280 width first
+                let processed = if width_val > 1280 || height_val > 800 {
+                    img.resize(1280, 800, image::imageops::FilterType::Lanczos3)
+                } else {
+                    img
+                };
 
-        for line in size_str.lines() {
-            if line.contains("pixelWidth") {
-                if let Some(w) = line.split_whitespace().last() {
-                    width_val = w.parse().unwrap_or(1280);
-                }
-            } else if line.contains("pixelHeight") {
-                if let Some(h) = line.split_whitespace().last() {
-                    height_val = h.parse().unwrap_or(800);
-                }
+                // Save as thumbnail at 640px width
+                let thumb = processed.resize(640, 400, image::imageops::FilterType::Lanczos3);
+                let _ = thumb.save(&thumbnail_path);
+            } else {
+                // If image crate can't read it, just copy as-is
+                let _ = std::fs::copy(&temp_path, &thumbnail_path);
             }
+            // Clean up temp file
+            let _ = std::fs::remove_file(&temp_path);
         }
-
-        // If captured at 2x (Retina), scale down to 1280x800 first
-        // The content is correct, just at 2x resolution
-        if width_val >= 2560 && height_val >= 1600 {
-            // Scale down from 2x to 1x
-            let _ = Command::new("sips")
-                .args([
-                    "--resampleWidth",
-                    "1280",
-                    &temp_path_str,
-                    "--out",
-                    &thumbnail_path_str,
-                ])
-                .output();
-        } else if width_val > 1280 || height_val > 800 {
-            // Unexpected size - resize to fit 1280 width
-            let _ = Command::new("sips")
-                .args([
-                    "--resampleWidth",
-                    "1280",
-                    &temp_path_str,
-                    "--out",
-                    &thumbnail_path_str,
-                ])
-                .output();
-        } else {
-            // Already correct size, just copy
-            let _ = std::fs::copy(&temp_path, &thumbnail_path);
-        }
-
-        // Clean up temp file
-        let _ = std::fs::remove_file(&temp_path);
-
-        // Resize to thumbnail width (640)
-        let _ = Command::new("sips")
-            .args(["--resampleWidth", "640", &thumbnail_path_str])
-            .output();
 
         Ok(thumbnail_path_str)
     } else {
@@ -586,10 +662,8 @@ pub async fn get_project_thumbnail(project_path: String) -> Result<Option<String
 /// Get or create a shared Playwright environment directory.
 /// Installs Playwright and Chromium once, reused for all screenshots.
 fn get_playwright_env() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var("HOME").map_err(|_| "HOME environment variable not set")?;
-    let playwright_dir = std::path::PathBuf::from(&home)
-        .join(".ship-studio")
-        .join("playwright-env");
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    let playwright_dir = home.join(".ship-studio").join("playwright-env");
 
     // Check if playwright is already installed
     let node_modules = playwright_dir.join("node_modules").join("playwright");
@@ -614,7 +688,7 @@ fn get_playwright_env() -> Result<std::path::PathBuf, String> {
 
     // Install playwright
     tracing::info!("Installing Playwright (this may take a moment on first run)...");
-    let install_output = Command::new("npm")
+    let install_output = create_command("npm")
         .args(["install", "playwright"])
         .current_dir(&playwright_dir)
         .output()
@@ -627,7 +701,7 @@ fn get_playwright_env() -> Result<std::path::PathBuf, String> {
 
     // Install Chromium browser
     tracing::info!("Installing Chromium browser...");
-    let browser_output = Command::new("npx")
+    let browser_output = create_command("npx")
         .args(["playwright", "install", "chromium"])
         .current_dir(&playwright_dir)
         .output()
@@ -751,7 +825,7 @@ const {{ chromium }} = require('playwright');
 
     // Run the script from the playwright environment directory
     // This ensures require('playwright') can find the module
-    let output = Command::new("node")
+    let output = create_command("node")
         .arg(&script_path)
         .current_dir(&playwright_env)
         .output()
@@ -859,7 +933,7 @@ const {{ chromium }} = require('playwright');
         .map_err(|e| format!("Failed to write capture script: {}", e))?;
 
     // Run the script
-    let output = Command::new("node")
+    let output = create_command("node")
         .arg(&script_path)
         .current_dir(&playwright_env)
         .output()

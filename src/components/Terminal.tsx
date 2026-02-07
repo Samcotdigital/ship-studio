@@ -21,6 +21,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { loadNerdFonts } from '../lib/fonts';
+import { isWindows } from '../lib/setup';
 import '@xterm/xterm/css/xterm.css';
 
 /** Claude Code status based on terminal title */
@@ -281,26 +282,46 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
         // Get extended PATH from backend (includes nvm, Claude desktop app, etc.)
         const home = await homeDir();
-        const homeNormalized = home.endsWith('/') ? home : `${home}/`;
+        const isWin = isWindows();
+        const sep = isWin ? '\\' : '/';
+        const homeNormalized = home.endsWith(sep) ? home : `${home}${sep}`;
         const fullPath = await invoke<string>('get_shell_path');
 
-        // Spawn PTY using tauri-pty
+        // Build platform-appropriate env vars
         // Must pass all essential env vars since env replaces (not merges with) parent environment
-        // When autoAcceptMode is enabled, pass --dangerously-skip-permissions flag
-        const claudeArgs = autoAcceptMode ? ['--dangerously-skip-permissions'] : [];
-        // eslint-disable-next-line @typescript-eslint/await-thenable
-        const pty = await spawn('claude', claudeArgs, {
-          cwd: projectPath,
-          cols: term.cols,
-          rows: term.rows,
-          env: {
+        let env: Record<string, string>;
+        if (isWin) {
+          // Windows: get system env vars from backend and merge with PATH
+          const systemEnv = await invoke<Record<string, string>>('get_system_env');
+          env = {
+            ...systemEnv,
+            PATH: fullPath,
+            TERM: 'xterm-256color',
+          };
+        } else {
+          env = {
             PATH: fullPath,
             HOME: homeNormalized.slice(0, -1),
             USER: homeNormalized.split('/').filter(Boolean).pop() || 'user',
             TERM: 'xterm-256color',
             LANG: 'en_US.UTF-8',
             SHELL: '/bin/zsh',
-          },
+          };
+        }
+
+        // When autoAcceptMode is enabled, pass --dangerously-skip-permissions flag
+        const claudeArgs = autoAcceptMode ? ['--dangerously-skip-permissions'] : [];
+
+        // On Windows, claude is a .cmd script - must run through cmd.exe
+        const spawnCmd = isWin ? 'cmd.exe' : 'claude';
+        const spawnArgs = isWin ? ['/C', 'claude', ...claudeArgs] : claudeArgs;
+
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        const pty = await spawn(spawnCmd, spawnArgs, {
+          cwd: projectPath,
+          cols: term.cols,
+          rows: term.rows,
+          env,
         });
 
         // Check again after async operation
@@ -327,8 +348,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           ptyRef.current?.write(data);
         });
 
-        // Handle Shift+Enter to insert newline instead of submitting
+        // Handle special key combinations
         term.attachCustomKeyEventHandler((event) => {
+          // Ctrl+C with selection: copy to clipboard instead of sending SIGINT
+          if (event.key === 'c' && event.ctrlKey && !event.shiftKey && !event.altKey) {
+            const selection = term.getSelection();
+            if (selection) {
+              void navigator.clipboard.writeText(selection);
+              term.clearSelection();
+              return false;
+            }
+          }
+          // Shift+Enter: insert newline instead of submitting
           if (event.key === 'Enter' && event.shiftKey) {
             if (event.type === 'keydown') {
               // Send a literal newline character (Ctrl+J / Line Feed)

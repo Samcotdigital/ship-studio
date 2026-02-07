@@ -8,10 +8,15 @@ use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
 use crate::types::{
     AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
 };
-use crate::utils::{check_homebrew, find_executable, get_brew_command};
+use crate::utils::{create_command, find_executable, get_brew_command};
+
+#[cfg(windows)]
+use crate::utils::{check_winget, get_winget_command};
+
+#[cfg(not(windows))]
+use crate::utils::check_homebrew;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
@@ -283,17 +288,26 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 
     let mut items = Vec::new();
 
-    // 1. Homebrew
-    let (brew_installed, brew_version) = check_homebrew();
+    // 1. Package Manager (Homebrew on macOS/Linux, Winget on Windows)
+    #[cfg(windows)]
+    let (pkg_mgr_installed, pkg_mgr_version) = check_winget();
+    #[cfg(not(windows))]
+    let (pkg_mgr_installed, pkg_mgr_version) = check_homebrew();
+
+    #[cfg(windows)]
+    let pkg_mgr_name = "Winget";
+    #[cfg(not(windows))]
+    let pkg_mgr_name = "Package Manager";
+
     items.push(SetupItemInfo {
-        id: "homebrew".to_string(),
-        friendly_name: "Package Manager".to_string(),
-        status: if brew_installed {
+        id: "homebrew".to_string(), // Keep ID for backward compatibility
+        friendly_name: pkg_mgr_name.to_string(),
+        status: if pkg_mgr_installed {
             SetupItemStatus::Ready
         } else {
             SetupItemStatus::NotInstalled
         },
-        version: brew_version,
+        version: pkg_mgr_version,
         username: None,
         error_message: None,
     });
@@ -301,7 +315,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     // 2. Node.js
     let node_path = find_executable("node");
     let node_version = node_path.as_ref().and_then(|p| {
-        Command::new(p)
+        create_command(p)
             .args(["--version"])
             .output()
             .ok()
@@ -364,7 +378,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     // 3. Git
     let git_path = find_executable("git");
     let git_version = git_path.as_ref().and_then(|p| {
-        Command::new(p)
+        create_command(p)
             .args(["--version"])
             .output()
             .ok()
@@ -392,7 +406,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     // 4. GitHub CLI
     let gh_path = find_executable("gh");
     let gh_version = gh_path.as_ref().and_then(|p| {
-        Command::new(p)
+        create_command(p)
             .args(["--version"])
             .output()
             .ok()
@@ -461,7 +475,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     // 6. Claude Code
     let claude_path = find_claude_binary();
     let claude_version = claude_path.as_ref().and_then(|p| {
-        Command::new(p)
+        create_command(p)
             .args(["--version"])
             .output()
             .ok()
@@ -522,7 +536,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     // 8. Vercel CLI
     let vercel_path = find_vercel_binary();
     let vercel_version = vercel_path.as_ref().and_then(|p| {
-        Command::new(p)
+        create_command(p)
             .args(["--version"])
             .output()
             .ok()
@@ -641,7 +655,11 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     }
 
     // Fast Tier-1 checks: binary existence only (no --version calls)
-    let brew_present = check_homebrew().0;
+    #[cfg(windows)]
+    let pkg_mgr_present = check_winget().0;
+    #[cfg(not(windows))]
+    let pkg_mgr_present = check_homebrew().0;
+
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
@@ -661,7 +679,7 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     // For gh_auth and vercel_auth, we trust the cached state since checking requires subprocess
     // These will be verified in the background after showing projects
 
-    let all_present = brew_present
+    let all_present = pkg_mgr_present
         && node_present
         && git_present
         && gh_present
@@ -723,7 +741,7 @@ pub async fn install_homebrew(app: tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let output = Command::new("bash")
+    let output = create_command("bash")
         .args(["-c", "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""])
         .env("NONINTERACTIVE", "1")
         .output()
@@ -756,7 +774,7 @@ pub async fn install_node_via_brew(app: tauri::AppHandle) -> Result<(), String> 
 
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
-    let output = Command::new(&brew)
+    let output = create_command(&brew)
         .args(["install", "node"])
         .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
@@ -789,7 +807,7 @@ pub async fn install_git_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
-    let output = Command::new(&brew)
+    let output = create_command(&brew)
         .args(["install", "git"])
         .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
@@ -822,7 +840,7 @@ pub async fn install_gh_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
-    let output = Command::new(&brew)
+    let output = create_command(&brew)
         .args(["install", "gh"])
         .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
@@ -890,7 +908,7 @@ pub async fn install_brew_packages(
     let mut args = vec!["install"];
     args.extend(brew_packages.iter().copied());
 
-    let output = Command::new(&brew)
+    let output = create_command(&brew)
         .args(&args)
         // Allow auto-update since it only runs once for all packages
         .output()
@@ -905,6 +923,103 @@ pub async fn install_brew_packages(
     }
 
     Ok(())
+}
+
+/// Batch install multiple packages via Winget (Windows only).
+/// This is the Windows equivalent of install_brew_packages.
+///
+/// Mapping from item IDs to winget package IDs:
+/// - node -> OpenJS.NodeJS
+/// - git -> Git.Git
+/// - gh -> GitHub.cli
+/// - vercel -> N/A (installed via npm after node)
+#[cfg(windows)]
+#[tauri::command]
+pub async fn install_winget_packages(
+    app: tauri::AppHandle,
+    packages: Vec<String>,
+) -> Result<(), String> {
+    if packages.is_empty() {
+        return Ok(());
+    }
+
+    let _ = app.emit(
+        "setup-progress",
+        serde_json::json!({
+            "itemId": "winget_batch",
+            "message": format!("Installing {}...", packages.join(", "))
+        }),
+    );
+
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        for pkg in &packages {
+            mock_install(pkg);
+        }
+        return Ok(());
+    }
+
+    let winget = get_winget_command().ok_or("Winget not found")?;
+
+    // Map item IDs to actual winget package IDs
+    let winget_packages: Vec<&str> = packages
+        .iter()
+        .filter_map(|p| match p.as_str() {
+            "node" => Some("OpenJS.NodeJS"),
+            "git" => Some("Git.Git"),
+            "gh" => Some("GitHub.cli"),
+            "vercel" => None, // Installed via npm
+            _ => None,
+        })
+        .collect();
+
+    if winget_packages.is_empty() {
+        return Ok(());
+    }
+
+    // Install packages one at a time (winget doesn't support batch installs well)
+    for package in winget_packages {
+        let output = create_command(&winget)
+            .args([
+                "install",
+                "--id",
+                package,
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run winget: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Don't fail if package is already installed
+            if !stdout.contains("already installed") && !stderr.contains("already installed") {
+                return Err(format!(
+                    "Failed to install {}: {}",
+                    package,
+                    stderr
+                        .lines()
+                        .next()
+                        .unwrap_or(&stdout.lines().next().unwrap_or("Unknown error"))
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Stub for non-Windows platforms
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn install_winget_packages(
+    _app: tauri::AppHandle,
+    _packages: Vec<String>,
+) -> Result<(), String> {
+    Err("Winget is only available on Windows".to_string())
 }
 
 /// Check if the npm cache directory (~/.npm) is writable by the current user.
@@ -950,7 +1065,7 @@ pub async fn start_github_auth(app: tauri::AppHandle) -> Result<String, String> 
 
     let gh_path = find_executable("gh").ok_or("GitHub CLI not installed")?;
 
-    let child = Command::new(&gh_path)
+    let child = create_command(&gh_path)
         .args([
             "auth",
             "login",
@@ -997,7 +1112,7 @@ pub async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> 
 
     let claude_path = find_claude_binary().ok_or("Claude Code not installed")?;
 
-    let child = Command::new(&claude_path)
+    let child = create_command(&claude_path)
         .args(["--print", "hello"])
         .spawn()
         .map_err(|e| format!("Failed to start Claude auth: {}", e))?;
@@ -1101,14 +1216,14 @@ pub fn cleanup_auth_processes_sync() -> u32 {
         #[cfg(unix)]
         {
             // Send SIGTERM for graceful shutdown
-            let _ = Command::new("kill")
+            let _ = create_command("kill")
                 .args(["-TERM", &pid.to_string()])
                 .output();
         }
 
         #[cfg(windows)]
         {
-            let _ = Command::new("taskkill")
+            let _ = create_command("taskkill")
                 .args(["/F", "/PID", &pid.to_string()])
                 .output();
         }

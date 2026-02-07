@@ -2,11 +2,11 @@
 //!
 //! Commands for GitHub CLI status, authentication, and user info.
 
-use crate::commands::git::{git_stage_and_commit, init_git_repo};
+use crate::commands::git::git_stage_and_commit;
 use crate::types::{
     GitHubCliStatus, GitHubLanguage, GitHubRepo, ProjectGitHubStatus, PushToGitHubOptions,
 };
-use crate::utils::{find_executable, get_extended_path, validate_project_path};
+use crate::utils::{create_command, find_executable, get_extended_path, validate_project_path};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
@@ -38,9 +38,9 @@ async fn run_command_with_timeout(
 /// Returns a Command for gh with extended PATH set
 pub fn get_gh_command() -> Command {
     let mut cmd = if let Some(path) = find_executable("gh") {
-        Command::new(path)
+        create_command(path)
     } else {
-        Command::new("gh")
+        create_command("gh")
     };
     cmd.env("PATH", get_extended_path());
     cmd
@@ -163,7 +163,7 @@ pub async fn get_project_github_status(project_path: String) -> ProjectGitHubSta
 
     // Get remote URL (with timeout)
     let step_start = std::time::Instant::now();
-    let mut remote_cmd = Command::new("git");
+    let mut remote_cmd = create_command("git");
     remote_cmd
         .args(["remote", "get-url", "origin"])
         .current_dir(&project)
@@ -259,6 +259,73 @@ pub async fn get_project_github_status(project_path: String) -> ProjectGitHubSta
     result
 }
 
+/// Ensures git user.name and user.email are configured for the repo.
+/// If not set, fetches the user's identity from GitHub CLI and sets it locally.
+fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
+    let has_name = create_command("git")
+        .args(["config", "user.name"])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let has_email = create_command("git")
+        .args(["config", "user.email"])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if has_name && has_email {
+        return Ok(());
+    }
+
+    // Fetch identity from GitHub CLI
+    let gh_output = get_gh_command()
+        .args(["api", "user", "--jq", r#".login, .name, .email"#])
+        .output()
+        .map_err(|e| format!("Failed to get GitHub user info: {}", e))?;
+
+    if !gh_output.status.success() {
+        return Err("Failed to get GitHub user info. Please configure git manually:\n  git config --global user.name \"Your Name\"\n  git config --global user.email \"you@example.com\"".to_string());
+    }
+
+    let info = String::from_utf8_lossy(&gh_output.stdout);
+    let lines: Vec<&str> = info.lines().collect();
+    // lines[0] = login, lines[1] = name (may be empty), lines[2] = email (may be empty)
+    let login = lines.first().map(|s| s.trim()).unwrap_or("");
+    let name = lines.get(1).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let email = lines.get(2).map(|s| s.trim()).filter(|s| !s.is_empty());
+
+    if !has_name {
+        let display_name = name.unwrap_or(login);
+        create_command("git")
+            .args(["config", "user.name", display_name])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| format!("Failed to set git user.name: {}", e))?;
+    }
+
+    if !has_email {
+        let user_email = email.unwrap_or_else(|| {
+            // Can't return a reference to a local, so we'll handle this below
+            ""
+        });
+        let final_email = if user_email.is_empty() {
+            format!("{}@users.noreply.github.com", login)
+        } else {
+            user_email.to_string()
+        };
+        create_command("git")
+            .args(["config", "user.email", &final_email])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| format!("Failed to set git user.email: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> {
     let validated_path = validate_project_path(&options.project_path)?;
@@ -272,10 +339,50 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Stri
     // Check if it's already a git repo, if not initialize
     let git_dir = validated_path.join(".git");
     if !git_dir.exists() {
-        init_git_repo(options.project_path.clone()).await?;
-    } else {
-        // Make sure all changes are committed
-        let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
+        create_command("git")
+            .args(["init"])
+            .current_dir(&validated_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Ensure git identity is configured (required for commits)
+    ensure_git_identity(&validated_path)?;
+
+    // Stage and commit any files
+    let _ = git_stage_and_commit(
+        &validated_path,
+        if git_dir.exists() {
+            "Update from Ship Studio"
+        } else {
+            "Initial commit from Ship Studio"
+        },
+    );
+
+    // Ensure at least one commit exists (gh repo create --push requires it)
+    let has_commits = create_command("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&validated_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_commits {
+        let output = create_command("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "Initial commit from Ship Studio",
+            ])
+            .current_dir(&validated_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to create initial commit: {}", stderr));
+        }
     }
 
     // Create GitHub repo and push

@@ -18,8 +18,9 @@ import {
   FullSetupStatus,
   getFullSetupStatus,
   checkClaudeAuthStatus,
-  installBrewPackages,
-  BREW_PACKAGES,
+  installPackages,
+  installVercel,
+  PKG_MGR_PACKAGES,
   TERMINAL_COMMANDS,
   USES_TERMINAL,
   SETUP_FRIENDLY_NAMES,
@@ -203,22 +204,25 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
       // Non-terminal items - run via backend
       try {
-        // Check if this is a brew package - if so, batch install all missing brew packages
-        if (BREW_PACKAGES.has(itemId)) {
-          // Find all missing brew packages to install in one command
-          const missingBrewPackages = items
-            .filter((item) => BREW_PACKAGES.has(item.id) && item.status !== 'ready')
+        // Check if this is a package manager package - if so, batch install all missing packages
+        if (PKG_MGR_PACKAGES.has(itemId)) {
+          // Find all missing packages to install in one command
+          const missingPackages = items
+            .filter((item) => PKG_MGR_PACKAGES.has(item.id) && item.status !== 'ready')
             .map((item) => item.id);
 
           // Mark all of them as in_progress
-          for (const pkgId of missingBrewPackages) {
+          for (const pkgId of missingPackages) {
             if (pkgId !== itemId) {
               updateItemStatus(pkgId, { status: 'in_progress', errorMessage: undefined });
             }
           }
 
-          // Batch install all missing brew packages
-          await installBrewPackages(missingBrewPackages);
+          // Batch install all missing packages using appropriate package manager
+          await installPackages(missingPackages);
+        } else if (itemId === 'vercel') {
+          // Vercel is handled separately (npm on Windows, brew on macOS)
+          await installVercel();
         } else {
           console.warn('Unknown item:', itemId);
         }
@@ -233,10 +237,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         // Strip error codes like [VERCEL_INSTALL_002] for cleaner display
         const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
 
-        // If this was a batch brew install, reset all in_progress brew items
-        if (BREW_PACKAGES.has(itemId)) {
+        // If this was a batch package install, reset all in_progress package items
+        if (PKG_MGR_PACKAGES.has(itemId)) {
           for (const item of items) {
-            if (BREW_PACKAGES.has(item.id) && item.status === 'in_progress') {
+            if (PKG_MGR_PACKAGES.has(item.id) && item.status === 'in_progress') {
               updateItemStatus(item.id, {
                 status: 'error',
                 errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
