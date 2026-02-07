@@ -15,6 +15,17 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.51',
+    items: ['Import repos you collaborate on (not just owned)', 'Fix dev server restart crashes'],
+  },
+  {
+    version: '0.3.50',
+    items: [
+      'Fix npm cache permission errors during setup',
+      'Slack community banner on welcome screen',
+    ],
+  },
+  {
     version: '0.3.49',
     items: [
       'Import local folders as projects',

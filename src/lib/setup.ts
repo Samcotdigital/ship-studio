@@ -108,6 +108,7 @@ export function getSetupDependencies(): Record<string, string[]> {
   return {
     homebrew: [],
     node: ['homebrew'],
+    npm_fix: ['node'], // Conditional: only appears when ~/.npm has bad permissions
     git: ['homebrew'],
     gh: ['homebrew'],
     gh_auth: ['gh'],
@@ -125,6 +126,7 @@ export const SETUP_DEPENDENCIES: Record<string, string[]> = getSetupDependencies
 export const SETUP_ITEM_ORDER = [
   'homebrew',
   'node',
+  'npm_fix',
   'git',
   'gh',
   'gh_auth',
@@ -138,6 +140,7 @@ export const SETUP_ITEM_ORDER = [
 export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   homebrew: 'Package Manager',
   node: 'Node.js',
+  npm_fix: 'Fix npm Permissions',
   git: 'Git',
   gh: 'GitHub CLI',
   gh_auth: 'GitHub Account',
@@ -151,6 +154,7 @@ export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
 export const SETUP_PROGRESS_MESSAGES: Record<string, string> = {
   homebrew: 'Installing package manager...',
   node: 'Installing Node.js...',
+  npm_fix: 'Fixing npm permissions...',
   git: 'Installing Git...',
   gh: 'Installing GitHub CLI...',
   gh_auth: 'Connecting to GitHub...',
@@ -164,6 +168,7 @@ export const SETUP_PROGRESS_MESSAGES: Record<string, string> = {
 export const SETUP_TIME_ESTIMATES: Record<string, string> = {
   homebrew: '~30 sec',
   node: '~10 sec',
+  npm_fix: '~5 sec',
   git: '~5 sec',
   gh: '~1 min',
   gh_auth: '~15 sec',
@@ -338,6 +343,14 @@ export const BREW_PACKAGES = new Set(['node', 'git', 'gh', 'vercel']);
 export const PKG_MGR_PACKAGES = new Set(['node', 'git', 'gh', ...(isWindows() ? [] : ['vercel'])]);
 
 /**
+ * Check if the npm cache directory (~/.npm) is writable.
+ * Returns "ok" or "not_writable".
+ */
+export async function checkNpmCachePermissions(): Promise<string> {
+  return invoke<string>('check_npm_cache_permissions');
+}
+
+/**
  * Start Vercel authentication flow (opens browser).
  * Returns a message to display to the user.
  */
@@ -366,6 +379,13 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         args: [
           '-Command',
           'Write-Host "Winget should be pre-installed on Windows 10 21H2+. Please install from Microsoft Store if missing."',
+        ],
+      },
+      npm_fix: {
+        command: 'powershell',
+        args: [
+          '-Command',
+          'Write-Host "Fixing npm cache permissions..." ; icacls "$env:USERPROFILE\\.npm" /grant "$env:USERNAME:(OI)(CI)F" /T ; Write-Host "Done! npm permissions fixed."',
         ],
       },
       gh_auth: {
@@ -399,6 +419,13 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
           'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash',
         ],
       },
+      npm_fix: {
+        command: '/bin/bash',
+        args: [
+          '-c',
+          'echo "Fixing npm cache permissions..." && sudo chown -R $(whoami) ~/.npm && echo "Done! npm permissions fixed."',
+        ],
+      },
       gh_auth: {
         command: 'gh',
         args: ['auth', 'login', '--web', '--git-protocol', 'https'],
@@ -425,6 +452,7 @@ export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = getTerminalCom
 /** Set of item IDs that require interactive terminal */
 export const USES_TERMINAL = new Set([
   'homebrew',
+  'npm_fix',
   'gh_auth',
   'claude',
   'claude_auth',

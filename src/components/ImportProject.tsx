@@ -19,10 +19,12 @@ import {
   getGitHubUsername,
   getGitHubOrgs,
   listGitHubRepos,
+  listCollaboratorRepos,
   detectPackageManager,
   GitHubRepo,
 } from '../lib/github';
 import { getWindowLabel } from '../lib/window';
+import { checkNpmCachePermissions } from '../lib/setup';
 import {
   checkVercelCliStatus,
   getVercelUsername,
@@ -75,6 +77,8 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
   const [currentStep, setCurrentStep] = useState<Step>('clone');
   const [error, setError] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [importedProjectPath, setImportedProjectPath] = useState<string | null>(null);
+  const [importedPackageManager, setImportedPackageManager] = useState<string>('npm');
 
   // Vercel state
   const [vercelAuthenticated, setVercelAuthenticated] = useState(false);
@@ -138,7 +142,9 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
     setSelectedRepo(null);
     setError(null);
     try {
-      const repoList = await listGitHubRepos(owner);
+      // Special case: "collaborator" fetches repos where user is a collaborator
+      const repoList =
+        owner === '__collaborator__' ? await listCollaboratorRepos() : await listGitHubRepos(owner);
       // Sort by updated date (most recent first)
       repoList.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setRepos(repoList);
@@ -182,6 +188,68 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
     });
   };
 
+  /** Map PTY exit codes to user-friendly error messages */
+  const getFriendlyError = (err: unknown): string => {
+    const msg = String(err);
+    const codeMatch = msg.match(/Process exited with code (\d+)/);
+    if (codeMatch) {
+      const code = parseInt(codeMatch[1]);
+      if (code === 243) {
+        return "npm couldn't access its cache directory (~/.npm). This usually happens when npm was previously run with sudo.\n\nTo fix, open a terminal and run:\nsudo chown -R $(whoami) ~/.npm";
+      }
+      if (code === 128) {
+        return "Git authentication failed. Make sure you're signed into GitHub.";
+      }
+    }
+    return msg;
+  };
+
+  /** Run package manager install via PTY, with a pre-check for permissions */
+  const runPackageInstall = async (projectPath: string, packageManager: string) => {
+    // Pre-check: verify npm cache is writable (relevant for npm/npx, and sometimes pnpm/yarn too)
+    const cacheStatus = await checkNpmCachePermissions();
+    if (cacheStatus === 'not_writable') {
+      throw new Error(
+        "npm can't write to its cache directory (~/.npm). This usually happens when npm was previously run with sudo.\n\nTo fix, open a terminal and run:\nsudo chown -R $(whoami) ~/.npm"
+      );
+    }
+
+    const installId = await invoke<number>('spawn_pty', {
+      options: {
+        cwd: projectPath,
+        command: packageManager,
+        args: ['install'],
+        rows: 10,
+        cols: 80,
+      },
+      windowLabel: getWindowLabel(),
+    });
+
+    await waitForPtyExit(installId);
+  };
+
+  /** Retry just the install step (project already cloned) */
+  const retryInstall = async () => {
+    if (!importedProjectPath) return;
+
+    setError(null);
+    setCurrentStep('install');
+
+    try {
+      await runPackageInstall(importedProjectPath, importedPackageManager);
+
+      // Setup project
+      setCurrentStep('setup');
+      await invoke('ensure_gitignore_has_shipstudio', { projectPath: importedProjectPath });
+
+      setCurrentStep('done');
+      await new Promise((r) => setTimeout(r, 800));
+      onComplete(importedProjectPath);
+    } catch (err) {
+      setError(getFriendlyError(err));
+    }
+  };
+
   const handleImport = async () => {
     if (!selectedRepo) {
       setError('Please select a repository');
@@ -223,7 +291,11 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       const projectPath = `${shipstudioDir}/${safeName}`;
 
       // Clone repository using gh CLI (uses GitHub CLI authentication)
-      const repoFullName = `${selectedOwner}/${selectedRepo.name}`;
+      // For collaborator repos, the name already includes the owner (e.g., "owner/repo")
+      const repoFullName =
+        selectedOwner === '__collaborator__'
+          ? selectedRepo.name
+          : `${selectedOwner}/${selectedRepo.name}`;
       const cloneId = await invoke<number>('spawn_pty', {
         options: {
           cwd: shipstudioDir,
@@ -240,19 +312,10 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       // Detect package manager and install dependencies
       setCurrentStep('install');
       const packageManager = await detectPackageManager(projectPath);
+      setImportedProjectPath(projectPath);
+      setImportedPackageManager(packageManager);
 
-      const installId = await invoke<number>('spawn_pty', {
-        options: {
-          cwd: projectPath,
-          command: packageManager,
-          args: ['install'],
-          rows: 10,
-          cols: 80,
-        },
-        windowLabel: getWindowLabel(),
-      });
-
-      await waitForPtyExit(installId);
+      await runPackageInstall(projectPath, packageManager);
 
       // Setup project
       setCurrentStep('setup');
@@ -275,7 +338,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       await new Promise((r) => setTimeout(r, 800));
       onComplete(projectPath);
     } catch (err) {
-      setError(String(err));
+      setError(getFriendlyError(err));
     }
   };
 
@@ -387,8 +450,15 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
 
           {error && (
             <div className="create-error">
-              <p>{error}</p>
-              <button onClick={onCancel}>Close</button>
+              <p style={{ whiteSpace: 'pre-line' }}>{error}</p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {currentStep === 'install' && importedProjectPath && (
+                  <button className="btn-primary" onClick={() => void retryInstall()}>
+                    Retry
+                  </button>
+                )}
+                <button onClick={onCancel}>Close</button>
+              </div>
             </div>
           )}
         </div>
@@ -455,6 +525,31 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
                 </div>
               </button>
             ))}
+            {/* Collaborator repos - repos owned by others where user has access */}
+            <button
+              className={`import-owner-btn ${selectedOwner === '__collaborator__' ? 'selected' : ''}`}
+              onClick={() => handleOwnerSelect('__collaborator__')}
+            >
+              <div className="import-owner-avatar collab">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </div>
+              <div className="import-owner-info">
+                <span className="import-owner-name">Collaborator Access</span>
+                <span className="import-owner-type">Repos shared with you</span>
+              </div>
+            </button>
           </div>
 
           {error && <p className="error">{error}</p>}
@@ -476,7 +571,13 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
             <div>
               <h2>Import Project</h2>
               <p className="template-context">
-                From <strong>{selectedOwner}</strong>
+                {selectedOwner === '__collaborator__' ? (
+                  <>Repos shared with you</>
+                ) : (
+                  <>
+                    From <strong>{selectedOwner}</strong>
+                  </>
+                )}
               </p>
             </div>
             <button className="create-modal-close" onClick={onCancel} type="button">

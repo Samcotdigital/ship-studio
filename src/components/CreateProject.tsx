@@ -16,6 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { UploadIcon } from './icons';
 import { getWindowLabel } from '../lib/window';
+import { checkNpmCachePermissions } from '../lib/setup';
 
 /** Props for the CreateProject component */
 interface CreateProjectProps {
@@ -93,6 +94,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('clone');
   const [error, setError] = useState<string | null>(null);
+  const [createdProjectPath, setCreatedProjectPath] = useState<string | null>(null);
 
   // Template zip state
   const [zipFile, setZipFile] = useState<File | null>(null); // From browser file picker
@@ -169,6 +171,64 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     });
   };
 
+  /** Map PTY exit codes to user-friendly error messages */
+  const getFriendlyError = (err: unknown): string => {
+    const msg = String(err);
+    const codeMatch = msg.match(/Process exited with code (\d+)/);
+    if (codeMatch) {
+      const code = parseInt(codeMatch[1]);
+      if (code === 243) {
+        return "npm couldn't access its cache directory (~/.npm). This usually happens when npm was previously run with sudo.\n\nTo fix, open a terminal and run:\nsudo chown -R $(whoami) ~/.npm";
+      }
+      if (code === 128) {
+        return "Git authentication failed. Make sure you're signed into GitHub.";
+      }
+    }
+    return msg;
+  };
+
+  /** Run npm install via PTY, with a pre-check for permissions */
+  const runNpmInstall = async (projectPath: string) => {
+    // Pre-check: verify npm cache is writable
+    const cacheStatus = await checkNpmCachePermissions();
+    if (cacheStatus === 'not_writable') {
+      throw new Error(
+        "npm can't write to its cache directory (~/.npm). This usually happens when npm was previously run with sudo.\n\nTo fix, open a terminal and run:\nsudo chown -R $(whoami) ~/.npm"
+      );
+    }
+
+    const installId = await invoke<number>('spawn_pty', {
+      options: {
+        cwd: projectPath,
+        command: 'npm',
+        args: ['install'],
+        rows: 10,
+        cols: 80,
+      },
+      windowLabel: getWindowLabel(),
+    });
+
+    await waitForPtyExit(installId);
+  };
+
+  /** Retry just the npm install step (project already cloned + initialized) */
+  const retryInstall = async () => {
+    if (!createdProjectPath) return;
+
+    setError(null);
+    setCurrentStep('install');
+
+    try {
+      await runNpmInstall(createdProjectPath);
+
+      setCurrentStep('done');
+      await new Promise((r) => setTimeout(r, 800));
+      onComplete(createdProjectPath);
+    } catch (err) {
+      setError(getFriendlyError(err));
+    }
+  };
+
   const handleCreate = async () => {
     if (!selectedTemplate) {
       setError('Please select a template');
@@ -236,19 +296,9 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       await invoke('ensure_gitignore_has_shipstudio', { projectPath: projectPath });
 
       // Install dependencies
+      setCreatedProjectPath(projectPath);
       setCurrentStep('install');
-      const installId = await invoke<number>('spawn_pty', {
-        options: {
-          cwd: projectPath,
-          command: 'npm',
-          args: ['install'],
-          rows: 10,
-          cols: 80,
-        },
-        windowLabel: getWindowLabel(),
-      });
-
-      await waitForPtyExit(installId);
+      await runNpmInstall(projectPath);
 
       setCurrentStep('done');
 
@@ -256,7 +306,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       await new Promise((r) => setTimeout(r, 800));
       onComplete(projectPath);
     } catch (err) {
-      setError(String(err));
+      setError(getFriendlyError(err));
     }
   };
 
@@ -416,19 +466,9 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       await invoke('ensure_gitignore_has_shipstudio', { projectPath });
 
       // Install dependencies
+      setCreatedProjectPath(projectPath);
       setCurrentStep('install');
-      const installId = await invoke<number>('spawn_pty', {
-        options: {
-          cwd: projectPath,
-          command: 'npm',
-          args: ['install'],
-          rows: 10,
-          cols: 80,
-        },
-        windowLabel: getWindowLabel(),
-      });
-
-      await waitForPtyExit(installId);
+      await runNpmInstall(projectPath);
 
       setCurrentStep('done');
 
@@ -436,7 +476,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       await new Promise((r) => setTimeout(r, 800));
       onComplete(projectPath);
     } catch (err) {
-      setError(String(err));
+      setError(getFriendlyError(err));
     }
   };
 
@@ -505,8 +545,15 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
 
           {error && (
             <div className="create-error">
-              <p>{error}</p>
-              <button onClick={onCancel}>Close</button>
+              <p style={{ whiteSpace: 'pre-line' }}>{error}</p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {currentStep === 'install' && createdProjectPath && (
+                  <button className="btn-primary" onClick={() => void retryInstall()}>
+                    Retry
+                  </button>
+                )}
+                <button onClick={onCancel}>Close</button>
+              </div>
             </div>
           )}
         </div>

@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Ensure cargo/rustup are on PATH (GUI apps like VS Code don't inherit shell PATH)
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # Lint and format staged JS/TS/CSS files
 pnpm exec lint-staged
 

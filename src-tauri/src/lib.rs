@@ -238,6 +238,7 @@ pub fn run() {
             commands::github::get_project_github_status,
             commands::github::push_to_github,
             commands::github::list_github_repos,
+            commands::github::list_collaborator_repos,
             commands::github::detect_package_manager,
             // Publishing
             commands::publishing::publish_to_github,
@@ -282,6 +283,7 @@ pub fn run() {
             commands::setup::start_github_auth,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
+            commands::setup::check_npm_cache_permissions,
             commands::setup::start_vercel_auth,
             commands::setup::cleanup_auth_processes,
             commands::setup::quick_setup_check,
