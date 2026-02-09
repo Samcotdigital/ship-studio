@@ -51,6 +51,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [terminalConfig, setTerminalConfig] = useState<TerminalConfig | null>(null);
+  const [terminalExitCode, setTerminalExitCode] = useState<number | null>(null);
 
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
@@ -117,12 +118,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       const itemId = terminalConfig?.itemId;
       if (!itemId) return;
 
-      // Hide terminal
-      setTerminalConfig(null);
-
       if (exitCode === 0 || exitCode === null) {
-        // Success (or process ended without explicit code) - refresh status
-        // Success - for auth items, verify the auth status
+        // Success (or process ended without explicit code) - hide terminal and refresh
+        setTerminalConfig(null);
+        setTerminalExitCode(null);
+
+        // For auth items, verify the auth status
         if (itemId === 'gh_auth') {
           const status = await checkGitHubCliStatus();
           if (!status.authenticated) {
@@ -158,10 +159,18 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         // Refresh full status
         await fetchStatus();
       } else {
-        // Non-zero exit code - show error
+        // Non-zero exit code - keep terminal open so user can read the output
+        setTerminalExitCode(exitCode);
+
+        // Update item status in the background
+        let errorMessage = 'Command failed. Click to try again.';
+        if (itemId === 'homebrew') {
+          errorMessage =
+            'Installation failed. Your macOS account may need administrator privileges.';
+        }
         updateItemStatus(itemId, {
           status: 'error',
-          errorMessage: 'Command failed. Click to try again.',
+          errorMessage,
         });
       }
 
@@ -170,16 +179,17 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     [terminalConfig, fetchStatus, updateItemStatus]
   );
 
-  // Handle terminal cancel
+  // Handle terminal cancel/close
   const handleTerminalCancel = useCallback(() => {
     const itemId = terminalConfig?.itemId;
-    if (itemId) {
-      // Reset item status back to what it was
+    if (itemId && !terminalExitCode) {
+      // Only refresh status if user cancelled (not if process already failed)
       void fetchStatus();
     }
     setTerminalConfig(null);
+    setTerminalExitCode(null);
     setActiveItemId(null);
-  }, [terminalConfig, fetchStatus]);
+  }, [terminalConfig, terminalExitCode, fetchStatus]);
 
   // Handle item action (install or connect)
   const handleItemAction = useCallback(
@@ -333,7 +343,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                   {SETUP_FRIENDLY_NAMES[terminalConfig.itemId] || terminalConfig.itemId}
                 </span>
                 <button className="onboarding-terminal-cancel" onClick={handleTerminalCancel}>
-                  Cancel
+                  {terminalExitCode ? 'Close' : 'Cancel'}
                 </button>
               </div>
               <OnboardingTerminal

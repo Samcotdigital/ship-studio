@@ -416,7 +416,24 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         command: '/bin/bash',
         args: [
           '-c',
-          'curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash',
+          [
+            // Check for admin access before attempting install (Homebrew requires sudo)
+            'if ! dseditgroup -o checkmember -m "$(whoami)" admin &>/dev/null; then',
+            '  echo "\\033[1;31mError: Homebrew requires administrator access to install.\\033[0m"',
+            '  echo ""',
+            '  echo "Your macOS user account ($(whoami)) does not have admin privileges."',
+            '  echo "To fix this, ask your system administrator to:"',
+            '  echo "  1. Open System Settings → Users & Groups"',
+            '  echo "  2. Click the ⓘ next to your account"',
+            '  echo "  3. Enable \\"Allow this user to administer this computer\\""',
+            '  echo ""',
+            '  echo "Then restart Ship Studio and try again."',
+            '  exit 1',
+            'fi',
+            // Use command substitution instead of pipe so stdin stays connected to the
+            // terminal, allowing the Homebrew installer to interactively prompt for sudo
+            '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+          ].join('\n'),
         ],
       },
       npm_fix: {
