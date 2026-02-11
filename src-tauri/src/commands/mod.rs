@@ -22,7 +22,6 @@ pub mod pull_requests;
 pub mod setup;
 pub mod skills;
 pub mod static_server;
-pub mod vercel;
 pub mod window;
 
 // Re-export all commands for easy access in lib.rs
@@ -46,5 +45,4 @@ pub use pull_requests::*;
 pub use setup::*;
 pub use skills::*;
 pub use static_server::*;
-pub use vercel::*;
 pub use window::*;

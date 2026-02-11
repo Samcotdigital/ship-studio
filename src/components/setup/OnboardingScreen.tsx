@@ -19,7 +19,6 @@ import {
   getFullSetupStatus,
   checkClaudeAuthStatus,
   installPackages,
-  installVercel,
   PKG_MGR_PACKAGES,
   TERMINAL_COMMANDS,
   USES_TERMINAL,
@@ -27,7 +26,6 @@ import {
   OPTIONAL_ITEMS,
 } from '../../lib/setup';
 import { checkGitHubCliStatus } from '../../lib/github';
-import { checkVercelCliStatus } from '../../lib/vercel';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SlackIcon } from '../icons';
 
@@ -144,16 +142,6 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             setActiveItemId(null);
             return;
           }
-        } else if (itemId === 'vercel_auth') {
-          const status = await checkVercelCliStatus();
-          if (!status.authenticated) {
-            updateItemStatus(itemId, {
-              status: 'error',
-              errorMessage: 'Authentication not completed. Click to try again.',
-            });
-            setActiveItemId(null);
-            return;
-          }
         }
 
         // Refresh full status
@@ -263,9 +251,6 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
           // Batch install all missing packages using appropriate package manager
           await installPackages(missingPackages);
-        } else if (itemId === 'vercel') {
-          // Vercel is handled separately (npm on Windows, brew on macOS)
-          await installVercel();
         } else {
           console.warn('Unknown item:', itemId);
         }
@@ -277,7 +262,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         console.warn(`Failed to process ${itemId}:`, err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         // Show the actual error message so users can troubleshoot
-        // Strip error codes like [VERCEL_INSTALL_002] for cleaner display
+        // Strip error codes like [BREW_INSTALL_001] for cleaner display
         const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
 
         // If this was a batch package install, reset all in_progress package items

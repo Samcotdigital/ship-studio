@@ -6,7 +6,6 @@
 //! - **Project Management**: Create, list, delete projects in ~/ShipStudio
 //! - **Dev Server & Terminal**: PTY management for Claude Code terminal
 //! - **GitHub Integration**: Check status, create repos, commit and push
-//! - **Vercel Integration**: Check status, deploy projects
 //! - **Environment Variables**: Read/write .env files with validation
 //! - **Native Webview**: Child webview for Sanity CMS (OAuth support)
 //! - **Utilities**: Screenshots, IDE launcher, prerequisite checks
@@ -227,24 +226,13 @@ pub fn run() {
             commands::plugins::install_plugin,
             commands::plugins::uninstall_plugin,
             commands::plugins::update_plugin,
+            commands::plugins::check_plugin_update,
             commands::plugins::read_plugin_bundle,
             commands::plugins::read_plugin_manifest,
             commands::plugins::toggle_plugin,
             commands::plugins::exec_plugin_shell,
             commands::plugins::read_plugin_storage,
             commands::plugins::write_plugin_storage,
-            // Vercel integration
-            commands::vercel::check_vercel_cli_status,
-            commands::vercel::get_vercel_username,
-            commands::vercel::get_vercel_teams,
-            commands::vercel::list_vercel_projects,
-            commands::vercel::write_vercel_project_json,
-            commands::vercel::get_project_vercel_status,
-            commands::vercel::link_to_vercel,
-            commands::vercel::install_vercel_cli,
-            commands::vercel::deploy_to_vercel,
-            commands::vercel::get_vercel_deployments,
-            commands::vercel::get_deployment_status,
             // GitHub integration
             commands::github::check_github_cli_status,
             commands::github::get_github_username,
@@ -303,7 +291,6 @@ pub fn run() {
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
             commands::setup::check_npm_cache_permissions,
-            commands::setup::start_vercel_auth,
             commands::setup::cleanup_auth_processes,
             commands::setup::get_system_arch,
             commands::setup::install_version,

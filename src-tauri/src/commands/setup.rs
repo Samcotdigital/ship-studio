@@ -4,7 +4,6 @@
 
 use crate::commands::claude::find_claude_binary;
 use crate::commands::github::get_gh_command;
-use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
 use crate::types::{
     AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
 };
@@ -81,7 +80,7 @@ lazy_static::lazy_static! {
     static ref MOCK_INSTALLED: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
     static ref MOCK_INITIALIZED: Mutex<bool> = Mutex::new(false);
     /// Global registry of spawned auth process PIDs for cleanup
-    /// Maps auth type (e.g., "github", "claude", "vercel") -> OS process ID (PID)
+    /// Maps auth type (e.g., "github", "claude") -> OS process ID (PID)
     static ref AUTH_PIDS: Mutex<std::collections::HashMap<String, u32>> = Mutex::new(std::collections::HashMap::new());
 }
 
@@ -94,12 +93,10 @@ const ALL_ITEMS: &[&str] = &[
     "gh_auth",
     "claude",
     "claude_auth",
-    "vercel",
-    "vercel_auth",
 ];
 
 /// Tool items (not auth)
-const TOOL_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude", "vercel"];
+const TOOL_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude"];
 
 /// Get items that should be pre-installed for a given scenario
 fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
@@ -109,13 +106,6 @@ fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
 
         // All tools installed, but no auth configured
         "auth-only" => TOOL_ITEMS.to_vec(),
-
-        // Everything except Vercel auth
-        "vercel-missing" => ALL_ITEMS
-            .iter()
-            .filter(|&&item| item != "vercel_auth")
-            .copied()
-            .collect(),
 
         // Everything except GitHub auth
         "github-missing" => ALL_ITEMS
@@ -138,15 +128,15 @@ fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
             .copied()
             .collect(),
 
-        // Almost done - only vercel_auth left
+        // Almost done - only gh_auth left
         "almost-done" => ALL_ITEMS
             .iter()
-            .filter(|&&item| item != "vercel_auth")
+            .filter(|&&item| item != "gh_auth")
             .copied()
             .collect(),
 
         // Comma-separated list of specific items to pre-install
-        // e.g., "homebrew,node,git" or "homebrew,node,git,gh,gh_auth,claude,claude_auth,vercel"
+        // e.g., "homebrew,node,git" or "homebrew,node,git,gh,gh_auth,claude,claude_auth"
         _ => scenario
             .split(',')
             .map(|s| s.trim())
@@ -211,8 +201,6 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("gh_auth", "GitHub Account", Some("gh")),
             ("claude", "Claude Code", None),
             ("claude_auth", "Claude Account", Some("claude")),
-            ("vercel", "Vercel CLI", Some("homebrew")),
-            ("vercel_auth", "Vercel Account", Some("vercel")),
         ];
 
         let mock_items: Vec<SetupItemInfo> = items
@@ -255,22 +243,10 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             .find(|i| i.id == "gh_auth")
             .map(|i| matches!(i.status, SetupItemStatus::Ready))
             .unwrap_or(false);
-        let vercel_authenticated = mock_items
-            .iter()
-            .find(|i| i.id == "vercel_auth")
-            .map(|i| matches!(i.status, SetupItemStatus::Ready))
-            .unwrap_or(false);
 
-        // Required items for setup completion (GitHub and Vercel auth are optional)
-        const REQUIRED_ITEMS_MOCK: &[&str] = &[
-            "homebrew",
-            "node",
-            "git",
-            "gh",
-            "claude",
-            "claude_auth",
-            "vercel",
-        ];
+        // Required items for setup completion (GitHub auth is optional)
+        const REQUIRED_ITEMS_MOCK: &[&str] =
+            &["homebrew", "node", "git", "gh", "claude", "claude_auth"];
 
         let all_ready = mock_items
             .iter()
@@ -281,7 +257,6 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             items: mock_items,
             optional_auths: OptionalAuths {
                 github_authenticated,
-                vercel_authenticated,
             },
         };
     }
@@ -533,84 +508,8 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
-    // 8. Vercel CLI
-    let vercel_path = find_vercel_binary();
-    let vercel_version = vercel_path.as_ref().and_then(|p| {
-        create_command(p)
-            .args(["--version"])
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                } else {
-                    None
-                }
-            })
-    });
-    items.push(SetupItemInfo {
-        id: "vercel".to_string(),
-        friendly_name: "Vercel CLI".to_string(),
-        status: if vercel_path.is_some() {
-            SetupItemStatus::Ready
-        } else {
-            SetupItemStatus::NotInstalled
-        },
-        version: vercel_version,
-        username: None,
-        error_message: None,
-    });
-
-    // 9. Vercel Auth
-    let vercel_auth = if vercel_path.is_some() {
-        get_vercel_command()
-            .args(["whoami"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    } else {
-        false
-    };
-    let vercel_username = if vercel_auth {
-        get_vercel_command()
-            .args(["whoami"])
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                } else {
-                    None
-                }
-            })
-    } else {
-        None
-    };
-    items.push(SetupItemInfo {
-        id: "vercel_auth".to_string(),
-        friendly_name: "Vercel Account".to_string(),
-        status: if vercel_auth {
-            SetupItemStatus::Ready
-        } else if vercel_path.is_some() {
-            SetupItemStatus::NotAuthenticated
-        } else {
-            SetupItemStatus::NotInstalled
-        },
-        version: None,
-        username: vercel_username,
-        error_message: None,
-    });
-
-    // Required items for setup completion (GitHub and Vercel auth are optional)
-    const REQUIRED_ITEMS: &[&str] = &[
-        "homebrew",
-        "node",
-        "git",
-        "gh",
-        "claude",
-        "claude_auth",
-        "vercel",
-    ];
+    // Required items for setup completion (GitHub auth is optional)
+    const REQUIRED_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude", "claude_auth"];
 
     let all_ready = items
         .iter()
@@ -624,18 +523,11 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         .map(|i| matches!(i.status, SetupItemStatus::Ready))
         .unwrap_or(false);
 
-    let vercel_authenticated = items
-        .iter()
-        .find(|i| i.id == "vercel_auth")
-        .map(|i| matches!(i.status, SetupItemStatus::Ready))
-        .unwrap_or(false);
-
     FullSetupStatus {
         all_ready,
         items,
         optional_auths: OptionalAuths {
             github_authenticated,
-            vercel_authenticated,
         },
     }
 }
@@ -664,7 +556,6 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
     let claude_present = find_claude_binary().is_some();
-    let vercel_present = find_vercel_binary().is_some();
 
     // Fast auth checks: file/directory existence only
     let claude_auth_present = if let Some(home) = dirs::home_dir() {
@@ -676,15 +567,14 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
         false
     };
 
-    // For gh_auth and vercel_auth, we trust the cached state since checking requires subprocess
-    // These will be verified in the background after showing projects
+    // For gh_auth, we trust the cached state since checking requires subprocess
+    // It will be verified in the background after showing projects
 
     let all_present = pkg_mgr_present
         && node_present
         && git_present
         && gh_present
         && claude_present
-        && vercel_present
         && claude_auth_present;
 
     QuickSetupCheck {
@@ -863,7 +753,6 @@ pub async fn install_gh_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 /// - node -> node
 /// - git -> git
 /// - gh -> gh
-/// - vercel -> vercel-cli
 #[tauri::command]
 pub async fn install_brew_packages(
     app: tauri::AppHandle,
@@ -884,26 +773,14 @@ pub async fn install_brew_packages(
     if is_mock_mode() {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
         for pkg in &packages {
-            // Map brew package names back to item IDs for mock
-            let item_id = match pkg.as_str() {
-                "vercel-cli" => "vercel",
-                other => other,
-            };
-            mock_install(item_id);
+            mock_install(pkg);
         }
         return Ok(());
     }
 
     let brew = get_brew_command().ok_or("Homebrew not found")?;
 
-    // Map item IDs to actual brew package names
-    let brew_packages: Vec<&str> = packages
-        .iter()
-        .map(|p| match p.as_str() {
-            "vercel" => "vercel-cli",
-            other => other,
-        })
-        .collect();
+    let brew_packages: Vec<&str> = packages.iter().map(|p| p.as_str()).collect();
 
     let mut args = vec!["install"];
     args.extend(brew_packages.iter().copied());
@@ -932,7 +809,6 @@ pub async fn install_brew_packages(
 /// - node -> OpenJS.NodeJS
 /// - git -> Git.Git
 /// - gh -> GitHub.cli
-/// - vercel -> N/A (installed via npm after node)
 #[cfg(windows)]
 #[tauri::command]
 pub async fn install_winget_packages(
@@ -968,7 +844,6 @@ pub async fn install_winget_packages(
             "node" => Some("OpenJS.NodeJS"),
             "git" => Some("Git.Git"),
             "gh" => Some("GitHub.cli"),
-            "vercel" => None, // Installed via npm
             _ => None,
         })
         .collect();
@@ -1158,44 +1033,6 @@ pub async fn check_claude_auth_status() -> bool {
     }
 
     false
-}
-
-/// Start Vercel authentication (opens browser)
-#[tauri::command]
-pub async fn start_vercel_auth(app: tauri::AppHandle) -> Result<String, String> {
-    let _ = app.emit(
-        "setup-progress",
-        serde_json::json!({
-            "itemId": "vercel_auth",
-            "message": "Opening browser..."
-        }),
-    );
-
-    if is_mock_mode() {
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-        mock_install("vercel_auth");
-        return Ok("Mock auth completed".to_string());
-    }
-
-    let child = get_vercel_command()
-        .arg("login")
-        .spawn()
-        .map_err(|e| format!("Failed to start Vercel auth: {}", e))?;
-
-    // Store the process PID for potential cleanup instead of forgetting it
-    let pid = child.id();
-    if let Ok(mut pids) = AUTH_PIDS.lock() {
-        pids.insert("vercel".to_string(), pid);
-    }
-    // Spawn a thread to wait for the process and clean up the registry when it exits
-    std::thread::spawn(move || {
-        let _ = child.wait_with_output();
-        if let Ok(mut pids) = AUTH_PIDS.lock() {
-            pids.remove("vercel");
-        }
-    });
-
-    Ok("Browser opened. Log in to your Vercel account to continue.".to_string())
 }
 
 /// Kill all tracked auth processes (synchronous helper).

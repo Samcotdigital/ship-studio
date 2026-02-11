@@ -59,7 +59,7 @@ interface ProjectWithThumbnail extends DashboardProject {
 }
 
 /** Available sort options for the project list */
-type SortOption = 'last_opened' | 'name' | 'last_deployed';
+type SortOption = 'last_opened' | 'name';
 
 /** Props for the ProjectList component */
 interface ProjectListProps {
@@ -75,8 +75,6 @@ interface ProjectListProps {
   onGitHubConnectForImport?: () => void;
   /** Callback to connect GitHub account */
   onGitHubConnect?: () => void;
-  /** Callback to connect Vercel account */
-  onVercelConnect?: () => void;
   /** GitHub username for contribution calendar */
   githubUsername?: string | null;
   /** Whether the initial auth check has completed */
@@ -92,7 +90,6 @@ export function ProjectList({
   isGitHubAuthenticated = true,
   onGitHubConnectForImport,
   onGitHubConnect,
-  onVercelConnect,
   githubUsername,
   isAuthCheckDone = false,
   onLoadingChange,
@@ -229,13 +226,6 @@ export function ProjectList({
       switch (sortBy) {
         case 'name':
           return a.name.localeCompare(b.name);
-        case 'last_deployed':
-          // Projects without deployment go last
-          if (!a.last_deployed && !b.last_deployed) return a.name.localeCompare(b.name);
-          if (!a.last_deployed) return 1;
-          if (!b.last_deployed) return -1;
-          // Parse relative time for sorting (rough approximation)
-          return parseRelativeTime(a.last_deployed) - parseRelativeTime(b.last_deployed);
         case 'last_opened':
         default:
           if (!a.last_opened && !b.last_opened) return a.name.localeCompare(b.name);
@@ -406,7 +396,6 @@ export function ProjectList({
   const sortLabels: Record<SortOption, string> = {
     last_opened: 'Last opened',
     name: 'Name',
-    last_deployed: 'Last deployed',
   };
 
   const totalCount = currentFolderId
@@ -545,14 +534,6 @@ export function ProjectList({
                 onMoveToFolder={() => void handleOpenMoveModal(project)}
                 onExportAsTemplate={() => void handleExportAsTemplate(project.path)}
                 onOpenInNewWindow={() => void handleOpenInNewWindow(project)}
-                onOpenSite={
-                  project.production_url
-                    ? () => {
-                        const url = project.production_url!;
-                        void openUrl(url.startsWith('http') ? url : `https://${url}`);
-                      }
-                    : undefined
-                }
                 isExternal={project.is_external}
                 onRemove={
                   project.is_external ? () => void handleRemoveExternal(project) : undefined
@@ -562,7 +543,7 @@ export function ProjectList({
           </div>
         )}
 
-        <IntegrationBar onGitHubConnect={onGitHubConnect} onVercelConnect={onVercelConnect} />
+        <IntegrationBar onGitHubConnect={onGitHubConnect} />
 
         {/* New Folder Modal */}
         <NewFolderModal
@@ -650,23 +631,4 @@ export function ProjectList({
       </div>
     </div>
   );
-}
-
-function parseRelativeTime(timeStr: string): number {
-  // Parse strings like "2h ago", "3d ago", "5m ago", "just now"
-  if (timeStr === 'just now') return 0;
-  const match = timeStr.match(/^(\d+)([mhd]) ago$/);
-  if (!match) return Infinity;
-  const value = parseInt(match[1], 10);
-  const unit = match[2];
-  switch (unit) {
-    case 'm':
-      return value;
-    case 'h':
-      return value * 60;
-    case 'd':
-      return value * 60 * 24;
-    default:
-      return Infinity;
-  }
 }

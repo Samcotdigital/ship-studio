@@ -2,7 +2,6 @@
 //!
 //! Commands for managing projects and project metadata.
 
-use crate::commands::vercel::get_vercel_deployment_info;
 use crate::state::{get_window_for_project, register_project_window, unregister_project_window};
 use crate::types::{
     DashboardProject, PageInfo, ProjectInfo, ProjectMetadata, ProjectType,
@@ -663,7 +662,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     Ok(projects)
 }
 
-/// Returns enhanced project list for dashboard with git/vercel info
+/// Returns enhanced project list for dashboard with git info
 #[tauri::command]
 pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
@@ -707,10 +706,6 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
             let git_branch = get_git_branch(&path);
             let uncommitted_count = get_uncommitted_count(&path);
 
-            // Get Vercel deployment info
-            let (production_url, last_deployed, deployment_state) =
-                get_vercel_deployment_info(&path);
-
             projects.push(DashboardProject {
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: path.to_string_lossy().to_string(),
@@ -718,9 +713,6 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                 last_opened,
                 git_branch,
                 uncommitted_count,
-                production_url,
-                last_deployed,
-                deployment_state,
                 auto_accept_mode,
                 hide_main_branch_warning,
                 is_external: false,
@@ -765,8 +757,6 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
 
                 let git_branch = get_git_branch(&path);
                 let uncommitted_count = get_uncommitted_count(&path);
-                let (production_url, last_deployed, deployment_state) =
-                    get_vercel_deployment_info(&path);
 
                 projects.push(DashboardProject {
                     name,
@@ -775,9 +765,6 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                     last_opened,
                     git_branch,
                     uncommitted_count,
-                    production_url,
-                    last_deployed,
-                    deployment_state,
                     auto_accept_mode,
                     hide_main_branch_warning,
                     is_external: true,

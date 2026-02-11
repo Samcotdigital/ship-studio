@@ -7,7 +7,6 @@
  * - Git
  * - GitHub CLI + auth
  * - Claude Code + auth
- * - Vercel CLI + auth
  *
  * @module lib/setup
  */
@@ -64,12 +63,10 @@ export interface SetupItem {
   errorMessage?: string;
 }
 
-/** Optional authentication status (GitHub and Vercel can be skipped during onboarding) */
+/** Optional authentication status (GitHub can be skipped during onboarding) */
 export interface OptionalAuths {
   /** Whether GitHub is authenticated */
   githubAuthenticated: boolean;
-  /** Whether Vercel is authenticated */
-  vercelAuthenticated: boolean;
 }
 
 /** Full setup status from backend */
@@ -83,7 +80,7 @@ export interface FullSetupStatus {
 }
 
 /** Items that are optional and can be skipped during onboarding */
-export const OPTIONAL_ITEMS = new Set(['gh_auth', 'vercel_auth']);
+export const OPTIONAL_ITEMS = new Set(['gh_auth']);
 
 /** Quick setup check result (fast Tier-1 check) */
 export interface QuickSetupCheck {
@@ -103,8 +100,6 @@ export interface SetupProgress {
 
 /** Dependency graph: which items must be ready before each item can be installed */
 export function getSetupDependencies(): Record<string, string[]> {
-  const isWin = isWindows();
-
   return {
     homebrew: [],
     node: ['homebrew'],
@@ -114,8 +109,6 @@ export function getSetupDependencies(): Record<string, string[]> {
     gh_auth: ['gh'],
     claude: [], // Uses its own installer
     claude_auth: ['claude'],
-    vercel: isWin ? ['node'] : ['homebrew'], // Windows: npm install, macOS: brew install
-    vercel_auth: ['vercel'],
   };
 }
 
@@ -132,8 +125,6 @@ export const SETUP_ITEM_ORDER = [
   'gh_auth',
   'claude',
   'claude_auth',
-  'vercel',
-  'vercel_auth',
 ];
 
 /** Friendly names for each item */
@@ -146,8 +137,6 @@ export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   gh_auth: 'GitHub Account',
   claude: 'Claude Code',
   claude_auth: 'Claude Account',
-  vercel: 'Vercel CLI',
-  vercel_auth: 'Vercel Account',
 };
 
 /** Messages shown while item is in progress */
@@ -160,8 +149,6 @@ export const SETUP_PROGRESS_MESSAGES: Record<string, string> = {
   gh_auth: 'Connecting to GitHub...',
   claude: 'Installing Claude Code...',
   claude_auth: 'Connecting to Claude...',
-  vercel: 'Installing Vercel CLI...',
-  vercel_auth: 'Connecting to Vercel...',
 };
 
 /** Time estimates for each setup item */
@@ -174,8 +161,6 @@ export const SETUP_TIME_ESTIMATES: Record<string, string> = {
   gh_auth: '~15 sec',
   claude: '~10 sec',
   claude_auth: '~15 sec',
-  vercel: '~1 min',
-  vercel_auth: '~15 sec',
 };
 
 /**
@@ -315,20 +300,11 @@ export async function resetSetupState(): Promise<void> {
 }
 
 /**
- * Install Vercel CLI.
- * On Windows: installs via npm
- * On macOS: installs via Homebrew
- */
-export async function installVercel(): Promise<void> {
-  return invoke('install_vercel_cli');
-}
-
-/**
  * Batch install multiple Homebrew packages in a single command.
  * This is faster than individual installs because auto-update only runs once
  * and Homebrew can download bottles in parallel.
  *
- * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh', 'vercel'])
+ * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh'])
  */
 export async function installBrewPackages(packages: string[]): Promise<void> {
   return invoke('install_brew_packages', { packages });
@@ -359,10 +335,10 @@ export async function installPackages(packages: string[]): Promise<void> {
 }
 
 /** Brew-installed packages that can be batched */
-export const BREW_PACKAGES = new Set(['node', 'git', 'gh', 'vercel']);
+export const BREW_PACKAGES = new Set(['node', 'git', 'gh']);
 
 /** Package manager-installed packages (Homebrew on macOS, Winget on Windows) */
-export const PKG_MGR_PACKAGES = new Set(['node', 'git', 'gh', ...(isWindows() ? [] : ['vercel'])]);
+export const PKG_MGR_PACKAGES = new Set(['node', 'git', 'gh']);
 
 /**
  * Check if the npm cache directory (~/.npm) is writable.
@@ -370,14 +346,6 @@ export const PKG_MGR_PACKAGES = new Set(['node', 'git', 'gh', ...(isWindows() ? 
  */
 export async function checkNpmCachePermissions(): Promise<string> {
   return invoke<string>('check_npm_cache_permissions');
-}
-
-/**
- * Start Vercel authentication flow (opens browser).
- * Returns a message to display to the user.
- */
-export async function startVercelAuth(): Promise<string> {
-  return invoke<string>('start_vercel_auth');
 }
 
 // ============ Terminal Commands ============
@@ -426,10 +394,6 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         command: 'claude',
         args: [],
       },
-      vercel_auth: {
-        command: 'vercel',
-        args: ['login'],
-      },
     };
   } else {
     // macOS/Linux commands (using bash)
@@ -477,10 +441,6 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         command: 'claude',
         args: [],
       },
-      vercel_auth: {
-        command: 'vercel',
-        args: ['login'],
-      },
     };
   }
 }
@@ -489,11 +449,4 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
 export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = getTerminalCommands();
 
 /** Set of item IDs that require interactive terminal */
-export const USES_TERMINAL = new Set([
-  'homebrew',
-  'npm_fix',
-  'gh_auth',
-  'claude',
-  'claude_auth',
-  'vercel_auth',
-]);
+export const USES_TERMINAL = new Set(['homebrew', 'npm_fix', 'gh_auth', 'claude', 'claude_auth']);

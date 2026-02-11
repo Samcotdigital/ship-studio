@@ -84,14 +84,6 @@ export function GitHubIcon({ size = 16 }: IconProps) {
   );
 }
 
-export function VercelIcon({ size = 14 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 116 100" fill="currentColor">
-      <path d="M57.5 0L115 100H0L57.5 0z" />
-    </svg>
-  );
-}
-
 export function ExternalLinkIcon({ size = 12, className }: IconProps) {
   return (
     <svg

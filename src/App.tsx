@@ -13,7 +13,7 @@
  * Some state has been extracted into custom hooks for better organization:
  * - `useToasts` - Toast notification state (self-contained, no dependencies)
  * - `useTerminalManagement` - Terminal tabs and session state (self-contained)
- * - `useIntegrationStatus` - GitHub/Vercel/Claude integration state (complex reducer)
+ * - `useIntegrationStatus` - GitHub/Claude integration state (complex reducer)
  *
  * The following state intentionally remains in App.tsx:
  * - **Git/Branch state** (currentBranch, branches, openPRs, etc.) - Tightly coupled
@@ -31,11 +31,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
 import { usePlugins } from './hooks/usePlugins';
-import {
-  useIntegrationStatus,
-  GITHUB_STATUS_FALLBACK,
-  VERCEL_STATUS_FALLBACK,
-} from './hooks/useIntegrationStatus';
+import { useIntegrationStatus, GITHUB_STATUS_FALLBACK } from './hooks/useIntegrationStatus';
 import { Terminal, ClaudeStatus } from './components/Terminal';
 import { DevServerLogs } from './components/DevServerLogs';
 import { Preview, PreviewHandle } from './components/Preview';
@@ -48,7 +44,6 @@ import { Changelog } from './components/Changelog';
 import { OnboardingScreen, OnboardingTerminal } from './components/setup';
 import { SplitPane } from './components/SplitPane';
 import { GitHubButton } from './components/GitHubButton';
-import { VercelButton } from './components/VercelButton';
 import { PublishBranchDropdown } from './components/PublishBranchDropdown';
 import { EnvEditor } from './components/EnvEditor';
 import { AssetsPanel } from './components/AssetsPanel';
@@ -128,7 +123,6 @@ import {
 } from './lib/static-server';
 import { getProjectGitHubStatus } from './lib/github';
 import { getChangedFiles, ChangedFile } from './lib/git';
-import { getProjectVercelStatus } from './lib/vercel';
 import {
   enterCompactMode,
   exitCompactMode,
@@ -259,14 +253,11 @@ function App({ initialProjectPath }: AppProps) {
   const {
     integrations,
     isInitialCheckDone,
-    refreshVercelStatus,
     refreshAllCliStatuses,
     setProjectGitHubStatus,
-    setProjectVercelStatus,
     clearProjectStatuses,
     authTerminalConfig,
     handleGitHubConnect: handleGitHubConnectFromOverlay,
-    handleVercelConnect: handleVercelConnectFromOverlay,
     handleAuthTerminalExit,
     closeAuthTerminal,
   } = useIntegrationStatus();
@@ -329,9 +320,6 @@ function App({ initialProjectPath }: AppProps) {
   // Compact publish dropdown state - controlled mode for toggle behavior via the compact Publish button
   const [isCompactPublishOpen, setIsCompactPublishOpen] = useState(false);
 
-  // Vercel auto-connecting state (when linking after GitHub repo creation)
-  const [isVercelAutoConnecting, setIsVercelAutoConnecting] = useState(false);
-
   // Branch management state
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
@@ -359,7 +347,7 @@ function App({ initialProjectPath }: AppProps) {
   const [showPluginManager, setShowPluginManager] = useState(false);
 
   // Plugin system
-  const { getSlotPlugins, reloadPlugins } = usePlugins();
+  const { getSlotPlugins, reloadPlugins } = usePlugins(currentProject?.path ?? null);
 
   // Workspace tab state (preview/branches/prs)
   const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'branches' | 'prs'>('preview');
@@ -524,9 +512,6 @@ function App({ initialProjectPath }: AppProps) {
           void getProjectGitHubStatus(storedProjectPath)
             .catch(() => GITHUB_STATUS_FALLBACK)
             .then((status) => setProjectGitHubStatus(status));
-          void getProjectVercelStatus(storedProjectPath)
-            .catch(() => VERCEL_STATUS_FALLBACK)
-            .then((status) => setProjectVercelStatus(status));
         }
       } catch {
         // If backend check fails, let normal flow continue
@@ -1111,9 +1096,8 @@ function App({ initialProjectPath }: AppProps) {
       screenshotIntervalRef.current = null;
     }
 
-    // Reset publishing and auto-connecting state when switching projects
+    // Reset publishing state when switching projects
     setIsPublishing(false);
-    setIsVercelAutoConnecting(false);
 
     // Kill all terminals and reset tabs
     resetTerminals();
@@ -1209,24 +1193,11 @@ function App({ initialProjectPath }: AppProps) {
     setView('workspace');
     logger.info(`[OpenProject] Complete - Total: ${Math.round(performance.now() - totalStart)}ms`);
 
-    // Fetch GitHub and Vercel status in background (non-blocking for faster perceived load)
-    // Dispatch each independently so fast results (e.g. GitHub ~300ms) aren't blocked by slow ones (e.g. Vercel ~30s+)
+    // Fetch GitHub status in background (non-blocking for faster perceived load)
     void getProjectGitHubStatus(project.path)
       .catch(() => GITHUB_STATUS_FALLBACK)
       .then((ghStatus) => {
         setProjectGitHubStatus(ghStatus);
-      });
-    void getProjectVercelStatus(project.path)
-      .catch(() => VERCEL_STATUS_FALLBACK)
-      .then((vcStatus) => {
-        logger.info('[OpenProject] Vercel status received', {
-          project: project.name,
-          status: vcStatus.status,
-          project_name: vcStatus.project_name,
-          production_url: vcStatus.production_url,
-          staging_url: vcStatus.staging_url,
-        });
-        setProjectVercelStatus(vcStatus);
       });
 
     // Capture screenshots periodically - check ref to avoid stale closure
@@ -1302,9 +1273,8 @@ function App({ initialProjectPath }: AppProps) {
     // Cancel any pending screenshot captures by incrementing session ID
     captureSessionIdRef.current++;
 
-    // Reset publishing, auto-connecting, and auto-accept state
+    // Reset publishing and auto-accept state
     setIsPublishing(false);
-    setIsVercelAutoConnecting(false);
     setAutoAcceptMode(false);
 
     // Clear branch state
@@ -1505,54 +1475,12 @@ function App({ initialProjectPath }: AppProps) {
     }
   }, []);
 
-  const handleGitHubStatusChange = async (vercelDeployedUrl?: string) => {
-    // Refresh project GitHub and Vercel status after push/publish
+  const handleGitHubStatusChange = async () => {
+    // Refresh project GitHub status after push/publish
     if (currentProject) {
-      // If we have a vercel deployed URL, optimistically set Vercel as connected
-      // This avoids race conditions where the status check runs before Vercel's state propagates
-      if (vercelDeployedUrl) {
-        const ghStatus = await getProjectGitHubStatus(currentProject.path).catch(
-          () => GITHUB_STATUS_FALLBACK
-        );
-        setProjectGitHubStatus(ghStatus);
-        setProjectVercelStatus({
-          status: 'connected',
-          project_name: currentProject.name,
-          production_url: vercelDeployedUrl.replace(/^https?:\/\//, ''),
-          staging_url: null,
-          vercel_org: null,
-        });
-        return;
-      }
-
-      // Dispatch each independently so fast results aren't blocked by slow ones
       void getProjectGitHubStatus(currentProject.path)
         .catch(() => GITHUB_STATUS_FALLBACK)
         .then((status) => setProjectGitHubStatus(status));
-      void getProjectVercelStatus(currentProject.path)
-        .catch(() => VERCEL_STATUS_FALLBACK)
-        .then((status) => setProjectVercelStatus(status));
-    }
-  };
-
-  const handleVercelStatusChange = async (deployedUrl?: string) => {
-    // If we have a deployed URL from a successful deployment, use it directly
-    if (deployedUrl && currentProject) {
-      setProjectVercelStatus({
-        status: 'connected',
-        project_name: currentProject.name,
-        production_url: deployedUrl,
-        staging_url: integrations.projectVercel?.staging_url ?? null,
-        vercel_org: integrations.projectVercel?.vercel_org ?? null,
-      });
-      return;
-    }
-    // Otherwise refresh project Vercel status
-    if (currentProject) {
-      const status = await getProjectVercelStatus(currentProject.path).catch(
-        () => VERCEL_STATUS_FALLBACK
-      );
-      setProjectVercelStatus(status);
     }
   };
 
@@ -1575,6 +1503,9 @@ function App({ initialProjectPath }: AppProps) {
       if (currentProject) void fetchBranchInfo(currentProject.path);
     },
     focusTerminal: focusActiveTerminal,
+    openUrl: (url: string) => {
+      void import('@tauri-apps/plugin-opener').then(({ openUrl }) => openUrl(url));
+    },
   };
 
   const pluginTheme = {
@@ -1583,8 +1514,15 @@ function App({ initialProjectPath }: AppProps) {
     bgTertiary: 'var(--bg-tertiary)',
     textPrimary: 'var(--text-primary)',
     textSecondary: 'var(--text-secondary)',
+    textMuted: 'var(--text-muted)',
     border: 'var(--border)',
     accent: 'var(--accent, #10b981)',
+    accentHover: 'var(--accent-hover)',
+    action: 'var(--action)',
+    actionHover: 'var(--action-hover)',
+    actionText: 'var(--action-text)',
+    error: 'var(--error)',
+    success: 'var(--success)',
   };
 
   if (view === 'loading') {
@@ -1631,7 +1569,6 @@ function App({ initialProjectPath }: AppProps) {
               isGitHubAuthenticated={integrations.github.cliStatus.authenticated}
               onGitHubConnectForImport={() => void handleGitHubConnectFromOverlay()}
               onGitHubConnect={handleGitHubConnectFromOverlay}
-              onVercelConnect={handleVercelConnectFromOverlay}
               githubUsername={integrations.github.username}
               isAuthCheckDone={isInitialCheckDone}
               onLoadingChange={setProjectsLoading}
@@ -1672,9 +1609,7 @@ function App({ initialProjectPath }: AppProps) {
             <div className="onboarding-terminal-overlay">
               <div className="onboarding-terminal-modal">
                 <div className="onboarding-terminal-header">
-                  <span className="onboarding-terminal-title">
-                    {authTerminalConfig.service === 'github' ? 'GitHub Account' : 'Vercel Account'}
-                  </span>
+                  <span className="onboarding-terminal-title">GitHub Account</span>
                   <button
                     className="onboarding-terminal-cancel"
                     onClick={() => closeAuthTerminal()}
@@ -1748,6 +1683,14 @@ function App({ initialProjectPath }: AppProps) {
               <GraduationCapIcon size={14} />
             </button>
             <button
+              className="education-button"
+              onClick={() => setShowPluginManager(true)}
+              title="Manage Plugins"
+              data-education-id="plugin-manager"
+            >
+              <PuzzleIcon size={14} />
+            </button>
+            <button
               className="assets-button"
               onClick={() => setShowAssetsPanel(true)}
               title="Assets"
@@ -1811,7 +1754,6 @@ function App({ initialProjectPath }: AppProps) {
             <span data-education-id="github-button">
               <GitHubButton
                 githubState={integrations.github}
-                vercelState={integrations.vercel}
                 projectStatus={integrations.projectGithub}
                 projectPath={currentProject?.path || ''}
                 projectName={currentProject?.name || ''}
@@ -1819,32 +1761,11 @@ function App({ initialProjectPath }: AppProps) {
                 onGitHubConnect={handleGitHubConnectFromOverlay}
                 onModalClose={focusActiveTerminal}
                 onToast={showToast}
-                onVercelAutoConnectStart={() => setIsVercelAutoConnecting(true)}
-                onVercelAutoConnectEnd={() => setIsVercelAutoConnecting(false)}
               />
             </span>
-            {integrations.projectGithub?.status === 'connected' &&
-              integrations.projectGithub?.github_repo && (
-                <span data-education-id="vercel-button">
-                  <VercelButton
-                    vercelState={integrations.vercel}
-                    projectVercelStatus={integrations.projectVercel}
-                    projectGithubStatus={integrations.projectGithub}
-                    projectPath={currentProject?.path || ''}
-                    projectName={currentProject?.name || ''}
-                    onStatusChange={(deployedUrl) => void handleVercelStatusChange(deployedUrl)}
-                    onVercelConnect={() => void refreshVercelStatus()}
-                    onModalClose={focusActiveTerminal}
-                    onToast={showToast}
-                    isAutoConnecting={isVercelAutoConnecting}
-                    currentBranch={currentBranch || 'main'}
-                  />
-                </span>
-              )}
             <PublishBranchDropdown
               currentBranch={currentBranch || 'main'}
               projectGithubStatus={integrations.projectGithub}
-              projectVercelStatus={integrations.projectVercel}
               projectPath={currentProject?.path || ''}
               hasChangesToSync={hasUncommittedChanges}
               onStatusChange={() => {
@@ -2012,14 +1933,6 @@ function App({ initialProjectPath }: AppProps) {
                         data-education-id="skills-manager"
                       >
                         <ZapIcon size={12} />
-                      </button>
-                      <button
-                        className="workspace-tab icon-only"
-                        onClick={() => setShowPluginManager(true)}
-                        title="Manage Plugins"
-                        data-education-id="plugin-manager"
-                      >
-                        <PuzzleIcon size={12} />
                       </button>
                       <PluginSlot
                         name="terminal"
@@ -2341,7 +2254,6 @@ function App({ initialProjectPath }: AppProps) {
                   ) : (
                     <div style={{ position: 'relative', flex: 1 }}>
                       <ConnectOverlay
-                        service="github"
                         title="Connect GitHub to manage branches"
                         description="Create branches, switch between versions, and collaborate with your team."
                         onConnect={() => void handleGitHubConnectFromOverlay()}
@@ -2366,7 +2278,6 @@ function App({ initialProjectPath }: AppProps) {
                   ) : (
                     <div style={{ position: 'relative', flex: 1 }}>
                       <ConnectOverlay
-                        service="github"
                         title="Connect GitHub to view pull requests"
                         description="Submit code for review, merge changes, and track your team's work."
                         onConnect={() => void handleGitHubConnectFromOverlay()}
@@ -2386,7 +2297,6 @@ function App({ initialProjectPath }: AppProps) {
             <PublishBranchDropdown
               currentBranch={currentBranch || 'main'}
               projectGithubStatus={integrations.projectGithub}
-              projectVercelStatus={integrations.projectVercel}
               projectPath={currentProject?.path || ''}
               hasChangesToSync={hasUncommittedChanges}
               onStatusChange={() => {
@@ -2543,15 +2453,7 @@ function App({ initialProjectPath }: AppProps) {
           isOpen={showPluginManager}
           onClose={() => setShowPluginManager(false)}
           onPluginsChanged={() => void reloadPlugins()}
-        />
-
-        {/* Plugin Settings Slot */}
-        <PluginSlot
-          name="settings"
-          plugins={getSlotPlugins('settings')}
-          project={pluginProject}
-          actions={pluginActions}
-          theme={pluginTheme}
+          projectPath={currentProject?.path ?? null}
         />
 
         {/* Submit for Review Modal */}
@@ -2601,14 +2503,12 @@ function App({ initialProjectPath }: AppProps) {
           />
         )}
 
-        {/* Auth Terminal Modal (for GitHub/Vercel connect from workspace) */}
+        {/* Auth Terminal Modal (for GitHub connect from workspace) */}
         {authTerminalConfig && (
           <div className="onboarding-terminal-overlay">
             <div className="onboarding-terminal-modal">
               <div className="onboarding-terminal-header">
-                <span className="onboarding-terminal-title">
-                  {authTerminalConfig.service === 'github' ? 'GitHub Account' : 'Vercel Account'}
-                </span>
+                <span className="onboarding-terminal-title">GitHub Account</span>
                 <button className="onboarding-terminal-cancel" onClick={() => closeAuthTerminal()}>
                   Cancel
                 </button>
