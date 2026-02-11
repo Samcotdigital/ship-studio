@@ -22,21 +22,25 @@ import { listen } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { loadNerdFonts } from '../lib/fonts';
 import { isWindows } from '../lib/setup';
+import { getActiveAgent } from '../lib/agent';
 import '@xterm/xterm/css/xterm.css';
 
-/** Claude Code status based on terminal title */
-export type ClaudeStatus = 'thinking' | 'waiting' | 'idle';
+/** Agent status based on terminal title */
+export type AgentStatus = 'thinking' | 'waiting' | 'idle';
+
+/** @deprecated Use AgentStatus instead */
+export type ClaudeStatus = AgentStatus;
 
 /** Props for the Terminal component */
 interface TerminalProps {
-  /** Absolute path to the project directory where Claude Code will run */
+  /** Absolute path to the project directory where the agent will run */
   projectPath: string;
-  /** Callback fired when the Claude Code process exits */
+  /** Callback fired when the agent process exits */
   onExit?: (code: number | null) => void;
-  /** Whether to run Claude in auto-accept mode (--dangerously-skip-permissions) */
+  /** Whether to run the agent in auto-accept mode */
   autoAcceptMode?: boolean;
-  /** Callback fired when Claude's status changes (thinking, waiting for input, idle) */
-  onStatusChange?: (status: ClaudeStatus, title: string) => void;
+  /** Callback fired when the agent's status changes (thinking, waiting for input, idle) */
+  onStatusChange?: (status: AgentStatus, title: string) => void;
 }
 
 /**
@@ -68,7 +72,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   // Use refs for callbacks to prevent effect re-runs when callback references change
   const onExitRef = useRef(onExit);
   const onStatusChangeRef = useRef(onStatusChange);
-  const lastStatusRef = useRef<ClaudeStatus>('idle');
+  const lastStatusRef = useRef<AgentStatus>('idle');
   useEffect(() => {
     onExitRef.current = onExit;
     onStatusChangeRef.current = onStatusChange;
@@ -228,43 +232,46 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       textarea.addEventListener('blur', () => setIsFocused(false));
     }
 
-    // Listen for terminal title changes to detect Claude's status
+    // Listen for terminal title changes to detect agent's status
     // Claude Code updates the terminal title with icons:
     // - Dot (· char ~10242/10256) when thinking/processing
     // - Star (* char ~10035) when done/waiting for input
-    term.onTitleChange((title) => {
-      let status: ClaudeStatus = 'idle';
+    const agent = getActiveAgent();
+    if (agent.supportsStatusDetection) {
+      term.onTitleChange((title) => {
+        let status: AgentStatus = 'idle';
 
-      // Check first character code to detect status
-      const firstCharCode = title.charCodeAt(0);
+        // Check first character code to detect status
+        const firstCharCode = title.charCodeAt(0);
 
-      // Dot variants (thinking/processing) - char codes around 10242, 10256, or literal dot
-      if (
-        firstCharCode === 10242 ||
-        firstCharCode === 10256 ||
-        firstCharCode === 183 ||
-        title.startsWith('·') ||
-        title.startsWith('•')
-      ) {
-        status = 'thinking';
-      }
-      // Star variants (done/waiting) - char code 10035 or asterisk-like
-      else if (
-        firstCharCode === 10035 ||
-        title.startsWith('*') ||
-        title.startsWith('✳') ||
-        title.startsWith('✱') ||
-        title.startsWith('✲')
-      ) {
-        status = 'waiting';
-      }
+        // Dot variants (thinking/processing) - char codes around 10242, 10256, or literal dot
+        if (
+          firstCharCode === 10242 ||
+          firstCharCode === 10256 ||
+          firstCharCode === 183 ||
+          title.startsWith('·') ||
+          title.startsWith('•')
+        ) {
+          status = 'thinking';
+        }
+        // Star variants (done/waiting) - char code 10035 or asterisk-like
+        else if (
+          firstCharCode === 10035 ||
+          title.startsWith('*') ||
+          title.startsWith('✳') ||
+          title.startsWith('✱') ||
+          title.startsWith('✲')
+        ) {
+          status = 'waiting';
+        }
 
-      // Only fire callback if status actually changed
-      if (status !== lastStatusRef.current) {
-        lastStatusRef.current = status;
-        onStatusChangeRef.current?.(status, title);
-      }
-    });
+        // Only fire callback if status actually changed
+        if (status !== lastStatusRef.current) {
+          lastStatusRef.current = status;
+          onStatusChangeRef.current?.(status, title);
+        }
+      });
+    } // end supportsStatusDetection
 
     // Track if this effect instance is still mounted (handles StrictMode/HMR)
     let mounted = true;
@@ -309,12 +316,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           };
         }
 
-        // When autoAcceptMode is enabled, pass --dangerously-skip-permissions flag
-        const claudeArgs = autoAcceptMode ? ['--dangerously-skip-permissions'] : [];
+        // When autoAcceptMode is enabled, pass the agent's auto-accept flag
+        const agentArgs = autoAcceptMode && agent.autoAcceptFlag ? [agent.autoAcceptFlag] : [];
 
-        // On Windows, claude is a .cmd script - must run through cmd.exe
-        const spawnCmd = isWin ? 'cmd.exe' : 'claude';
-        const spawnArgs = isWin ? ['/C', 'claude', ...claudeArgs] : claudeArgs;
+        // On Windows, agent may be a .cmd script - must run through cmd.exe
+        const spawnCmd = isWin ? 'cmd.exe' : agent.binaryName;
+        const spawnArgs = isWin ? ['/C', agent.binaryName, ...agentArgs] : agentArgs;
 
         // eslint-disable-next-line @typescript-eslint/await-thenable
         const pty = await spawn(spawnCmd, spawnArgs, {
@@ -374,26 +381,24 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           return true; // Allow all other keys
         });
       } catch (err) {
-        console.warn('Failed to spawn Claude:', err);
+        console.warn(`Failed to spawn ${agent.displayName}:`, err);
 
         if (!mounted) return;
 
         if (retryCount < maxRetries) {
           term.write(
-            `\x1b[33mFailed to start Claude, retrying (${retryCount + 1}/${maxRetries})...\x1b[0m\r\n`
+            `\x1b[33mFailed to start ${agent.displayName}, retrying (${retryCount + 1}/${maxRetries})...\x1b[0m\r\n`
           );
           setTimeout(() => void setupPty(retryCount + 1), 1000);
         } else {
-          term.write(`\x1b[31mError starting Claude: ${String(err)}\x1b[0m\r\n`);
-          term.write(
-            `\x1b[33mMake sure Claude Code is installed: npm install -g @anthropic-ai/claude-code\x1b[0m\r\n`
-          );
+          term.write(`\x1b[31m${agent.notFoundMessage}: ${String(err)}\x1b[0m\r\n`);
+          term.write(`\x1b[33m${agent.installHint}\x1b[0m\r\n`);
         }
       }
     };
 
-    // Show a loading message while Claude Code starts up
-    term.write('\r\n  \x1b[2mStarting Claude Code...\x1b[0m');
+    // Show a loading message while agent starts up
+    term.write(`\r\n  \x1b[2m${agent.loadingMessage}\x1b[0m`);
 
     // Small delay before starting to ensure terminal is ready
     setTimeout(() => void setupPty(), 100);
@@ -489,7 +494,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             fontSize: 13,
           }}
         >
-          Starting Claude Code...
+          Loading...
         </div>
       )}
       {/* Dimming overlay when terminal is not focused */}

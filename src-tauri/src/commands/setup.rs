@@ -2,7 +2,8 @@
 //!
 //! Commands for the setup wizard and onboarding flow.
 
-use crate::commands::claude::find_claude_binary;
+use crate::agent::get_active_agent;
+use crate::commands::claude::find_agent_binary;
 use crate::commands::github::get_gh_command;
 use crate::types::{
     AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
@@ -447,11 +448,12 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
-    // 6. Claude Code
-    let claude_path = find_claude_binary();
-    let claude_version = claude_path.as_ref().and_then(|p| {
+    // 6. Agent CLI (e.g., Claude Code)
+    let agent = get_active_agent();
+    let agent_path = find_agent_binary();
+    let agent_version = agent_path.as_ref().and_then(|p| {
         create_command(p)
-            .args(["--version"])
+            .args([agent.version_flag])
             .output()
             .ok()
             .and_then(|o| {
@@ -463,30 +465,27 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             })
     });
     items.push(SetupItemInfo {
-        id: "claude".to_string(),
-        friendly_name: "Claude Code".to_string(),
-        status: if claude_path.is_some() {
+        id: agent.setup_item_ids.0.to_string(),
+        friendly_name: agent.setup_display_names.0.to_string(),
+        status: if agent_path.is_some() {
             SetupItemStatus::Ready
         } else {
             SetupItemStatus::NotInstalled
         },
-        version: claude_version,
+        version: agent_version,
         username: None,
         error_message: None,
     });
 
-    // 7. Claude Auth
-    let claude_auth = if claude_path.is_some() {
+    // 7. Agent Auth
+    let agent_auth = if agent_path.is_some() {
         if let Some(home) = dirs::home_dir() {
-            let claude_dir = home.join(".claude");
-            // Check for various indicators that Claude has been authenticated/used:
-            // - settings.json (older versions)
-            // - statsig directory (created after auth)
-            // - projects directory (created after using Claude)
-            let settings_exists = claude_dir.join("settings.json").exists();
-            let statsig_exists = claude_dir.join("statsig").is_dir();
-            let projects_exists = claude_dir.join("projects").is_dir();
-            settings_exists || statsig_exists || projects_exists
+            let agent_dir = home.join(agent.auth_config_dir);
+            // Check for various indicators that the agent has been authenticated/used
+            agent.auth_indicators.iter().any(|indicator| {
+                let path = agent_dir.join(indicator);
+                path.exists()
+            })
         } else {
             false
         }
@@ -494,11 +493,11 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         false
     };
     items.push(SetupItemInfo {
-        id: "claude_auth".to_string(),
-        friendly_name: "Claude Account".to_string(),
-        status: if claude_auth {
+        id: agent.setup_item_ids.1.to_string(),
+        friendly_name: agent.setup_display_names.1.to_string(),
+        status: if agent_auth {
             SetupItemStatus::Ready
-        } else if claude_path.is_some() {
+        } else if agent_path.is_some() {
             SetupItemStatus::NotAuthenticated
         } else {
             SetupItemStatus::NotInstalled
@@ -555,14 +554,16 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
-    let claude_present = find_claude_binary().is_some();
+    let agent = get_active_agent();
+    let agent_present = find_agent_binary().is_some();
 
     // Fast auth checks: file/directory existence only
-    let claude_auth_present = if let Some(home) = dirs::home_dir() {
-        let claude_dir = home.join(".claude");
-        claude_dir.join("settings.json").exists()
-            || claude_dir.join("statsig").is_dir()
-            || claude_dir.join("projects").is_dir()
+    let agent_auth_present = if let Some(home) = dirs::home_dir() {
+        let agent_dir = home.join(agent.auth_config_dir);
+        agent.auth_indicators.iter().any(|indicator| {
+            let path = agent_dir.join(indicator);
+            path.exists()
+        })
     } else {
         false
     };
@@ -574,8 +575,8 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
         && node_present
         && git_present
         && gh_present
-        && claude_present
-        && claude_auth_present;
+        && agent_present
+        && agent_auth_present;
 
     QuickSetupCheck {
         all_present,
@@ -985,51 +986,51 @@ pub async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> 
         return Ok("Mock auth completed".to_string());
     }
 
-    let claude_path = find_claude_binary().ok_or("Claude Code not installed")?;
+    let agent = get_active_agent();
+    let agent_path = find_agent_binary().ok_or(format!("{} not installed", agent.display_name))?;
 
-    let child = create_command(&claude_path)
-        .args(["--print", "hello"])
+    let child = create_command(&agent_path)
+        .args(agent.auth_trigger_args)
         .spawn()
-        .map_err(|e| format!("Failed to start Claude auth: {}", e))?;
+        .map_err(|e| format!("Failed to start {} auth: {}", agent.display_name, e))?;
 
     // Store the process PID for potential cleanup instead of forgetting it
     let pid = child.id();
     if let Ok(mut pids) = AUTH_PIDS.lock() {
-        pids.insert("claude".to_string(), pid);
+        pids.insert(agent.id.to_string(), pid);
     }
     // Spawn a thread to wait for the process and clean up the registry when it exits
+    let agent_id = agent.id.to_string();
     std::thread::spawn(move || {
         let _ = child.wait_with_output();
         if let Ok(mut pids) = AUTH_PIDS.lock() {
-            pids.remove("claude");
+            pids.remove(&agent_id);
         }
     });
 
     Ok("Browser opened. Log in to your Anthropic account to continue.".to_string())
 }
 
-/// Check if Claude is authenticated
+/// Check if the agent is authenticated
 #[tauri::command]
 pub async fn check_claude_auth_status() -> bool {
+    let agent = get_active_agent();
+
     if is_mock_mode() {
-        return is_mock_installed("claude_auth");
+        return is_mock_installed(agent.setup_item_ids.1);
     }
 
-    if find_claude_binary().is_none() {
+    if find_agent_binary().is_none() {
         return false;
     }
 
     if let Some(home) = dirs::home_dir() {
-        let claude_dir = home.join(".claude");
-        // Check for various indicators that Claude has been authenticated/used:
-        // - settings.json (older versions)
-        // - statsig directory (created after auth)
-        // - projects directory with content (created after using Claude)
-        let settings_exists = claude_dir.join("settings.json").exists();
-        let statsig_exists = claude_dir.join("statsig").is_dir();
-        let projects_exists = claude_dir.join("projects").is_dir();
-
-        return settings_exists || statsig_exists || projects_exists;
+        let agent_dir = home.join(agent.auth_config_dir);
+        // Check for various indicators that the agent has been authenticated/used
+        return agent.auth_indicators.iter().any(|indicator| {
+            let path = agent_dir.join(indicator);
+            path.exists()
+        });
     }
 
     false

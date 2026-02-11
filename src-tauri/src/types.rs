@@ -227,13 +227,16 @@ pub struct BrowserInfo {
     pub name: String,
 }
 
-// ============ Claude Integration ============
+// ============ Agent CLI Integration ============
 
 #[derive(Serialize)]
-pub struct ClaudeCliStatus {
+pub struct AgentCliStatus {
     pub installed: bool,
     pub version: Option<String>,
 }
+
+/// Backward-compatible alias
+pub type ClaudeCliStatus = AgentCliStatus;
 
 // ============ GitHub Integration ============
 

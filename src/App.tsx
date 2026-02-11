@@ -32,7 +32,7 @@ import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
 import { usePlugins } from './hooks/usePlugins';
 import { useIntegrationStatus, GITHUB_STATUS_FALLBACK } from './hooks/useIntegrationStatus';
-import { Terminal, ClaudeStatus } from './components/Terminal';
+import { Terminal, AgentStatus } from './components/Terminal';
 import { DevServerLogs } from './components/DevServerLogs';
 import { Preview, PreviewHandle } from './components/Preview';
 import { ProjectList } from './components/ProjectList';
@@ -113,14 +113,22 @@ import {
   HistoryIcon,
   DollarIcon,
   PuzzleIcon,
+  ShieldCheckIcon,
 } from './components/icons';
-import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
+import {
+  startDevServer,
+  Project,
+  DevServerHandle,
+  getAutoAcceptMode,
+  setAutoAcceptMode as setAutoAcceptModeApi,
+} from './lib/project';
 import {
   detectProjectType,
   startStaticServer,
   stopStaticServer,
   ProjectType,
 } from './lib/static-server';
+import { getActiveAgent } from './lib/agent';
 import { getProjectGitHubStatus } from './lib/github';
 import { getChangedFiles, ChangedFile } from './lib/git';
 import {
@@ -339,6 +347,9 @@ function App({ initialProjectPath }: AppProps) {
 
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState(false);
+
+  // Auto-accept warning modal state
+  const [showAutoAcceptWarning, setShowAutoAcceptWarning] = useState(false);
 
   // Skills modal state
   const [showSkillsModal, setShowSkillsModal] = useState(false);
@@ -591,8 +602,8 @@ function App({ initialProjectPath }: AppProps) {
     }
   };
 
-  // Handle capture for Claude - screenshot preview and paste path into terminal
-  const handleCaptureForClaude = useCallback(async () => {
+  // Handle capture for agent - screenshot preview and paste path into terminal
+  const handleCaptureScreenshot = useCallback(async () => {
     if (isCapturing || !previewRef.current) return;
 
     setIsCapturing(true);
@@ -870,13 +881,35 @@ function App({ initialProjectPath }: AppProps) {
     setHealthOutputVersion((v) => v + 1);
   }, []);
 
-  // Handle terminal exit (memoized to prevent re-spawning Claude on every render)
+  // Handle terminal exit (memoized to prevent re-spawning agent on every render)
   const handleTerminalExit = useCallback((code: number | null) => {
     logger.info('Terminal exited', { code });
   }, []);
 
-  // Track previous Claude status to detect transitions
-  const prevClaudeStatusRef = useRef<ClaudeStatus>('idle');
+  // Handle toolbar auto-accept toggle
+  const handleToolbarAutoAcceptToggle = useCallback(() => {
+    if (!autoAcceptMode) {
+      // Turning ON — always show confirmation
+      setShowAutoAcceptWarning(true);
+      return;
+    }
+    // Turning OFF — no confirmation needed
+    setAutoAcceptMode(false);
+    if (currentProject) {
+      void setAutoAcceptModeApi(currentProject.path, false);
+    }
+  }, [autoAcceptMode, currentProject]);
+
+  const handleAutoAcceptWarningAccept = useCallback(() => {
+    setAutoAcceptMode(true);
+    setShowAutoAcceptWarning(false);
+    if (currentProject) {
+      void setAutoAcceptModeApi(currentProject.path, true);
+    }
+  }, [currentProject]);
+
+  // Track previous agent status to detect transitions
+  const prevAgentStatusRef = useRef<AgentStatus>('idle');
 
   // Use ref for notification settings to avoid re-creating callback
   const notificationSettingsRef = useRef(notificationSettings);
@@ -884,17 +917,17 @@ function App({ initialProjectPath }: AppProps) {
     notificationSettingsRef.current = notificationSettings;
   }, [notificationSettings]);
 
-  // Handle Claude status changes - play sounds based on settings
-  const handleClaudeStatusChange = useCallback((status: ClaudeStatus, _title: string) => {
+  // Handle agent status changes - play sounds based on settings
+  const handleAgentStatusChange = useCallback((status: AgentStatus, _title: string) => {
     const settings = notificationSettingsRef.current;
-    const wasThinking = prevClaudeStatusRef.current === 'thinking';
+    const wasThinking = prevAgentStatusRef.current === 'thinking';
 
-    // When Claude transitions from thinking to waiting (finished processing)
+    // When agent transitions from thinking to waiting (finished processing)
     if (wasThinking && status === 'waiting' && settings.enabled) {
       void playSound(settings.sound);
     }
 
-    prevClaudeStatusRef.current = status;
+    prevAgentStatusRef.current = status;
   }, []);
 
   // Save notification settings when they change
@@ -1941,6 +1974,16 @@ function App({ initialProjectPath }: AppProps) {
                         actions={pluginActions}
                         theme={pluginTheme}
                       />
+                      {getActiveAgent().autoAcceptFlag && (
+                        <button
+                          className={`workspace-tab icon-only ${autoAcceptMode ? 'auto-accept-active' : ''}`}
+                          onClick={handleToolbarAutoAcceptToggle}
+                          title={`Auto-accept: ${autoAcceptMode ? 'ON' : 'OFF'}`}
+                          data-education-id="auto-accept-toggle"
+                        >
+                          <ShieldCheckIcon size={12} />
+                        </button>
+                      )}
                       <button
                         className="workspace-tab icon-only"
                         onClick={() => setShowHelpModal(true)}
@@ -1988,7 +2031,7 @@ function App({ initialProjectPath }: AppProps) {
                           projectPath={currentProject?.path || ''}
                           onExit={handleTerminalExit}
                           autoAcceptMode={autoAcceptMode}
-                          onStatusChange={handleClaudeStatusChange}
+                          onStatusChange={handleAgentStatusChange}
                         />
                       </div>
                     ))}
@@ -2192,7 +2235,7 @@ function App({ initialProjectPath }: AppProps) {
                         <div className="agent-toolbar">
                           <button
                             className="agent-capture-btn"
-                            onClick={() => void handleCaptureForClaude()}
+                            onClick={() => void handleCaptureScreenshot()}
                             disabled={isCapturing || isCropMode || isFullPageCapturing}
                             title="Screenshot preview for Claude"
                             data-education-id="screenshot-button"
@@ -2456,6 +2499,38 @@ function App({ initialProjectPath }: AppProps) {
           projectPath={currentProject?.path ?? null}
         />
 
+        {/* Auto-Accept Warning Modal */}
+        {showAutoAcceptWarning && (
+          <div className="modal-overlay" onClick={() => setShowAutoAcceptWarning(false)}>
+            <div className="modal auto-accept-warning-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="auto-accept-warning-icon">
+                <ZapIcon size={32} />
+              </div>
+              <h3>Enable Auto-Accept Mode?</h3>
+              <p>
+                This mode allows {getActiveAgent().displayName} to execute commands{' '}
+                <strong>without asking for permission</strong>. {getActiveAgent().displayName} will
+                be able to:
+              </p>
+              <ul className="auto-accept-warning-list">
+                <li>Read and modify any files in your project</li>
+                <li>Run shell commands automatically</li>
+                <li>Make changes without confirmation</li>
+              </ul>
+              <p className="auto-accept-warning-disclaimer">
+                By enabling this mode, you acknowledge that Ship Studio and Anthropic are{' '}
+                <strong>not liable</strong> for any unintended changes or actions taken by the AI.
+              </p>
+              <div className="modal-actions">
+                <button onClick={() => setShowAutoAcceptWarning(false)}>Cancel</button>
+                <button className="btn-warning" onClick={handleAutoAcceptWarningAccept}>
+                  I understand, enable it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Submit for Review Modal */}
         {showSubmitReview && (
           <SubmitReviewModal
@@ -2464,7 +2539,7 @@ function App({ initialProjectPath }: AppProps) {
             baseBranches={branches
               .filter((b) => b.isDefault || b.name === 'staging')
               .map((b) => b.name)}
-            claudeAvailable={integrations.claude.cliStatus.installed}
+            aiAvailable={integrations.claude.cliStatus.installed}
             onSuccess={() => {
               showToast('Pull request created', 'success');
               if (currentProject) void fetchBranchInfo(currentProject.path);

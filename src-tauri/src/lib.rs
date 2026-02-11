@@ -10,6 +10,7 @@
 //! - **Native Webview**: Child webview for Sanity CMS (OAuth support)
 //! - **Utilities**: Screenshots, IDE launcher, prerequisite checks
 
+pub mod agent;
 pub mod cache;
 pub mod commands;
 pub mod logging;
@@ -24,30 +25,31 @@ use tauri::Manager;
 #[cfg(unix)]
 use std::process::Command;
 
-// Kill orphaned Claude processes spawned by this app
-fn cleanup_claude_processes() {
+// Kill orphaned agent processes spawned by this app
+fn cleanup_agent_processes() {
     #[cfg(unix)]
     {
+        let agent = agent::get_active_agent();
+
         // Get current process's children and kill them
         let pid = std::process::id();
         let _ = Command::new("pkill")
-            .args(["-P", &pid.to_string(), "claude"])
+            .args(["-P", &pid.to_string(), agent.process_name])
             .output();
 
-        // Kill any orphaned claude processes (parent is init/launchd - PID 1)
-        let _ = Command::new("sh")
-            .args([
-                "-c",
-                r#"
-                for pid in $(pgrep -x claude 2>/dev/null); do
+        // Kill any orphaned agent processes (parent is init/launchd - PID 1)
+        let kill_script = format!(
+            r#"
+                for pid in $(pgrep -x {} 2>/dev/null); do
                     ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
                     if [ "$ppid" = "1" ]; then
                         kill $pid 2>/dev/null
                     fi
                 done
             "#,
-            ])
-            .output();
+            agent.process_name
+        );
+        let _ = Command::new("sh").args(["-c", &kill_script]).output();
 
         // Also kill orphaned node processes running next-server (from dev server)
         let _ = Command::new("sh")
@@ -75,9 +77,9 @@ pub fn run() {
 
     tracing::info!("Ship Studio starting up");
 
-    // Clean up any orphaned Claude processes from previous crashed sessions
-    cleanup_claude_processes();
-    tracing::debug!("Orphaned Claude processes cleaned up");
+    // Clean up any orphaned agent processes from previous crashed sessions
+    cleanup_agent_processes();
+    tracing::debug!("Orphaned agent processes cleaned up");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -122,7 +124,7 @@ pub fn run() {
                         is_main,
                         remaining_windows
                     );
-                    cleanup_claude_processes();
+                    cleanup_agent_processes();
                     commands::setup::cleanup_auth_processes_sync();
                     proxy::stop_all_proxies();
                     static_server::stop_all_static_servers();

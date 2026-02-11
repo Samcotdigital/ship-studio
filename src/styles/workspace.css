@@ -180,6 +180,16 @@
   color: var(--text-primary);
 }
 
+.workspace-tab.auto-accept-active {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.workspace-tab.auto-accept-active:hover {
+  background: rgba(245, 158, 11, 0.15);
+}
+
 .workspace-tab svg {
   flex-shrink: 0;
 }

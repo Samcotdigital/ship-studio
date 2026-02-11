@@ -9,7 +9,7 @@
  */
 
 import { DashboardProject } from '../lib/project';
-import { BranchIcon, CodeIcon, ZapIcon, NewWindowIcon } from './icons';
+import { BranchIcon, CodeIcon, NewWindowIcon } from './icons';
 import { ProjectCardMenu } from './ProjectCardMenu';
 
 /** Props for the ProjectCard component */
@@ -22,8 +22,6 @@ interface ProjectCardProps {
   onSelect: () => void;
   /** Callback when delete button is clicked */
   onDelete: () => void;
-  /** Callback when auto-accept mode is toggled */
-  onToggleAutoAccept: (enabled: boolean) => void;
   /** Callback when main branch warning is toggled */
   onToggleMainBranchWarning: (hidden: boolean) => void;
   /** Callback to open the project in VS Code or Cursor */
@@ -45,7 +43,6 @@ export function ProjectCard({
   thumbnailData,
   onSelect,
   onDelete,
-  onToggleAutoAccept,
   onToggleMainBranchWarning,
   onOpenIde,
   onMoveToFolder,
@@ -55,7 +52,6 @@ export function ProjectCard({
   onRemove,
 }: ProjectCardProps) {
   const hasChanges = project.uncommitted_count !== null && project.uncommitted_count > 0;
-  const autoAcceptMode = project.auto_accept_mode === true;
   const hideMainBranchWarning = project.hide_main_branch_warning === true;
 
   return (
@@ -114,11 +110,6 @@ export function ProjectCard({
         <div className="project-card-details" onClick={onSelect} style={{ cursor: 'pointer' }}>
           <div className="project-card-name-row">
             <span className="project-card-name">{project.name}</span>
-            {autoAcceptMode && (
-              <span className="project-card-auto-accept-badge" title="Auto-accept mode enabled">
-                <ZapIcon size={10} />
-              </span>
-            )}
           </div>
           <div className="project-card-meta">
             {project.git_branch && (
@@ -133,8 +124,6 @@ export function ProjectCard({
           </div>
         </div>
         <ProjectCardMenu
-          autoAcceptMode={autoAcceptMode}
-          onToggleAutoAccept={onToggleAutoAccept}
           hideMainBranchWarning={hideMainBranchWarning}
           onToggleMainBranchWarning={onToggleMainBranchWarning}
           onMoveToFolder={onMoveToFolder}
