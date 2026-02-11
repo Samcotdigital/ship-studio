@@ -23,6 +23,10 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.52',
+    items: ['Terminal loading indicator while Claude Code starts up'],
+  },
+  {
     version: '0.3.51',
     items: ['Import repos you collaborate on (not just owned)', 'Fix dev server restart crashes'],
   },
