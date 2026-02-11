@@ -17,6 +17,7 @@ import {
   type PluginThemeData,
 } from '../contexts/PluginContext';
 import { execPluginShell, readPluginStorage, writePluginStorage } from '../lib/plugins';
+import { invoke } from '@tauri-apps/api/core';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 
 interface PluginSlotProps {
@@ -76,9 +77,11 @@ function buildContext(
   pluginId: string,
   project: PluginProjectData | null,
   actions: PluginAppActions,
-  theme: PluginThemeData
+  theme: PluginThemeData,
+  requiredCommands: string[]
 ): PluginContextValue {
   const projectPath = project?.path || '';
+  const allowedCommands = new Set(requiredCommands);
 
   return {
     pluginId,
@@ -89,10 +92,19 @@ function buildContext(
         execPluginShell(pluginId, projectPath, command, args),
     },
     storage: {
-      read: (scope: 'global' | 'project') =>
-        readPluginStorage(pluginId, scope, scope === 'project' ? projectPath : undefined),
-      write: (scope: 'global' | 'project', data: Record<string, unknown>) =>
-        writePluginStorage(pluginId, scope, scope === 'project' ? projectPath : undefined, data),
+      read: () => readPluginStorage(pluginId, projectPath),
+      write: (_scope: 'global' | 'project', data: Record<string, unknown>) =>
+        writePluginStorage(pluginId, projectPath, data),
+    },
+    invoke: {
+      call: <T = unknown,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+        if (!allowedCommands.has(command)) {
+          return Promise.reject(
+            new Error(`Plugin "${pluginId}" is not allowed to call "${command}"`)
+          );
+        }
+        return invoke<T>(command, args);
+      },
     },
     theme,
   };
@@ -107,7 +119,13 @@ export function PluginSlot({ name, plugins, project, actions, theme }: PluginSlo
         const SlotComponent = plugin.module.slots[name];
         if (!SlotComponent) return null;
 
-        const ctx = buildContext(plugin.info.manifest.id, project, actions, theme);
+        const ctx = buildContext(
+          plugin.info.manifest.id,
+          project,
+          actions,
+          theme,
+          plugin.info.manifest.required_commands || []
+        );
         // Expose context for SDK window global access
         exposePluginContext(ctx);
 

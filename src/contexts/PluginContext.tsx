@@ -24,6 +24,7 @@ export interface PluginAppActions {
   refreshGitStatus: () => void;
   refreshBranches: () => void;
   focusTerminal: () => void;
+  openUrl: (url: string) => void;
 }
 
 /** Shell command proxy for plugins */
@@ -40,8 +41,13 @@ export interface PluginShellProxy {
 
 /** Storage proxy for plugins */
 export interface PluginStorageProxy {
-  read: (scope: 'global' | 'project') => Promise<Record<string, unknown>>;
+  read: () => Promise<Record<string, unknown>>;
   write: (scope: 'global' | 'project', data: Record<string, unknown>) => Promise<void>;
+}
+
+/** Invoke proxy for plugins to call Tauri commands */
+export interface PluginInvokeProxy {
+  call: <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
 }
 
 /** Theme data for consistent styling */
@@ -51,8 +57,15 @@ export interface PluginThemeData {
   bgTertiary: string;
   textPrimary: string;
   textSecondary: string;
+  textMuted: string;
   border: string;
   accent: string;
+  accentHover: string;
+  action: string;
+  actionHover: string;
+  actionText: string;
+  error: string;
+  success: string;
 }
 
 /** Full context value provided to each plugin */
@@ -62,6 +75,7 @@ export interface PluginContextValue {
   actions: PluginAppActions;
   shell: PluginShellProxy;
   storage: PluginStorageProxy;
+  invoke: PluginInvokeProxy;
   theme: PluginThemeData;
 }
 

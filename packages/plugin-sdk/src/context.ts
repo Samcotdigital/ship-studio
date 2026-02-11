@@ -21,6 +21,7 @@ export interface PluginContextValue {
     refreshGitStatus: () => void;
     refreshBranches: () => void;
     focusTerminal: () => void;
+    openUrl: (url: string) => void;
   };
   shell: {
     exec: (command: string, args: string[]) => Promise<{
@@ -30,8 +31,11 @@ export interface PluginContextValue {
     }>;
   };
   storage: {
-    read: (scope: 'global' | 'project') => Promise<Record<string, unknown>>;
+    read: () => Promise<Record<string, unknown>>;
     write: (scope: 'global' | 'project', data: Record<string, unknown>) => Promise<void>;
+  };
+  invoke: {
+    call: <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
   };
   theme: {
     bgPrimary: string;
@@ -39,8 +43,15 @@ export interface PluginContextValue {
     bgTertiary: string;
     textPrimary: string;
     textSecondary: string;
+    textMuted: string;
     border: string;
     accent: string;
+    accentHover: string;
+    action: string;
+    actionHover: string;
+    actionText: string;
+    error: string;
+    success: string;
   };
 }
 

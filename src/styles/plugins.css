@@ -245,11 +245,118 @@
   cursor: not-allowed;
 }
 
-/* Install Section */
-.plugins-install-section {
-  padding: 4px 0 16px;
+.plugin-update-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
+.plugin-update-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.plugin-update-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plugin-update-btn.plugin-update-available {
+  background: #3b82f620;
+  color: #3b82f6;
+  border-color: #3b82f640;
+}
+
+.plugin-update-btn.plugin-update-available:hover {
+  background: #3b82f630;
+}
+
+/* Library: Install / Installed badges */
+.plugin-library-install-btn {
+  font-size: 11px;
+  padding: 3px 14px;
+  border-radius: 4px;
+  border: 1px solid #10b98140;
+  background: #10b98120;
+  color: #10b981;
+  cursor: pointer;
+  font-weight: 500;
+  transition:
+    background-color 0.15s,
+    opacity 0.15s;
+}
+
+.plugin-library-install-btn:hover:not(:disabled) {
+  background: #10b98130;
+}
+
+.plugin-library-install-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plugin-installed-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.plugin-category-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  text-transform: capitalize;
+}
+
+.plugins-empty-link {
+  background: none;
+  border: none;
+  color: #10b981;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.plugins-empty-link:hover {
+  opacity: 0.8;
+}
+
+/* URL install section at bottom of library */
+.plugins-url-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.plugins-url-toggle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.plugins-url-toggle:hover {
+  color: var(--text-primary);
+}
+
+/* Install input (shared between URL and old add tab) */
 .plugins-install-hint {
   font-size: 12px;
   color: var(--text-secondary);
@@ -329,6 +436,86 @@
 .plugins-footer-hint {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Dev Plugin Badge */
+.plugin-dev-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  margin-left: 6px;
+  border-radius: 3px;
+  background: #f59e0b20;
+  color: #f59e0b;
+  border: 1px solid #f59e0b40;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+/* Dev Plugin Local Path */
+.plugin-local-path {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+/* Reload Button (amber-tinted) */
+.plugin-reload-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid #f59e0b40;
+  background: #f59e0b20;
+  color: #f59e0b;
+  cursor: pointer;
+  font-weight: 500;
+  transition:
+    background-color 0.15s,
+    opacity 0.15s;
+}
+
+.plugin-reload-btn:hover:not(:disabled) {
+  background: #f59e0b30;
+}
+
+.plugin-reload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Link Dev Plugin Button */
+.plugins-link-dev-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #f59e0b;
+  background: transparent;
+  border: 1px dashed #f59e0b50;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.plugins-link-dev-btn:hover:not(:disabled) {
+  background: #f59e0b10;
+  border-color: #f59e0b80;
+}
+
+.plugins-link-dev-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Plugin Error Indicator (shown when a plugin component crashes) */

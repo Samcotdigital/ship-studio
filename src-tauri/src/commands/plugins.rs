@@ -1,21 +1,26 @@
 /**
  * Plugin management commands for Ship Studio.
  *
+ * Plugins are project-level: each project has its own plugins directory
+ * at <project>/.shipstudio/plugins/.
+ *
  * Provides commands for:
  * - Listing, installing, uninstalling, and updating plugins
  * - Reading plugin bundles (JS source) for frontend loading
  * - Executing shell commands in plugin context with sandboxing
- * - Plugin-scoped storage (global and per-project)
+ * - Plugin-scoped storage
  *
  * Plugin storage locations:
- * - Registry: ~/.shipstudio/plugins/registry.json
- * - Plugin files: ~/.shipstudio/plugins/{plugin-id}/ (plugin.json, dist/, icon.svg)
- * - Per-project data: {project}/.shipstudio/plugins/{plugin-id}.json
+ * - Registry: {project}/.shipstudio/plugins/registry.json
+ * - Plugin files: {project}/.shipstudio/plugins/{plugin-id}/ (plugin.json, dist/, icon.svg)
+ * - Plugin data: {project}/.shipstudio/plugins/{plugin-id}/storage.json
  */
 use crate::utils::{create_command, get_extended_path, validate_project_path};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
 /// Plugin manifest from plugin.json
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,6 +51,9 @@ pub struct PluginManifest {
     /// Icon filename (relative to plugin dir)
     #[serde(default)]
     pub icon: String,
+    /// Tauri commands this plugin is allowed to invoke
+    #[serde(default)]
+    pub required_commands: Vec<String>,
 }
 
 /// A setup item contributed by a plugin
@@ -77,6 +85,12 @@ pub struct PluginInfo {
     pub installed_at: u64,
     /// Source repository URL used for install
     pub source_url: String,
+    /// Whether this is a dev-linked plugin
+    #[serde(default)]
+    pub is_dev: bool,
+    /// Local filesystem path for dev plugins
+    #[serde(default)]
+    pub local_path: String,
 }
 
 /// Registry entry stored in registry.json
@@ -86,6 +100,24 @@ struct RegistryEntry {
     enabled: bool,
     installed_at: u64,
     source_url: String,
+    /// Git commit hash at time of install/update (for update checking)
+    #[serde(default)]
+    installed_commit: String,
+    /// Whether this is a dev-linked plugin
+    #[serde(default)]
+    is_dev: bool,
+    /// Local filesystem path for dev plugins
+    #[serde(default)]
+    local_path: String,
+}
+
+/// Result of checking for a plugin update
+#[derive(Debug, Serialize, Clone)]
+pub struct PluginUpdateCheck {
+    pub has_update: bool,
+    pub installed_version: String,
+    pub installed_commit: String,
+    pub remote_commit: String,
 }
 
 /// The registry file format
@@ -102,16 +134,15 @@ pub struct ShellResult {
     pub exit_code: i32,
 }
 
-/// Get the plugins base directory (~/.shipstudio/plugins/)
-fn get_plugins_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let dir = home.join(".shipstudio").join("plugins");
-    Ok(dir)
+/// Get the plugins directory for a project: <project>/.shipstudio/plugins/
+fn get_plugins_dir(project_path: &str) -> Result<PathBuf, String> {
+    let validated = validate_project_path(project_path)?;
+    Ok(validated.join(".shipstudio").join("plugins"))
 }
 
-/// Read the plugin registry
-fn read_registry() -> Result<Registry, String> {
-    let plugins_dir = get_plugins_dir()?;
+/// Read the plugin registry for a project
+fn read_registry(project_path: &str) -> Result<Registry, String> {
+    let plugins_dir = get_plugins_dir(project_path)?;
     let registry_path = plugins_dir.join("registry.json");
 
     if !registry_path.exists() {
@@ -124,9 +155,9 @@ fn read_registry() -> Result<Registry, String> {
     serde_json::from_str(&content).map_err(|e| format!("Failed to parse registry: {}", e))
 }
 
-/// Write the plugin registry
-fn write_registry(registry: &Registry) -> Result<(), String> {
-    let plugins_dir = get_plugins_dir()?;
+/// Write the plugin registry for a project
+fn write_registry(project_path: &str, registry: &Registry) -> Result<(), String> {
+    let plugins_dir = get_plugins_dir(project_path)?;
     fs::create_dir_all(&plugins_dir).map_err(|e| format!("Failed to create plugins dir: {}", e))?;
 
     let registry_path = plugins_dir.join("registry.json");
@@ -149,6 +180,19 @@ fn read_manifest(plugin_dir: &PathBuf) -> Result<PluginManifest, String> {
     serde_json::from_str(&content).map_err(|e| format!("Failed to parse plugin.json: {}", e))
 }
 
+/// Read the HEAD commit hash from a git repo directory
+fn read_git_head(repo_dir: &PathBuf) -> String {
+    let output = create_command("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_dir)
+        .env("PATH", get_extended_path())
+        .output();
+    match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => String::new(),
+    }
+}
+
 /// Get current timestamp in milliseconds
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -157,15 +201,19 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// List all installed plugins with their manifests and registry state
+/// List all installed plugins for a project
 #[tauri::command]
-pub fn list_plugins() -> Result<Vec<PluginInfo>, String> {
-    let registry = read_registry()?;
-    let plugins_dir = get_plugins_dir()?;
+pub fn list_plugins(project_path: String) -> Result<Vec<PluginInfo>, String> {
+    let registry = read_registry(&project_path)?;
+    let plugins_dir = get_plugins_dir(&project_path)?;
     let mut results = Vec::new();
 
     for entry in &registry.plugins {
-        let plugin_dir = plugins_dir.join(&entry.plugin_id);
+        let plugin_dir = if entry.is_dev {
+            PathBuf::from(&entry.local_path)
+        } else {
+            plugins_dir.join(&entry.plugin_id)
+        };
         match read_manifest(&plugin_dir) {
             Ok(manifest) => {
                 results.push(PluginInfo {
@@ -173,6 +221,8 @@ pub fn list_plugins() -> Result<Vec<PluginInfo>, String> {
                     enabled: entry.enabled,
                     installed_at: entry.installed_at,
                     source_url: entry.source_url.clone(),
+                    is_dev: entry.is_dev,
+                    local_path: entry.local_path.clone(),
                 });
             }
             Err(e) => {
@@ -184,10 +234,10 @@ pub fn list_plugins() -> Result<Vec<PluginInfo>, String> {
     Ok(results)
 }
 
-/// Install a plugin from a GitHub repository URL
+/// Install a plugin from a GitHub repository URL into a project
 #[tauri::command]
-pub async fn install_plugin(repo_url: String) -> Result<PluginInfo, String> {
-    let plugins_dir = get_plugins_dir()?;
+pub async fn install_plugin(project_path: String, repo_url: String) -> Result<PluginInfo, String> {
+    let plugins_dir = get_plugins_dir(&project_path)?;
     fs::create_dir_all(&plugins_dir).map_err(|e| format!("Failed to create plugins dir: {}", e))?;
 
     // Clone into a temp directory first, then move
@@ -253,6 +303,9 @@ pub async fn install_plugin(repo_url: String) -> Result<PluginInfo, String> {
         format!("Failed to move plugin to final location: {}", e)
     })?;
 
+    // Read commit hash before removing .git
+    let commit_hash = read_git_head(&plugin_dir);
+
     // Remove .git directory (no need to keep it)
     let git_dir = plugin_dir.join(".git");
     if git_dir.exists() {
@@ -260,7 +313,7 @@ pub async fn install_plugin(repo_url: String) -> Result<PluginInfo, String> {
     }
 
     // Update registry
-    let mut registry = read_registry()?;
+    let mut registry = read_registry(&project_path)?;
 
     // Remove old entry if exists
     registry.plugins.retain(|e| e.plugin_id != manifest.id);
@@ -270,23 +323,36 @@ pub async fn install_plugin(repo_url: String) -> Result<PluginInfo, String> {
         enabled: true,
         installed_at: now_ms(),
         source_url: repo_url.clone(),
+        installed_commit: commit_hash,
+        is_dev: false,
+        local_path: String::new(),
     };
 
     registry.plugins.push(entry);
-    write_registry(&registry)?;
+    write_registry(&project_path, &registry)?;
 
     Ok(PluginInfo {
         manifest,
         enabled: true,
         installed_at: now_ms(),
         source_url: repo_url,
+        is_dev: false,
+        local_path: String::new(),
     })
 }
 
-/// Uninstall a plugin by its ID
+/// Uninstall a plugin by its ID from a project
 #[tauri::command]
-pub fn uninstall_plugin(plugin_id: String) -> Result<(), String> {
-    let plugins_dir = get_plugins_dir()?;
+pub fn uninstall_plugin(project_path: String, plugin_id: String) -> Result<(), String> {
+    // Guard: dev plugins should use unlink instead
+    let registry = read_registry(&project_path)?;
+    if let Some(entry) = registry.plugins.iter().find(|e| e.plugin_id == plugin_id) {
+        if entry.is_dev {
+            return Err("Dev plugins cannot be uninstalled. Use Unlink instead.".to_string());
+        }
+    }
+
+    let plugins_dir = get_plugins_dir(&project_path)?;
     let plugin_dir = plugins_dir.join(&plugin_id);
 
     // Remove plugin directory
@@ -296,17 +362,17 @@ pub fn uninstall_plugin(plugin_id: String) -> Result<(), String> {
     }
 
     // Update registry
-    let mut registry = read_registry()?;
+    let mut registry = read_registry(&project_path)?;
     registry.plugins.retain(|e| e.plugin_id != plugin_id);
-    write_registry(&registry)?;
+    write_registry(&project_path, &registry)?;
 
     Ok(())
 }
 
 /// Update a plugin by pulling latest from its source repository
 #[tauri::command]
-pub async fn update_plugin(plugin_id: String) -> Result<PluginInfo, String> {
-    let registry = read_registry()?;
+pub async fn update_plugin(project_path: String, plugin_id: String) -> Result<PluginInfo, String> {
+    let registry = read_registry(&project_path)?;
     let entry = registry
         .plugins
         .iter()
@@ -317,7 +383,7 @@ pub async fn update_plugin(plugin_id: String) -> Result<PluginInfo, String> {
     let was_enabled = entry.enabled;
 
     // Re-install from source (clean install)
-    let plugins_dir = get_plugins_dir()?;
+    let plugins_dir = get_plugins_dir(&project_path)?;
     let plugin_dir = plugins_dir.join(&plugin_id);
 
     if plugin_dir.exists() {
@@ -343,6 +409,9 @@ pub async fn update_plugin(plugin_id: String) -> Result<PluginInfo, String> {
         return Err(format!("Git clone failed: {}", stderr));
     }
 
+    // Read commit hash before removing .git
+    let commit_hash = read_git_head(&plugin_dir);
+
     // Remove .git directory
     let git_dir = plugin_dir.join(".git");
     if git_dir.exists() {
@@ -351,30 +420,113 @@ pub async fn update_plugin(plugin_id: String) -> Result<PluginInfo, String> {
 
     let manifest = read_manifest(&plugin_dir)?;
 
-    // Update registry entry (preserve enabled state)
-    let mut registry = read_registry()?;
+    // Update registry entry (preserve enabled state, update commit hash)
+    let mut registry = read_registry(&project_path)?;
     if let Some(entry) = registry
         .plugins
         .iter_mut()
         .find(|e| e.plugin_id == plugin_id)
     {
         entry.enabled = was_enabled;
+        entry.installed_commit = commit_hash;
     }
-    write_registry(&registry)?;
+    write_registry(&project_path, &registry)?;
 
     Ok(PluginInfo {
         manifest,
         enabled: was_enabled,
         installed_at: now_ms(),
         source_url,
+        is_dev: false,
+        local_path: String::new(),
+    })
+}
+
+/// Check if a plugin has an update available by comparing commit hashes
+#[tauri::command]
+pub async fn check_plugin_update(
+    project_path: String,
+    plugin_id: String,
+) -> Result<PluginUpdateCheck, String> {
+    let registry = read_registry(&project_path)?;
+    let entry = registry
+        .plugins
+        .iter()
+        .find(|e| e.plugin_id == plugin_id)
+        .ok_or_else(|| format!("Plugin '{}' not found in registry", plugin_id))?;
+
+    if entry.is_dev {
+        return Err(
+            "Dev plugins do not support remote update checks. Use Reload instead.".to_string(),
+        );
+    }
+
+    let source_url = entry.source_url.clone();
+    let installed_commit = entry.installed_commit.clone();
+
+    // Get installed version from manifest
+    let plugins_dir = get_plugins_dir(&project_path)?;
+    let plugin_dir = plugins_dir.join(&plugin_id);
+    let manifest = read_manifest(&plugin_dir)?;
+    let installed_version = manifest.version.clone();
+
+    // Get remote HEAD commit via git ls-remote
+    let output = create_command("git")
+        .args(["ls-remote", &source_url, "HEAD"])
+        .env("PATH", get_extended_path())
+        .output()
+        .map_err(|e| format!("Failed to run git ls-remote: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to check remote: {}", stderr));
+    }
+
+    let remote_output = String::from_utf8_lossy(&output.stdout);
+    let remote_commit = remote_output
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+
+    // If we don't have an installed commit hash (legacy install), assume update available
+    let has_update = if installed_commit.is_empty() {
+        true
+    } else {
+        !remote_commit.is_empty() && remote_commit != installed_commit
+    };
+
+    Ok(PluginUpdateCheck {
+        has_update,
+        installed_version,
+        installed_commit,
+        remote_commit,
     })
 }
 
 /// Read the JavaScript bundle for a plugin (dist/index.js)
 #[tauri::command]
-pub fn read_plugin_bundle(plugin_id: String) -> Result<String, String> {
-    let plugins_dir = get_plugins_dir()?;
-    let bundle_path = plugins_dir.join(&plugin_id).join("dist").join("index.js");
+pub fn read_plugin_bundle(project_path: String, plugin_id: String) -> Result<String, String> {
+    let registry = read_registry(&project_path)?;
+    let entry = registry.plugins.iter().find(|e| e.plugin_id == plugin_id);
+
+    let bundle_path = if let Some(entry) = entry {
+        if entry.is_dev {
+            PathBuf::from(&entry.local_path)
+                .join("dist")
+                .join("index.js")
+        } else {
+            get_plugins_dir(&project_path)?
+                .join(&plugin_id)
+                .join("dist")
+                .join("index.js")
+        }
+    } else {
+        get_plugins_dir(&project_path)?
+            .join(&plugin_id)
+            .join("dist")
+            .join("index.js")
+    };
 
     if !bundle_path.exists() {
         return Err(format!(
@@ -388,16 +540,30 @@ pub fn read_plugin_bundle(plugin_id: String) -> Result<String, String> {
 
 /// Read a plugin's manifest
 #[tauri::command]
-pub fn read_plugin_manifest(plugin_id: String) -> Result<PluginManifest, String> {
-    let plugins_dir = get_plugins_dir()?;
-    let plugin_dir = plugins_dir.join(&plugin_id);
+pub fn read_plugin_manifest(
+    project_path: String,
+    plugin_id: String,
+) -> Result<PluginManifest, String> {
+    let registry = read_registry(&project_path)?;
+    let entry = registry.plugins.iter().find(|e| e.plugin_id == plugin_id);
+
+    let plugin_dir = if let Some(entry) = entry {
+        if entry.is_dev {
+            PathBuf::from(&entry.local_path)
+        } else {
+            get_plugins_dir(&project_path)?.join(&plugin_id)
+        }
+    } else {
+        get_plugins_dir(&project_path)?.join(&plugin_id)
+    };
+
     read_manifest(&plugin_dir)
 }
 
 /// Toggle a plugin's enabled state
 #[tauri::command]
-pub fn toggle_plugin(plugin_id: String, enabled: bool) -> Result<(), String> {
-    let mut registry = read_registry()?;
+pub fn toggle_plugin(project_path: String, plugin_id: String, enabled: bool) -> Result<(), String> {
+    let mut registry = read_registry(&project_path)?;
 
     if let Some(entry) = registry
         .plugins
@@ -405,7 +571,7 @@ pub fn toggle_plugin(plugin_id: String, enabled: bool) -> Result<(), String> {
         .find(|e| e.plugin_id == plugin_id)
     {
         entry.enabled = enabled;
-        write_registry(&registry)?;
+        write_registry(&project_path, &registry)?;
         Ok(())
     } else {
         Err(format!("Plugin '{}' not found", plugin_id))
@@ -415,7 +581,6 @@ pub fn toggle_plugin(plugin_id: String, enabled: bool) -> Result<(), String> {
 /// Execute a shell command in a plugin's context
 ///
 /// Security: validates project_path, uses extended PATH, enforces 30s timeout.
-/// Plugins specify commands but execution is sandboxed to the project directory.
 #[tauri::command]
 pub async fn exec_plugin_shell(
     plugin_id: String,
@@ -426,10 +591,19 @@ pub async fn exec_plugin_shell(
     // Validate the project path for security
     let validated_path = validate_project_path(&project_path)?;
 
-    // Validate plugin exists
-    let plugins_dir = get_plugins_dir()?;
-    let plugin_dir = plugins_dir.join(&plugin_id);
-    if !plugin_dir.exists() {
+    // Validate plugin exists in this project
+    let registry = read_registry(&project_path)?;
+    let entry = registry.plugins.iter().find(|e| e.plugin_id == plugin_id);
+    let plugin_exists = if let Some(entry) = entry {
+        if entry.is_dev {
+            PathBuf::from(&entry.local_path).exists()
+        } else {
+            get_plugins_dir(&project_path)?.join(&plugin_id).exists()
+        }
+    } else {
+        false
+    };
+    if !plugin_exists {
         return Err(format!("Plugin '{}' not found", plugin_id));
     }
 
@@ -462,17 +636,140 @@ pub async fn exec_plugin_shell(
     })
 }
 
+/// Link a local dev plugin folder into a project.
+///
+/// Opens a native folder picker, validates the selected folder has plugin.json and dist/index.js,
+/// then registers it in the project's plugin registry as a dev plugin.
+#[tauri::command]
+pub async fn link_dev_plugin(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Option<PluginInfo>, String> {
+    let folder = app
+        .dialog()
+        .file()
+        .set_title("Select Plugin Folder")
+        .blocking_pick_folder();
+
+    let folder_path = match folder {
+        Some(path) => path
+            .into_path()
+            .map_err(|e| format!("Invalid folder path: {}", e))?,
+        None => return Ok(None), // User cancelled
+    };
+
+    // Validate plugin.json exists
+    let manifest = read_manifest(&folder_path)?;
+
+    // Validate dist/index.js exists
+    let bundle_path = folder_path.join("dist").join("index.js");
+    if !bundle_path.exists() {
+        return Err(format!(
+            "Plugin bundle not found at {}/dist/index.js. Did you run the build?",
+            folder_path.display()
+        ));
+    }
+
+    // Validate manifest has required fields
+    if manifest.id.is_empty() || manifest.name.is_empty() {
+        return Err("Plugin manifest must have 'id' and 'name' fields".to_string());
+    }
+
+    // Validate plugin ID is safe for filesystem
+    if manifest.id.contains('/')
+        || manifest.id.contains('\\')
+        || manifest.id.contains("..")
+        || manifest.id.starts_with('.')
+    {
+        return Err("Plugin ID contains invalid characters".to_string());
+    }
+
+    // Check for existing plugin with same ID
+    let mut registry = read_registry(&project_path)?;
+    if registry
+        .plugins
+        .iter()
+        .any(|e| e.plugin_id == manifest.id && !e.is_dev)
+    {
+        return Err(format!(
+            "A non-dev plugin '{}' is already installed. Uninstall it first.",
+            manifest.id
+        ));
+    }
+
+    // Remove existing dev entry for this plugin if present (re-link)
+    registry.plugins.retain(|e| e.plugin_id != manifest.id);
+
+    let local_path = folder_path.to_string_lossy().to_string();
+    let entry = RegistryEntry {
+        plugin_id: manifest.id.clone(),
+        enabled: true,
+        installed_at: now_ms(),
+        source_url: String::new(),
+        installed_commit: String::new(),
+        is_dev: true,
+        local_path: local_path.clone(),
+    };
+
+    registry.plugins.push(entry);
+    write_registry(&project_path, &registry)?;
+
+    Ok(Some(PluginInfo {
+        manifest,
+        enabled: true,
+        installed_at: now_ms(),
+        source_url: String::new(),
+        is_dev: true,
+        local_path,
+    }))
+}
+
+/// Unlink a dev plugin from a project.
+///
+/// Removes the plugin from the registry only. Does NOT delete local files.
+#[tauri::command]
+pub fn unlink_dev_plugin(project_path: String, plugin_id: String) -> Result<(), String> {
+    let mut registry = read_registry(&project_path)?;
+
+    let entry = registry.plugins.iter().find(|e| e.plugin_id == plugin_id);
+    match entry {
+        Some(e) if !e.is_dev => {
+            return Err("Plugin is not a dev plugin. Use uninstall instead.".to_string());
+        }
+        None => {
+            return Err(format!("Plugin '{}' not found", plugin_id));
+        }
+        _ => {}
+    }
+
+    // Remove from registry (does not touch local files)
+    registry.plugins.retain(|e| e.plugin_id != plugin_id);
+    write_registry(&project_path, &registry)?;
+
+    // Clean up storage.json in project plugins dir if it exists
+    let plugins_dir = get_plugins_dir(&project_path)?;
+    let storage_path = plugins_dir.join(&plugin_id).join("storage.json");
+    if storage_path.exists() {
+        let _ = fs::remove_file(&storage_path);
+    }
+    // Remove the plugin_id directory in plugins dir if it's empty
+    let plugin_data_dir = plugins_dir.join(&plugin_id);
+    if plugin_data_dir.exists() {
+        let _ = fs::remove_dir(&plugin_data_dir); // only removes if empty
+    }
+
+    Ok(())
+}
+
 /// Read plugin storage data
 ///
-/// scope "global" reads from ~/.shipstudio/plugins/{plugin-id}/storage.json
-/// scope "project" reads from {project}/.shipstudio/plugins/{plugin-id}.json
+/// Storage is at {project}/.shipstudio/plugins/{plugin-id}/storage.json
 #[tauri::command]
 pub fn read_plugin_storage(
     plugin_id: String,
-    scope: String,
-    project_path: Option<String>,
+    project_path: String,
 ) -> Result<serde_json::Value, String> {
-    let storage_path = get_storage_path(&plugin_id, &scope, project_path.as_deref())?;
+    let storage_path = get_storage_path(&plugin_id, &project_path)?;
 
     if !storage_path.exists() {
         return Ok(serde_json::Value::Object(serde_json::Map::new()));
@@ -488,11 +785,10 @@ pub fn read_plugin_storage(
 #[tauri::command]
 pub fn write_plugin_storage(
     plugin_id: String,
-    scope: String,
-    project_path: Option<String>,
+    project_path: String,
     data: serde_json::Value,
 ) -> Result<(), String> {
-    let storage_path = get_storage_path(&plugin_id, &scope, project_path.as_deref())?;
+    let storage_path = get_storage_path(&plugin_id, &project_path)?;
 
     // Ensure parent directory exists
     if let Some(parent) = storage_path.parent() {
@@ -507,11 +803,7 @@ pub fn write_plugin_storage(
 }
 
 /// Get the storage file path for a plugin
-fn get_storage_path(
-    plugin_id: &str,
-    scope: &str,
-    project_path: Option<&str>,
-) -> Result<PathBuf, String> {
+fn get_storage_path(plugin_id: &str, project_path: &str) -> Result<PathBuf, String> {
     // Validate plugin_id is safe
     if plugin_id.contains('/')
         || plugin_id.contains('\\')
@@ -521,22 +813,8 @@ fn get_storage_path(
         return Err("Invalid plugin ID".to_string());
     }
 
-    match scope {
-        "global" => {
-            let plugins_dir = get_plugins_dir()?;
-            Ok(plugins_dir.join(plugin_id).join("storage.json"))
-        }
-        "project" => {
-            let proj_path =
-                project_path.ok_or("Project path required for project-scoped storage")?;
-            let validated = validate_project_path(proj_path)?;
-            Ok(validated
-                .join(".shipstudio")
-                .join("plugins")
-                .join(format!("{}.json", plugin_id)))
-        }
-        _ => Err(format!("Invalid storage scope: '{}'", scope)),
-    }
+    let plugins_dir = get_plugins_dir(project_path)?;
+    Ok(plugins_dir.join(plugin_id).join("storage.json"))
 }
 
 #[cfg(test)]
@@ -582,32 +860,11 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_path_global() {
-        let path = get_storage_path("hello-world", "global", None);
-        assert!(path.is_ok());
-        let path = path.unwrap();
-        assert!(path.to_string_lossy().contains("hello-world"));
-        assert!(path.to_string_lossy().ends_with("storage.json"));
-    }
-
-    #[test]
     fn test_storage_path_invalid_plugin_id() {
-        let result = get_storage_path("../evil", "global", None);
+        let result = get_storage_path("../evil", "/tmp/test");
         assert!(result.is_err());
 
-        let result = get_storage_path(".hidden", "global", None);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_storage_path_project_requires_path() {
-        let result = get_storage_path("test", "project", None);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_storage_path_invalid_scope() {
-        let result = get_storage_path("test", "invalid", None);
+        let result = get_storage_path(".hidden", "/tmp/test");
         assert!(result.is_err());
     }
 }

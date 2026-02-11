@@ -233,6 +233,8 @@ pub fn run() {
             commands::plugins::exec_plugin_shell,
             commands::plugins::read_plugin_storage,
             commands::plugins::write_plugin_storage,
+            commands::plugins::link_dev_plugin,
+            commands::plugins::unlink_dev_plugin,
             // GitHub integration
             commands::github::check_github_cli_status,
             commands::github::get_github_username,

@@ -26,32 +26,41 @@ export interface PluginModule {
   onDeactivate?: () => void;
 }
 
-/** Cache of loaded plugin modules */
+/** Cache of loaded plugin modules, keyed by "projectPath:pluginId" */
 const moduleCache = new Map<string, PluginModule>();
 
 /** Cache of blob URLs for cleanup */
 const blobUrlCache = new Map<string, string>();
 
+function cacheKey(projectPath: string, pluginId: string): string {
+  return `${projectPath}:${pluginId}`;
+}
+
 /**
  * Load a plugin's JavaScript module via Blob URL + dynamic import.
  *
- * 1. Reads dist/index.js from the filesystem via Rust backend
+ * 1. Reads dist/index.js from the project's plugin directory via Rust backend
  * 2. Creates a Blob URL from the source
  * 3. Dynamic imports the Blob URL
  * 4. Caches the result
  */
-export async function loadPluginModule(pluginId: string): Promise<PluginModule> {
+export async function loadPluginModule(
+  projectPath: string,
+  pluginId: string
+): Promise<PluginModule> {
+  const key = cacheKey(projectPath, pluginId);
+
   // Return cached module if available
-  const cached = moduleCache.get(pluginId);
+  const cached = moduleCache.get(key);
   if (cached) return cached;
 
   // Read JS bundle source from backend
-  const source = await readPluginBundle(pluginId);
+  const source = await readPluginBundle(projectPath, pluginId);
 
   // Create Blob URL for dynamic import
   const blob = new Blob([source], { type: 'application/javascript' });
   const blobUrl = URL.createObjectURL(blob);
-  blobUrlCache.set(pluginId, blobUrl);
+  blobUrlCache.set(key, blobUrl);
 
   try {
     // Dynamic import the blob URL
@@ -65,7 +74,7 @@ export async function loadPluginModule(pluginId: string): Promise<PluginModule> 
       onDeactivate: typeof mod.onDeactivate === 'function' ? mod.onDeactivate : undefined,
     };
 
-    moduleCache.set(pluginId, pluginModule);
+    moduleCache.set(key, pluginModule);
 
     // Call onActivate lifecycle hook
     if (pluginModule.onActivate) {
@@ -80,7 +89,7 @@ export async function loadPluginModule(pluginId: string): Promise<PluginModule> 
   } catch (e) {
     // Clean up blob URL on failure
     URL.revokeObjectURL(blobUrl);
-    blobUrlCache.delete(pluginId);
+    blobUrlCache.delete(key);
     throw new Error(`Failed to load plugin ${pluginId}: ${e}`);
   }
 }
@@ -88,8 +97,10 @@ export async function loadPluginModule(pluginId: string): Promise<PluginModule> 
 /**
  * Unload a plugin module, cleaning up its Blob URL and cache entry.
  */
-export function unloadPluginModule(pluginId: string): void {
-  const mod = moduleCache.get(pluginId);
+export function unloadPluginModule(projectPath: string, pluginId: string): void {
+  const key = cacheKey(projectPath, pluginId);
+
+  const mod = moduleCache.get(key);
   if (mod?.onDeactivate) {
     try {
       mod.onDeactivate();
@@ -98,12 +109,12 @@ export function unloadPluginModule(pluginId: string): void {
     }
   }
 
-  moduleCache.delete(pluginId);
+  moduleCache.delete(key);
 
-  const blobUrl = blobUrlCache.get(pluginId);
+  const blobUrl = blobUrlCache.get(key);
   if (blobUrl) {
     URL.revokeObjectURL(blobUrl);
-    blobUrlCache.delete(pluginId);
+    blobUrlCache.delete(key);
   }
 }
 
