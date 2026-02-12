@@ -619,6 +619,8 @@ pub struct FullSetupStatus {
     pub all_ready: bool,
     pub items: Vec<SetupItemInfo>,
     pub optional_auths: OptionalAuths,
+    /// Agent IDs that are fully set up (installed + authenticated)
+    pub detected_agents: Vec<String>,
 }
 
 /// Quick setup check result (fast binary/file existence only)
@@ -642,6 +644,9 @@ pub struct AppState {
     /// Compact mode preferences
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compact_mode: Option<CompactModePreferences>,
+    /// Default AI agent ID (e.g., "claude-code" or "codex"). None falls back to Claude Code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_agent_id: Option<String>,
 }
 
 // ============ Compact Mode ============

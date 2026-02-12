@@ -4,9 +4,10 @@
 //! flags, auth indicators, etc.) are centralized here so the rest of the codebase
 //! is agent-agnostic.
 //!
-//! Currently only Claude Code is supported. Additional agents (Codex, Opencode,
-//! Gemini CLI) can be added by defining new `AgentConfig` consts and updating
-//! `get_active_agent()`.
+//! Supports multiple agents (Claude Code, Codex). The default agent is persisted
+//! in AppState and cached in-memory via a RwLock for fast access.
+
+use std::sync::RwLock;
 
 /// Configuration for an AI coding agent integrated with Ship Studio.
 pub struct AgentConfig {
@@ -86,11 +87,35 @@ pub const CODEX: AgentConfig = AgentConfig {
     setup_display_names: ("Codex", "Codex Account"),
 };
 
+/// All available agent configurations.
+pub const ALL_AGENTS: &[&AgentConfig] = &[&CLAUDE_CODE, &CODEX];
+
+/// In-memory cache for the default agent ID. `None` means unset (falls back to Claude Code).
+static DEFAULT_AGENT_ID: RwLock<Option<String>> = RwLock::new(None);
+
+/// Initialize the default agent cache from persisted AppState (called on startup).
+pub fn init_default_agent(agent_id: Option<&str>) {
+    if let Ok(mut cache) = DEFAULT_AGENT_ID.write() {
+        *cache = agent_id.map(|s| s.to_string());
+    }
+}
+
+/// Update the in-memory default agent cache (called when user picks their agent).
+pub fn set_default_agent_cached(agent_id: &str) {
+    if let Ok(mut cache) = DEFAULT_AGENT_ID.write() {
+        *cache = Some(agent_id.to_string());
+    }
+}
+
 /// Returns the currently active agent configuration.
 ///
-/// For now this always returns `CLAUDE_CODE`. In the future, this could read
-/// from a config file or environment variable to support multiple agents.
+/// Reads from the in-memory cache. Falls back to `CLAUDE_CODE` if unset or unrecognized.
 pub fn get_active_agent() -> &'static AgentConfig {
+    if let Ok(cache) = DEFAULT_AGENT_ID.read() {
+        if let Some(id) = cache.as_deref() {
+            return get_agent_by_id(id);
+        }
+    }
     &CLAUDE_CODE
 }
 
@@ -99,5 +124,72 @@ pub fn get_agent_by_id(id: &str) -> &'static AgentConfig {
     match id {
         "codex" => &CODEX,
         _ => &CLAUDE_CODE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_agent_by_id_claude_code() {
+        let agent = get_agent_by_id("claude-code");
+        assert_eq!(agent.id, "claude-code");
+        assert_eq!(agent.display_name, "Claude Code");
+    }
+
+    #[test]
+    fn get_agent_by_id_codex() {
+        let agent = get_agent_by_id("codex");
+        assert_eq!(agent.id, "codex");
+        assert_eq!(agent.display_name, "Codex");
+    }
+
+    #[test]
+    fn get_agent_by_id_unknown_falls_back_to_claude() {
+        let agent = get_agent_by_id("unknown");
+        assert_eq!(agent.id, "claude-code");
+    }
+
+    #[test]
+    fn all_agents_has_length_2() {
+        assert_eq!(ALL_AGENTS.len(), 2);
+    }
+
+    #[test]
+    fn claude_code_setup_item_ids() {
+        assert_eq!(CLAUDE_CODE.setup_item_ids, ("claude", "claude_auth"));
+    }
+
+    #[test]
+    fn codex_setup_item_ids() {
+        assert_eq!(CODEX.setup_item_ids, ("codex", "codex_auth"));
+    }
+
+    #[test]
+    fn init_and_get_active_agent_round_trip() {
+        // Default (None) -> Claude Code
+        init_default_agent(None);
+        let agent = get_active_agent();
+        assert_eq!(agent.id, "claude-code");
+
+        // Set to codex
+        init_default_agent(Some("codex"));
+        let agent = get_active_agent();
+        assert_eq!(agent.id, "codex");
+
+        // Reset
+        init_default_agent(None);
+    }
+
+    #[test]
+    fn set_default_agent_cached_updates_active_agent() {
+        init_default_agent(None);
+        set_default_agent_cached("codex");
+        let agent = get_active_agent();
+        assert_eq!(agent.id, "codex");
+
+        // Reset
+        init_default_agent(None);
     }
 }

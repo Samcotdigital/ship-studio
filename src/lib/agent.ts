@@ -82,6 +82,23 @@ export const ALL_AGENTS: AgentConfig[] = [CLAUDE_CODE, CODEX];
 /** All options available in the tab dropdown (agents + terminal). */
 export const ALL_TAB_OPTIONS: AgentConfig[] = [CLAUDE_CODE, CODEX, TERMINAL];
 
+/** In-memory cache for the default agent ID. Null means unset (falls back to Claude Code). */
+let defaultAgentId: string | null = null;
+
+/**
+ * Initialize the default agent cache (called on startup from App.tsx).
+ */
+export function initDefaultAgent(agentId: string | null): void {
+  defaultAgentId = agentId;
+}
+
+/**
+ * Get the cached default agent ID (falls back to Claude Code if unset).
+ */
+export function getDefaultAgentId(): string {
+  return defaultAgentId ?? CLAUDE_CODE.id;
+}
+
 /**
  * Look up an agent by its unique ID.
  * Falls back to CLAUDE_CODE if the ID is not recognized.
@@ -91,11 +108,10 @@ export function getAgentById(id: string): AgentConfig {
 }
 
 /**
- * Returns the currently active agent configuration.
+ * Returns the currently active (default) agent configuration.
  *
- * This always returns CLAUDE_CODE and is used by backend-facing code
- * (setup checks, AI commands) that always target Claude Code.
+ * Reads from the in-memory cache. Falls back to CLAUDE_CODE if unset.
  */
 export function getActiveAgent(): AgentConfig {
-  return CLAUDE_CODE;
+  return getAgentById(getDefaultAgentId());
 }

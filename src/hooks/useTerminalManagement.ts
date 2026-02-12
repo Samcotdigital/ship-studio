@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import type { TerminalHandle } from '../components/Terminal';
-import { CLAUDE_CODE, getAgentById } from '../lib/agent';
+import { getAgentById, getDefaultAgentId } from '../lib/agent';
 import type { AgentConfig } from '../lib/agent';
 
 /** Maximum number of terminal tabs allowed */
@@ -86,7 +86,7 @@ export interface UseTerminalManagementReturn {
  */
 export function useTerminalManagement(): UseTerminalManagementReturn {
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([
-    { id: 1, agentId: CLAUDE_CODE.id },
+    { id: 1, agentId: getDefaultAgentId() },
   ]);
   const [activeTerminalTab, setActiveTerminalTab] = useState(1);
   const [terminalSessionId, setTerminalSessionId] = useState(1);
@@ -103,7 +103,7 @@ export function useTerminalManagement(): UseTerminalManagementReturn {
   const addTerminalTab = useCallback(() => {
     if (terminalTabs.length >= MAX_TERMINAL_TABS) return;
     const newTabId = ++terminalTabCounterRef.current;
-    setTerminalTabs((prev) => [...prev, { id: newTabId, agentId: CLAUDE_CODE.id }]);
+    setTerminalTabs((prev) => [...prev, { id: newTabId, agentId: getDefaultAgentId() }]);
     setActiveTerminalTab(newTabId);
   }, [terminalTabs.length]);
 
@@ -137,7 +137,7 @@ export function useTerminalManagement(): UseTerminalManagementReturn {
   const resetTerminals = useCallback(() => {
     killAllTerminals();
     terminalTabCounterRef.current = 1;
-    setTerminalTabs([{ id: 1, agentId: CLAUDE_CODE.id }]);
+    setTerminalTabs([{ id: 1, agentId: getDefaultAgentId() }]);
     setActiveTerminalTab(1);
     setTerminalSessionId((prev) => prev + 1);
   }, [killAllTerminals]);
@@ -174,7 +174,7 @@ export function useTerminalManagement(): UseTerminalManagementReturn {
 
   const getActiveTabAgent = useCallback((): AgentConfig => {
     const tab = terminalTabs.find((t) => t.id === activeTerminalTab);
-    return tab ? getAgentById(tab.agentId) : CLAUDE_CODE;
+    return tab ? getAgentById(tab.agentId) : getAgentById(getDefaultAgentId());
   }, [terminalTabs, activeTerminalTab]);
 
   return {

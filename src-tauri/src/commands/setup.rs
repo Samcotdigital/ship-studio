@@ -1,9 +1,27 @@
 //! # Setup/Onboarding Commands
 //!
 //! Commands for the setup wizard and onboarding flow.
+//!
+//! ## Testing Modes
+//!
+//! Two env vars control onboarding testing:
+//!
+//! ### `SHIPSTUDIO_FORCE_ONBOARDING=1`
+//! Forces the onboarding wizard to appear but runs REAL system checks.
+//! Items show their actual status. Terminal installs work normally.
+//! After completing onboarding, an in-memory flag (`FORCE_ONBOARDING_COMPLETED`)
+//! prevents background verification from looping back. Nothing is persisted
+//! to disk, so onboarding shows again on next launch.
+//!
+//! ### `SHIPSTUDIO_FORCE_SETUP=<scenario>`
+//! Uses a fully mocked backend. Item statuses are faked based on the scenario.
+//! Clicking "Install" triggers a 2-second mock install. Terminal-based items
+//! (homebrew, gh_auth, claude, codex) still spawn real processes.
+//! Scenarios: `fresh`, `auth-only`, `almost-done`, `both-agents`, `codex-only`,
+//! or comma-separated item IDs (e.g. `homebrew,node,git,gh,gh_auth`).
 
-use crate::agent::get_active_agent;
-use crate::commands::claude::find_agent_binary;
+use crate::agent::{get_active_agent, get_agent_by_id, ALL_AGENTS};
+use crate::commands::claude::find_binary_by_name;
 use crate::commands::github::get_gh_command;
 use crate::types::{
     AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus,
@@ -83,6 +101,9 @@ lazy_static::lazy_static! {
     /// Global registry of spawned auth process PIDs for cleanup
     /// Maps auth type (e.g., "github", "claude") -> OS process ID (PID)
     static ref AUTH_PIDS: Mutex<std::collections::HashMap<String, u32>> = Mutex::new(std::collections::HashMap::new());
+    /// Tracks whether onboarding was completed this session in force-onboarding mode.
+    /// Once set, stop overriding all_ready so background verification doesn't loop.
+    static ref FORCE_ONBOARDING_COMPLETED: Mutex<bool> = Mutex::new(false);
 }
 
 /// All setup item IDs in dependency order
@@ -94,10 +115,12 @@ const ALL_ITEMS: &[&str] = &[
     "gh_auth",
     "claude",
     "claude_auth",
+    "codex",
+    "codex_auth",
 ];
 
 /// Tool items (not auth)
-const TOOL_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude"];
+const TOOL_ITEMS: &[&str] = &["homebrew", "node", "git", "gh", "claude", "codex"];
 
 /// Get items that should be pre-installed for a given scenario
 fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
@@ -133,6 +156,16 @@ fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
         "almost-done" => ALL_ITEMS
             .iter()
             .filter(|&&item| item != "gh_auth")
+            .copied()
+            .collect(),
+
+        // Both agents installed and authed (tests agent selection screen)
+        "both-agents" => ALL_ITEMS.to_vec(),
+
+        // Only Codex installed (no Claude)
+        "codex-only" => ALL_ITEMS
+            .iter()
+            .filter(|&&item| item != "claude" && item != "claude_auth")
             .copied()
             .collect(),
 
@@ -174,6 +207,24 @@ pub fn is_mock_mode() -> bool {
     is_mock
 }
 
+/// Check if we're in "force onboarding" mode.
+/// Unlike mock mode, this runs REAL system checks but forces the onboarding
+/// screen to appear so you can test the wizard flow on a fully set up machine.
+/// Once onboarding completes this session, stops overriding so background
+/// verification doesn't loop back.
+///
+/// Usage: SHIPSTUDIO_FORCE_ONBOARDING=1 npm run tauri dev
+fn is_force_onboarding_mode() -> bool {
+    if std::env::var("SHIPSTUDIO_FORCE_ONBOARDING").is_err() {
+        return false;
+    }
+    // Once onboarding completed this session, stop forcing
+    FORCE_ONBOARDING_COMPLETED
+        .lock()
+        .map(|completed| !*completed)
+        .unwrap_or(false)
+}
+
 /// Mark an item as mock-installed (for testing)
 pub fn mock_install(item_id: &str) {
     if let Ok(mut set) = MOCK_INSTALLED.lock() {
@@ -202,6 +253,8 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("gh_auth", "GitHub Account", Some("gh")),
             ("claude", "Claude Code", None),
             ("claude_auth", "Claude Account", Some("claude")),
+            ("codex", "Codex", None),
+            ("codex_auth", "Codex Account", Some("codex")),
         ];
 
         let mock_items: Vec<SetupItemInfo> = items
@@ -245,19 +298,42 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             .map(|i| matches!(i.status, SetupItemStatus::Ready))
             .unwrap_or(false);
 
-        // Required items for setup completion (GitHub auth is optional)
+        // Required base items for setup completion
         const REQUIRED_ITEMS_MOCK: &[&str] = &["homebrew", "node", "git", "gh"];
 
-        let all_ready = mock_items
+        let base_ready = mock_items
             .iter()
             .filter(|i| REQUIRED_ITEMS_MOCK.contains(&i.id.as_str()))
             .all(|i| matches!(i.status, SetupItemStatus::Ready));
+
+        // Check which agent pairs are fully ready
+        let mut detected_agents = Vec::new();
+        for agent in ALL_AGENTS {
+            let binary_ready = mock_items
+                .iter()
+                .find(|i| i.id == agent.setup_item_ids.0)
+                .map(|i| matches!(i.status, SetupItemStatus::Ready))
+                .unwrap_or(false);
+            let auth_ready = mock_items
+                .iter()
+                .find(|i| i.id == agent.setup_item_ids.1)
+                .map(|i| matches!(i.status, SetupItemStatus::Ready))
+                .unwrap_or(false);
+            if binary_ready && auth_ready {
+                detected_agents.push(agent.id.to_string());
+            }
+        }
+
+        let at_least_one_agent = !detected_agents.is_empty();
+        let all_ready = base_ready && at_least_one_agent;
+
         return FullSetupStatus {
             all_ready,
             items: mock_items,
             optional_auths: OptionalAuths {
                 github_authenticated,
             },
+            detected_agents,
         };
     }
 
@@ -447,72 +523,83 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
-    // 6. Agent CLI (e.g., Claude Code)
-    let agent = get_active_agent();
-    let agent_path = find_agent_binary();
-    let agent_version = agent_path.as_ref().and_then(|p| {
-        create_command(p)
-            .args([agent.version_flag])
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                } else {
-                    None
-                }
-            })
-    });
-    items.push(SetupItemInfo {
-        id: agent.setup_item_ids.0.to_string(),
-        friendly_name: agent.setup_display_names.0.to_string(),
-        status: if agent_path.is_some() {
-            SetupItemStatus::Ready
-        } else {
-            SetupItemStatus::NotInstalled
-        },
-        version: agent_version,
-        username: None,
-        error_message: None,
-    });
+    // 6-7. Agent CLIs and Auth — check ALL agents
+    let mut detected_agents = Vec::new();
 
-    // 7. Agent Auth
-    let agent_auth = if agent_path.is_some() {
-        if let Some(home) = dirs::home_dir() {
-            let agent_dir = home.join(agent.auth_config_dir);
-            // Check for various indicators that the agent has been authenticated/used
-            agent.auth_indicators.iter().any(|indicator| {
-                let path = agent_dir.join(indicator);
-                path.exists()
-            })
+    for agent in ALL_AGENTS {
+        let agent_path = find_binary_by_name(agent.binary_name);
+        let agent_version = agent_path.as_ref().and_then(|p| {
+            create_command(p)
+                .args([agent.version_flag])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+        });
+        let binary_ready = agent_path.is_some();
+        items.push(SetupItemInfo {
+            id: agent.setup_item_ids.0.to_string(),
+            friendly_name: agent.setup_display_names.0.to_string(),
+            status: if binary_ready {
+                SetupItemStatus::Ready
+            } else {
+                SetupItemStatus::NotInstalled
+            },
+            version: agent_version,
+            username: None,
+            error_message: None,
+        });
+
+        // Agent Auth
+        let agent_auth = if binary_ready {
+            if let Some(home) = dirs::home_dir() {
+                let agent_dir = home.join(agent.auth_config_dir);
+                agent.auth_indicators.iter().any(|indicator| {
+                    let path = agent_dir.join(indicator);
+                    path.exists()
+                })
+            } else {
+                false
+            }
         } else {
             false
-        }
-    } else {
-        false
-    };
-    items.push(SetupItemInfo {
-        id: agent.setup_item_ids.1.to_string(),
-        friendly_name: agent.setup_display_names.1.to_string(),
-        status: if agent_auth {
-            SetupItemStatus::Ready
-        } else if agent_path.is_some() {
-            SetupItemStatus::NotAuthenticated
-        } else {
-            SetupItemStatus::NotInstalled
-        },
-        version: None,
-        username: None,
-        error_message: None,
-    });
+        };
+        items.push(SetupItemInfo {
+            id: agent.setup_item_ids.1.to_string(),
+            friendly_name: agent.setup_display_names.1.to_string(),
+            status: if agent_auth {
+                SetupItemStatus::Ready
+            } else if binary_ready {
+                SetupItemStatus::NotAuthenticated
+            } else {
+                SetupItemStatus::NotInstalled
+            },
+            version: None,
+            username: None,
+            error_message: None,
+        });
 
-    // Required items for setup completion (GitHub auth is optional)
+        if binary_ready && agent_auth {
+            detected_agents.push(agent.id.to_string());
+        }
+    }
+
+    // Required base items for setup completion (GitHub auth and individual agent items are optional)
     const REQUIRED_ITEMS: &[&str] = &["homebrew", "node", "git", "gh"];
 
-    let all_ready = items
+    let base_ready = items
         .iter()
         .filter(|i| REQUIRED_ITEMS.contains(&i.id.as_str()) || i.id == "npm_fix")
         .all(|i| matches!(i.status, SetupItemStatus::Ready));
+
+    // At least one agent pair must be fully ready
+    let at_least_one_agent = !detected_agents.is_empty();
+    let all_ready = base_ready && at_least_one_agent;
 
     // Track optional auth status separately
     let github_authenticated = items
@@ -521,12 +608,21 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         .map(|i| matches!(i.status, SetupItemStatus::Ready))
         .unwrap_or(false);
 
+    // Force onboarding mode: run real checks but always report not-all-ready
+    // so the onboarding wizard is shown with real item statuses
+    let all_ready = if is_force_onboarding_mode() {
+        false
+    } else {
+        all_ready
+    };
+
     FullSetupStatus {
         all_ready,
         items,
         optional_auths: OptionalAuths {
             github_authenticated,
         },
+        detected_agents,
     }
 }
 
@@ -534,6 +630,14 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
 /// This is ~10ms vs 2-5 seconds for full setup check
 #[tauri::command]
 pub async fn quick_setup_check() -> QuickSetupCheck {
+    // Force onboarding mode: always show onboarding with real checks
+    if is_force_onboarding_mode() {
+        return QuickSetupCheck {
+            all_present: false,
+            setup_complete_cached: false,
+        };
+    }
+
     // Check persisted state first
     let app_state = read_app_state();
 
@@ -553,29 +657,29 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
-    let agent = get_active_agent();
-    let agent_present = find_agent_binary().is_some();
 
-    // Fast auth checks: file/directory existence only
-    let agent_auth_present = if let Some(home) = dirs::home_dir() {
-        let agent_dir = home.join(agent.auth_config_dir);
-        agent.auth_indicators.iter().any(|indicator| {
-            let path = agent_dir.join(indicator);
-            path.exists()
-        })
-    } else {
-        false
-    };
+    // Check ALL agents — at least one pair must be present
+    let at_least_one_agent = ALL_AGENTS.iter().any(|agent| {
+        let binary_present = find_binary_by_name(agent.binary_name).is_some();
+        if !binary_present {
+            return false;
+        }
+        if let Some(home) = dirs::home_dir() {
+            let agent_dir = home.join(agent.auth_config_dir);
+            agent
+                .auth_indicators
+                .iter()
+                .any(|indicator| agent_dir.join(indicator).exists())
+        } else {
+            false
+        }
+    });
 
     // For gh_auth, we trust the cached state since checking requires subprocess
     // It will be verified in the background after showing projects
 
-    let all_present = pkg_mgr_present
-        && node_present
-        && git_present
-        && gh_present
-        && agent_present
-        && agent_auth_present;
+    let all_present =
+        pkg_mgr_present && node_present && git_present && gh_present && at_least_one_agent;
 
     QuickSetupCheck {
         all_present,
@@ -586,6 +690,16 @@ pub async fn quick_setup_check() -> QuickSetupCheck {
 /// Mark setup as complete (persists to disk)
 #[tauri::command]
 pub async fn mark_setup_complete() -> Result<(), String> {
+    // Force onboarding mode: don't persist to disk, but mark as completed
+    // this session so background verification doesn't loop back to onboarding
+    if is_force_onboarding_mode() {
+        if let Ok(mut completed) = FORCE_ONBOARDING_COMPLETED.lock() {
+            *completed = true;
+        }
+        tracing::info!("Force onboarding mode: skipping setup complete persistence");
+        return Ok(());
+    }
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -611,6 +725,24 @@ pub async fn reset_setup_state() -> Result<(), String> {
 
     write_app_state(&state)?;
     tracing::info!("Setup state reset");
+    Ok(())
+}
+
+/// Get the default agent ID from persisted AppState.
+/// Returns None if not set (frontend should fall back to Claude Code).
+#[tauri::command]
+pub async fn get_default_agent_id() -> Option<String> {
+    read_app_state().default_agent_id
+}
+
+/// Set the default agent ID. Persists to AppState and updates in-memory cache.
+#[tauri::command]
+pub async fn set_default_agent_id(agent_id: String) -> Result<(), String> {
+    let mut state = read_app_state();
+    state.default_agent_id = Some(agent_id.clone());
+    write_app_state(&state)?;
+    crate::agent::set_default_agent_cached(&agent_id);
+    tracing::info!("Default agent set to: {}", agent_id);
     Ok(())
 }
 
@@ -968,25 +1100,34 @@ pub async fn start_github_auth(app: tauri::AppHandle) -> Result<String, String> 
     Ok("A code has been copied to your clipboard. Paste it in the browser to connect.".to_string())
 }
 
-/// Start Claude authentication
+/// Start agent authentication.
+/// If `agent_id` is provided, authenticate that specific agent. Otherwise, use the active agent.
 #[tauri::command]
-pub async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn start_claude_auth(
+    app: tauri::AppHandle,
+    agent_id: Option<String>,
+) -> Result<String, String> {
+    let agent = match agent_id.as_deref() {
+        Some(id) => get_agent_by_id(id),
+        None => get_active_agent(),
+    };
+
     let _ = app.emit(
         "setup-progress",
         serde_json::json!({
-            "itemId": "claude_auth",
+            "itemId": agent.setup_item_ids.1,
             "message": "Opening browser..."
         }),
     );
 
     if is_mock_mode() {
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-        mock_install("claude_auth");
+        mock_install(agent.setup_item_ids.1);
         return Ok("Mock auth completed".to_string());
     }
 
-    let agent = get_active_agent();
-    let agent_path = find_agent_binary().ok_or(format!("{} not installed", agent.display_name))?;
+    let agent_path = find_binary_by_name(agent.binary_name)
+        .ok_or(format!("{} not installed", agent.display_name))?;
 
     let child = create_command(&agent_path)
         .args(agent.auth_trigger_args)
@@ -999,33 +1140,39 @@ pub async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> 
         pids.insert(agent.id.to_string(), pid);
     }
     // Spawn a thread to wait for the process and clean up the registry when it exits
-    let agent_id = agent.id.to_string();
+    let agent_id_str = agent.id.to_string();
     std::thread::spawn(move || {
         let _ = child.wait_with_output();
         if let Ok(mut pids) = AUTH_PIDS.lock() {
-            pids.remove(&agent_id);
+            pids.remove(&agent_id_str);
         }
     });
 
-    Ok("Browser opened. Log in to your Anthropic account to continue.".to_string())
+    Ok(format!(
+        "Browser opened. Log in to your {} account to continue.",
+        agent.display_name
+    ))
 }
 
-/// Check if the agent is authenticated
+/// Check if an agent is authenticated.
+/// If `agent_id` is provided, check that specific agent. Otherwise, use the active agent.
 #[tauri::command]
-pub async fn check_claude_auth_status() -> bool {
-    let agent = get_active_agent();
+pub async fn check_claude_auth_status(agent_id: Option<String>) -> bool {
+    let agent = match agent_id.as_deref() {
+        Some(id) => get_agent_by_id(id),
+        None => get_active_agent(),
+    };
 
     if is_mock_mode() {
         return is_mock_installed(agent.setup_item_ids.1);
     }
 
-    if find_agent_binary().is_none() {
+    if find_binary_by_name(agent.binary_name).is_none() {
         return false;
     }
 
     if let Some(home) = dirs::home_dir() {
         let agent_dir = home.join(agent.auth_config_dir);
-        // Check for various indicators that the agent has been authenticated/used
         return agent.auth_indicators.iter().any(|indicator| {
             let path = agent_dir.join(indicator);
             path.exists()
@@ -1313,4 +1460,112 @@ async fn install_version_platform(
     _temp_dir: &std::path::Path,
 ) -> Result<(), String> {
     Err("Version rewind is not yet available on this platform.".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============ get_scenario_items ============
+
+    #[test]
+    fn scenario_fresh_returns_empty() {
+        let items = get_scenario_items("fresh");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn scenario_1_alias_returns_empty() {
+        let items = get_scenario_items("1");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn scenario_auth_only_returns_tool_items() {
+        let items = get_scenario_items("auth-only");
+        assert_eq!(items, TOOL_ITEMS.to_vec());
+    }
+
+    #[test]
+    fn scenario_both_agents_returns_all_items() {
+        let items = get_scenario_items("both-agents");
+        assert_eq!(items, ALL_ITEMS.to_vec());
+    }
+
+    #[test]
+    fn scenario_codex_only_excludes_claude() {
+        let items = get_scenario_items("codex-only");
+        assert!(!items.contains(&"claude"));
+        assert!(!items.contains(&"claude_auth"));
+        assert!(items.contains(&"codex"));
+        assert!(items.contains(&"codex_auth"));
+    }
+
+    #[test]
+    fn scenario_github_missing_excludes_gh_auth() {
+        let items = get_scenario_items("github-missing");
+        assert!(!items.contains(&"gh_auth"));
+        assert!(items.contains(&"gh"));
+    }
+
+    #[test]
+    fn scenario_homebrew_missing_excludes_homebrew() {
+        let items = get_scenario_items("homebrew-missing");
+        assert!(!items.contains(&"homebrew"));
+        assert!(items.contains(&"node"));
+    }
+
+    #[test]
+    fn scenario_comma_separated_returns_exact_items() {
+        let items = get_scenario_items("homebrew,node,git");
+        assert_eq!(items.len(), 3);
+        assert!(items.contains(&"homebrew"));
+        assert!(items.contains(&"node"));
+        assert!(items.contains(&"git"));
+    }
+
+    #[test]
+    fn scenario_unknown_item_in_csv_returns_empty() {
+        let items = get_scenario_items("unknown_item");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn all_items_contains_9_items_including_codex() {
+        assert_eq!(ALL_ITEMS.len(), 9);
+        assert!(ALL_ITEMS.contains(&"codex"));
+        assert!(ALL_ITEMS.contains(&"codex_auth"));
+    }
+
+    #[test]
+    fn tool_items_contains_6_items_including_codex() {
+        assert_eq!(TOOL_ITEMS.len(), 6);
+        assert!(TOOL_ITEMS.contains(&"codex"));
+        assert!(TOOL_ITEMS.contains(&"claude"));
+    }
+
+    // ============ AppState ============
+
+    #[test]
+    fn app_state_default_has_no_default_agent_id() {
+        let state = AppState::default();
+        assert!(state.default_agent_id.is_none());
+        assert!(!state.setup_complete);
+    }
+
+    #[test]
+    fn app_state_deserializes_without_default_agent_id() {
+        // Simulate a legacy JSON without the default_agent_id field
+        let json = r#"{"setupComplete": true, "setupCompletedAt": 12345}"#;
+        let state: AppState = serde_json::from_str(json).unwrap();
+        assert!(state.setup_complete);
+        assert!(state.default_agent_id.is_none());
+    }
+
+    #[test]
+    fn app_state_deserializes_with_default_agent_id() {
+        let json = r#"{"setupComplete": true, "defaultAgentId": "codex"}"#;
+        let state: AppState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.default_agent_id, Some("codex".to_string()));
+    }
 }

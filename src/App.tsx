@@ -142,7 +142,13 @@ import {
   getProjectWindow,
   focusWindowByLabel,
 } from './lib/window';
-import { getFullSetupStatus, quickSetupCheck, markSetupComplete } from './lib/setup';
+import {
+  getFullSetupStatus,
+  quickSetupCheck,
+  markSetupComplete,
+  getDefaultAgentId as fetchDefaultAgentId,
+} from './lib/setup';
+import { initDefaultAgent } from './lib/agent';
 import { UpdateBanner } from './components/UpdateBanner';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from './lib/logger';
@@ -421,6 +427,10 @@ function App({ initialProjectPath }: AppProps) {
   const checkSetup = useCallback(async (forceFullCheck = false) => {
     setView('loading');
     try {
+      // Hydrate default agent cache from backend
+      const defaultAgent = await fetchDefaultAgentId();
+      initDefaultAgent(defaultAgent);
+
       // Fast path: if setup was previously completed, try quick check first
       if (!forceFullCheck) {
         const quickCheck = await quickSetupCheck();
@@ -1573,6 +1583,9 @@ function App({ initialProjectPath }: AppProps) {
 
   if (view === 'onboarding') {
     const handleOnboardingComplete = async () => {
+      // Re-hydrate default agent cache (may have been set during onboarding)
+      const defaultAgent = await fetchDefaultAgentId();
+      initDefaultAgent(defaultAgent);
       // Persist that setup is complete so future launches are fast
       await markSetupComplete();
       // Force full check to update all CLI states

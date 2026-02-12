@@ -435,21 +435,21 @@ pub async fn kill_all_pty() -> Result<u32, String> {
 pub async fn cleanup_orphaned_processes() -> Result<(), String> {
     #[cfg(unix)]
     {
-        let agent = crate::agent::get_active_agent();
-
-        // Kill orphaned agent processes (parent is init/launchd - PID 1)
-        let kill_script = format!(
-            r#"
-                for pid in $(pgrep -x {} 2>/dev/null); do
-                    ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
-                    if [ "$ppid" = "1" ]; then
-                        kill $pid 2>/dev/null
-                    fi
-                done
-            "#,
-            agent.process_name
-        );
-        let _ = create_command("sh").args(["-c", &kill_script]).output();
+        // Kill orphaned processes for ALL agents (not just the active one)
+        for agent in crate::agent::ALL_AGENTS {
+            let kill_script = format!(
+                r#"
+                    for pid in $(pgrep -x {} 2>/dev/null); do
+                        ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
+                        if [ "$ppid" = "1" ]; then
+                            kill $pid 2>/dev/null
+                        fi
+                    done
+                "#,
+                agent.process_name
+            );
+            let _ = create_command("sh").args(["-c", &kill_script]).output();
+        }
 
         // Also kill orphaned node processes running next-server (from dev server)
         let _ = create_command("sh")

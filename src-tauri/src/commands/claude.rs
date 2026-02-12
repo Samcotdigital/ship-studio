@@ -20,7 +20,7 @@ pub fn find_claude_binary() -> Option<std::path::PathBuf> {
 }
 
 /// Finds a CLI binary by name, checking common installation paths.
-fn find_binary_by_name(binary_name: &str) -> Option<std::path::PathBuf> {
+pub fn find_binary_by_name(binary_name: &str) -> Option<std::path::PathBuf> {
     // First try which
     if let Ok(path) = which::which(binary_name) {
         return Some(path);

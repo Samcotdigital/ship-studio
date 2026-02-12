@@ -29,27 +29,27 @@ use std::process::Command;
 fn cleanup_agent_processes() {
     #[cfg(unix)]
     {
-        let agent = agent::get_active_agent();
-
-        // Get current process's children and kill them
         let pid = std::process::id();
-        let _ = Command::new("pkill")
-            .args(["-P", &pid.to_string(), agent.process_name])
-            .output();
 
-        // Kill any orphaned agent processes (parent is init/launchd - PID 1)
-        let kill_script = format!(
-            r#"
-                for pid in $(pgrep -x {} 2>/dev/null); do
-                    ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
-                    if [ "$ppid" = "1" ]; then
-                        kill $pid 2>/dev/null
-                    fi
-                done
-            "#,
-            agent.process_name
-        );
-        let _ = Command::new("sh").args(["-c", &kill_script]).output();
+        // Iterate ALL agents to kill children and orphans for each
+        for ag in agent::ALL_AGENTS {
+            let _ = Command::new("pkill")
+                .args(["-P", &pid.to_string(), ag.process_name])
+                .output();
+
+            let kill_script = format!(
+                r#"
+                    for pid in $(pgrep -x {} 2>/dev/null); do
+                        ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
+                        if [ "$ppid" = "1" ]; then
+                            kill $pid 2>/dev/null
+                        fi
+                    done
+                "#,
+                ag.process_name
+            );
+            let _ = Command::new("sh").args(["-c", &kill_script]).output();
+        }
 
         // Also kill orphaned node processes running next-server (from dev server)
         let _ = Command::new("sh")
@@ -80,6 +80,10 @@ pub fn run() {
     // Clean up any orphaned agent processes from previous crashed sessions
     cleanup_agent_processes();
     tracing::debug!("Orphaned agent processes cleaned up");
+
+    // Hydrate the default agent cache from persisted AppState
+    let app_state = commands::setup::read_app_state();
+    agent::init_default_agent(app_state.default_agent_id.as_deref());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -301,6 +305,8 @@ pub fn run() {
             commands::setup::quick_setup_check,
             commands::setup::mark_setup_complete,
             commands::setup::reset_setup_state,
+            commands::setup::get_default_agent_id,
+            commands::setup::set_default_agent_id,
             // Assets
             commands::assets::list_assets,
             commands::assets::upload_asset,

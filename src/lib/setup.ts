@@ -7,6 +7,7 @@
  * - Git
  * - GitHub CLI + auth
  * - Claude Code + auth
+ * - Codex + auth
  *
  * @module lib/setup
  */
@@ -71,16 +72,22 @@ export interface OptionalAuths {
 
 /** Full setup status from backend */
 export interface FullSetupStatus {
-  /** All required items are ready (excludes optional auth items) */
+  /** All required items are ready (base tools + at least one agent pair) */
   allReady: boolean;
   /** Individual item statuses */
   items: SetupItem[];
   /** Status of optional authentication items */
   optionalAuths: OptionalAuths;
+  /** Agent IDs that are fully set up (installed + authenticated) */
+  detectedAgents: string[];
 }
 
-/** Items that are optional and can be skipped during onboarding */
-export const OPTIONAL_ITEMS = new Set(['gh_auth', 'claude', 'claude_auth']);
+/**
+ * Items that are optional and can be skipped during onboarding.
+ * Individual agent items are "optional" because each one individually is not required,
+ * but the backend `allReady` enforces "at least one agent pair".
+ */
+export const OPTIONAL_ITEMS = new Set(['gh_auth', 'claude', 'claude_auth', 'codex', 'codex_auth']);
 
 /** Quick setup check result (fast Tier-1 check) */
 export interface QuickSetupCheck {
@@ -109,6 +116,8 @@ export function getSetupDependencies(): Record<string, string[]> {
     gh_auth: ['gh'],
     claude: [], // Uses its own installer
     claude_auth: ['claude'],
+    codex: [], // Uses npm global install
+    codex_auth: ['codex'],
   };
 }
 
@@ -125,6 +134,8 @@ export const SETUP_ITEM_ORDER = [
   'gh_auth',
   'claude',
   'claude_auth',
+  'codex',
+  'codex_auth',
 ];
 
 /** Friendly names for each item */
@@ -137,6 +148,8 @@ export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   gh_auth: 'GitHub Account',
   claude: 'Claude Code',
   claude_auth: 'Claude Account',
+  codex: 'Codex',
+  codex_auth: 'Codex Account',
 };
 
 /** Messages shown while item is in progress */
@@ -149,6 +162,8 @@ export const SETUP_PROGRESS_MESSAGES: Record<string, string> = {
   gh_auth: 'Connecting to GitHub...',
   claude: 'Installing Claude Code...',
   claude_auth: 'Connecting to Claude...',
+  codex: 'Installing Codex...',
+  codex_auth: 'Connecting to Codex...',
 };
 
 /** Time estimates for each setup item */
@@ -161,7 +176,40 @@ export const SETUP_TIME_ESTIMATES: Record<string, string> = {
   gh_auth: '~15 sec',
   claude: '~10 sec',
   claude_auth: '~15 sec',
+  codex: '~15 sec',
+  codex_auth: '~15 sec',
 };
+
+// ============ Agent Pair Helpers ============
+
+/** Agent item pairs: binary item ID + auth item ID */
+export const AGENT_ITEM_PAIRS = [
+  { binaryId: 'claude', authId: 'claude_auth' },
+  { binaryId: 'codex', authId: 'codex_auth' },
+] as const;
+
+/** Agent item IDs (all binary + auth IDs) */
+export const AGENT_ITEM_IDS: Set<string> = new Set(
+  AGENT_ITEM_PAIRS.flatMap((p) => [p.binaryId, p.authId])
+);
+
+/**
+ * Returns agent pairs that have both binary and auth ready.
+ */
+export function getReadyAgentPairs(items: SetupItem[]): (typeof AGENT_ITEM_PAIRS)[number][] {
+  return AGENT_ITEM_PAIRS.filter((pair) => {
+    const binary = items.find((i) => i.id === pair.binaryId);
+    const auth = items.find((i) => i.id === pair.authId);
+    return binary?.status === 'ready' && auth?.status === 'ready';
+  });
+}
+
+/**
+ * Returns true if at least one agent pair (binary + auth) is fully ready.
+ */
+export function isAtLeastOneAgentReady(items: SetupItem[]): boolean {
+  return getReadyAgentPairs(items).length > 0;
+}
 
 /**
  * Check if an item's dependencies are all ready.
@@ -207,6 +255,89 @@ export function mergePluginSetupItems(
   }
 
   return merged;
+}
+
+// ============ Wizard Step Definitions ============
+
+export type WizardStepId = 'package-manager' | 'git-github' | 'agent' | 'hosting';
+
+export interface WizardStepDef {
+  id: WizardStepId;
+  title: string;
+  subtitle: string;
+  itemIds: string[];
+  skippable: boolean;
+}
+
+export const WIZARD_STEPS: WizardStepDef[] = [
+  {
+    id: 'package-manager',
+    title: 'Package Manager & Node.js',
+    subtitle: 'Install the tools needed to manage dependencies',
+    itemIds: ['homebrew', 'node', 'npm_fix'],
+    skippable: false,
+  },
+  {
+    id: 'git-github',
+    title: 'Git & GitHub',
+    subtitle: 'Set up version control and repository hosting',
+    itemIds: ['git', 'gh', 'gh_auth'],
+    skippable: false,
+  },
+  {
+    id: 'agent',
+    title: 'AI Agent',
+    subtitle: 'Install at least one AI coding assistant',
+    itemIds: ['claude', 'claude_auth', 'codex', 'codex_auth'],
+    skippable: false,
+  },
+  {
+    id: 'hosting',
+    title: 'Hosting Provider',
+    subtitle: 'Deploy your projects to the web',
+    itemIds: [],
+    skippable: true,
+  },
+];
+
+/**
+ * Get the items for a wizard step, filtering out items not present in the current status.
+ */
+export function getStepItems(stepId: WizardStepId, items: SetupItem[]): SetupItem[] {
+  const step = WIZARD_STEPS.find((s) => s.id === stepId);
+  if (!step) return [];
+  return step.itemIds
+    .map((id) => items.find((i) => i.id === id))
+    .filter((i): i is SetupItem => i !== undefined);
+}
+
+/**
+ * Check if a wizard step is complete.
+ * - package-manager / git-github: all present items must be ready
+ * - agent: at least one agent pair (binary + auth) must be ready
+ * - hosting: always complete (placeholder)
+ */
+export function isWizardStepComplete(stepId: WizardStepId, items: SetupItem[]): boolean {
+  if (stepId === 'hosting') return true;
+
+  if (stepId === 'agent') {
+    return isAtLeastOneAgentReady(items);
+  }
+
+  const stepItems = getStepItems(stepId, items);
+  return stepItems.length > 0 && stepItems.every((i) => i.status === 'ready');
+}
+
+/**
+ * Find the first incomplete wizard step. Returns null if all are complete.
+ */
+export function findFirstIncompleteStep(items: SetupItem[]): WizardStepId | null {
+  for (const step of WIZARD_STEPS) {
+    if (!isWizardStepComplete(step.id, items)) {
+      return step.id;
+    }
+  }
+  return null;
 }
 
 // ============ Backend API ============
@@ -262,18 +393,20 @@ export async function installClaude(): Promise<void> {
 }
 
 /**
- * Start Claude authentication flow.
+ * Start agent authentication flow.
+ * If agentId is provided, authenticate that specific agent.
  * Returns a message to display to the user.
  */
-export async function startClaudeAuth(): Promise<string> {
-  return invoke<string>('start_claude_auth');
+export async function startClaudeAuth(agentId?: string): Promise<string> {
+  return invoke<string>('start_claude_auth', { agentId: agentId ?? null });
 }
 
 /**
- * Check if Claude is authenticated.
+ * Check if an agent is authenticated.
+ * If agentId is provided, check that specific agent.
  */
-export async function checkClaudeAuthStatus(): Promise<boolean> {
-  return invoke<boolean>('check_claude_auth_status');
+export async function checkClaudeAuthStatus(agentId?: string): Promise<boolean> {
+  return invoke<boolean>('check_claude_auth_status', { agentId: agentId ?? null });
 }
 
 /**
@@ -297,6 +430,21 @@ export async function markSetupComplete(): Promise<void> {
  */
 export async function resetSetupState(): Promise<void> {
   return invoke('reset_setup_state');
+}
+
+/**
+ * Get the default agent ID from persisted AppState.
+ * Returns null if not set (falls back to Claude Code).
+ */
+export async function getDefaultAgentId(): Promise<string | null> {
+  return invoke<string | null>('get_default_agent_id');
+}
+
+/**
+ * Set the default agent ID. Persists to AppState and updates in-memory cache.
+ */
+export async function setDefaultAgentId(agentId: string): Promise<void> {
+  return invoke('set_default_agent_id', { agentId });
 }
 
 /**
@@ -394,6 +542,14 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         command: 'claude',
         args: [],
       },
+      codex: {
+        command: 'npm',
+        args: ['install', '-g', '@openai/codex'],
+      },
+      codex_auth: {
+        command: 'codex',
+        args: [],
+      },
     };
   } else {
     // macOS/Linux commands (using bash)
@@ -441,6 +597,14 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
         command: 'claude',
         args: [],
       },
+      codex: {
+        command: '/bin/bash',
+        args: ['-c', 'npm install -g @openai/codex'],
+      },
+      codex_auth: {
+        command: 'codex',
+        args: [],
+      },
     };
   }
 }
@@ -449,4 +613,12 @@ export function getTerminalCommands(): Record<string, TerminalCommand> {
 export const TERMINAL_COMMANDS: Record<string, TerminalCommand> = getTerminalCommands();
 
 /** Set of item IDs that require interactive terminal */
-export const USES_TERMINAL = new Set(['homebrew', 'npm_fix', 'gh_auth', 'claude', 'claude_auth']);
+export const USES_TERMINAL = new Set([
+  'homebrew',
+  'npm_fix',
+  'gh_auth',
+  'claude',
+  'claude_auth',
+  'codex',
+  'codex_auth',
+]);
