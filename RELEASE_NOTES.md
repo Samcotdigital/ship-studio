@@ -6,6 +6,12 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.53
+
+- **HTML/CSS/JS support** - Create and preview plain HTML projects (no framework needed)
+- **Live reload** - Preview auto-refreshes when files change in static HTML projects
+- **HTML starter template** - New HTML/CSS/JS template option in project creation
+
 ## What's New in v0.3.52
 
 - **Terminal loading indicator** - Terminal now shows a loading message while Claude Code starts up instead of a blank screen
