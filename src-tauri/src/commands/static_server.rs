@@ -6,14 +6,20 @@
 use crate::utils::validate_project_path;
 
 /// Start a static file server for a project, returning the port it's listening on.
+/// Also starts a file watcher that emits `static-file-changed` events for live reload.
 #[tauri::command]
 pub async fn start_static_server(
+    app: tauri::AppHandle,
     window_label: String,
     project_path: String,
 ) -> Result<u16, String> {
     let validated = validate_project_path(&project_path)?;
-    crate::static_server::start_static_server(window_label, validated.to_string_lossy().to_string())
-        .await
+    crate::static_server::start_static_server(
+        app,
+        window_label,
+        validated.to_string_lossy().to_string(),
+    )
+    .await
 }
 
 /// Stop the static file server for a window.

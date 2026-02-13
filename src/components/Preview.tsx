@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { logger } from '../lib/logger';
 import { getWindowLabel } from '../lib/window';
@@ -426,6 +427,24 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [onSendToClaude, onToast]);
+
+  // Auto-reload for static HTML projects when files change on disk
+  useEffect(() => {
+    if (!isStaticProject || !serverReady) return;
+
+    let unlisten: (() => void) | null = null;
+
+    listen<{ windowLabel: string }>('static-file-changed', () => {
+      logger.debug('[Preview] File change detected, reloading preview');
+      setCacheBuster(Date.now());
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [isStaticProject, serverReady]);
 
   useEffect(() => {
     // Skip if not ready to check yet (-1 means waiting for old server to die)

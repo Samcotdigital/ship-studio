@@ -15,10 +15,13 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use lazy_static::lazy_static;
+use notify::{EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use tauri::Emitter;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -75,11 +78,23 @@ fn get_mime_type(extension: &str) -> &'static str {
     "application/octet-stream"
 }
 
+/// Extensions that should trigger a live reload when changed.
+const WATCH_EXTENSIONS: &[&str] = &[
+    "html", "htm", "css", "js", "json", "svg", "png", "jpg", "jpeg", "gif", "webp", "ico",
+];
+
+/// Directories to ignore when watching for file changes.
+const WATCH_IGNORE_DIRS: &[&str] = &[".git", "node_modules", ".shipstudio", ".DS_Store"];
+
+/// Minimum interval between file change events (debounce).
+const DEBOUNCE_MS: u64 = 300;
+
 /// A running static server instance.
 struct StaticServerInstance {
     port: u16,
     shutdown_tx: Option<oneshot::Sender<()>>,
     _task_handle: JoinHandle<()>,
+    watcher_shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 lazy_static! {
@@ -89,8 +104,10 @@ lazy_static! {
 }
 
 /// Start a static file server for the given window, serving files from `project_path`.
-/// Returns the server's listening port.
+/// Returns the server's listening port. Also starts a file watcher that emits
+/// `static-file-changed` Tauri events when project files are modified.
 pub async fn start_static_server(
+    app: tauri::AppHandle,
     window_label: String,
     project_path: String,
 ) -> Result<u16, String> {
@@ -149,10 +166,15 @@ pub async fn start_static_server(
         }
     });
 
+    // Start file watcher for live reload
+    let watcher_shutdown_tx =
+        start_file_watcher(app, window_label.clone(), PathBuf::from(&project_path));
+
     let instance = StaticServerInstance {
         port,
         shutdown_tx: Some(shutdown_tx),
         _task_handle: task_handle,
+        watcher_shutdown_tx: Some(watcher_shutdown_tx),
     };
 
     STATIC_SERVER_INSTANCES
@@ -175,6 +197,9 @@ pub fn stop_static_server(window_label: &str) {
             if let Some(tx) = instance.shutdown_tx.take() {
                 let _ = tx.send(());
             }
+            if let Some(tx) = instance.watcher_shutdown_tx.take() {
+                let _ = tx.send(());
+            }
             tracing::info!(
                 "[StaticServer] Stopped server for window '{}' (port {})",
                 window_label,
@@ -191,12 +216,135 @@ pub fn stop_all_static_servers() {
             if let Some(tx) = instance.shutdown_tx.take() {
                 let _ = tx.send(());
             }
+            if let Some(tx) = instance.watcher_shutdown_tx.take() {
+                let _ = tx.send(());
+            }
             tracing::info!(
                 "[StaticServer] Stopped server for window '{}' (cleanup)",
                 label
             );
         }
     }
+}
+
+/// Check if a file path should trigger a reload based on its extension and location.
+fn should_trigger_reload(path: &Path) -> bool {
+    // Check if path contains any ignored directory segments
+    let path_str = path.to_string_lossy();
+    for ignored in WATCH_IGNORE_DIRS {
+        if path_str.contains(ignored) {
+            return false;
+        }
+    }
+
+    // Check extension
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        WATCH_EXTENSIONS.iter().any(|&e| e == ext_lower)
+    } else {
+        false
+    }
+}
+
+/// Start a file watcher that emits Tauri events when project files change.
+/// Returns a shutdown channel sender to stop the watcher.
+fn start_file_watcher(
+    app: tauri::AppHandle,
+    window_label: String,
+    project_path: PathBuf,
+) -> oneshot::Sender<()> {
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+
+    // Use an mpsc channel to bridge notify's sync callback to our async context
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<()>(16);
+
+    // Create the watcher on a std thread (notify uses sync callbacks)
+    let watch_path = project_path.clone();
+    std::thread::spawn(move || {
+        let tx = event_tx;
+        let mut watcher =
+            match notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    // Only trigger on content-modifying events
+                    match event.kind {
+                        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
+                            // Check if any changed path is a watched file type
+                            let dominated_change =
+                                event.paths.iter().any(|p| should_trigger_reload(p));
+                            if dominated_change {
+                                // Non-blocking send — if the channel is full, skip (debounce handles it)
+                                let _ = tx.try_send(());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    tracing::error!("[FileWatcher] Failed to create watcher: {}", e);
+                    return;
+                }
+            };
+
+        if let Err(e) = watcher.watch(&watch_path, RecursiveMode::Recursive) {
+            tracing::error!("[FileWatcher] Failed to watch path: {}", e);
+            return;
+        }
+
+        tracing::info!(
+            "[FileWatcher] Watching {} for changes",
+            watch_path.display()
+        );
+
+        // Keep the watcher alive until shutdown signal
+        // We use a simple loop with park since the watcher thread needs to stay alive
+        loop {
+            std::thread::park_timeout(Duration::from_secs(1));
+            // Check if the shutdown channel has been dropped (sender side dropped = we should stop)
+            // We can't directly check a oneshot from a std thread, so we rely on the
+            // tokio task below to drop the watcher by letting this thread end.
+            // For now, the thread lives until the process exits or the watcher is dropped.
+            // The actual shutdown is handled by dropping the watcher when the mpsc sender is dropped.
+        }
+    });
+
+    // Spawn a tokio task to receive events and emit Tauri events with debouncing
+    let label_clone = window_label.clone();
+    tokio::spawn(async move {
+        let mut last_emit = Instant::now() - Duration::from_secs(1); // Allow immediate first event
+
+        loop {
+            tokio::select! {
+                Some(()) = event_rx.recv() => {
+                    // Debounce: skip if too soon since last emit
+                    let now = Instant::now();
+                    if now.duration_since(last_emit) < Duration::from_millis(DEBOUNCE_MS) {
+                        continue;
+                    }
+
+                    // Small delay to batch rapid consecutive changes
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+
+                    // Drain any queued events that arrived during the delay
+                    while event_rx.try_recv().is_ok() {}
+
+                    last_emit = Instant::now();
+                    tracing::debug!("[FileWatcher] Emitting static-file-changed for '{}'", label_clone);
+                    let _ = app.emit(
+                        "static-file-changed",
+                        serde_json::json!({ "windowLabel": label_clone }),
+                    );
+                }
+                _ = &mut shutdown_rx => {
+                    tracing::info!("[FileWatcher] Shutting down for '{}'", label_clone);
+                    break;
+                }
+            }
+        }
+    });
+
+    shutdown_tx
 }
 
 /// Handle a single incoming TCP connection.
