@@ -11,6 +11,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { listPlugins, PluginInfo } from '../lib/plugins';
 import { loadPluginModule, unloadPluginModule, PluginModule } from '../lib/plugin-loader';
 
+/** API versions the host supports. Plugins with unsupported versions are skipped. */
+const SUPPORTED_API_VERSIONS = [0, 1];
+
 /** A fully loaded plugin: manifest + JS module */
 export interface LoadedPlugin {
   info: PluginInfo;
@@ -46,13 +49,29 @@ export function usePlugins(projectPath: string | null): UsePluginsReturn {
       const installed = await listPlugins(path);
       const enabled = installed.filter((p) => p.enabled);
 
+      // Skip plugins with unsupported API versions
+      const compatible = enabled.filter((info) => {
+        const v = info.manifest.api_version ?? 0;
+        if (!SUPPORTED_API_VERSIONS.includes(v)) {
+          console.warn(
+            `Plugin "${info.manifest.id}" requires API v${v} which is not supported (supported: ${SUPPORTED_API_VERSIONS.join(', ')}). Skipping.`
+          );
+          return false;
+        }
+        return true;
+      });
+
+      const results = await Promise.allSettled(
+        compatible.map((info) =>
+          loadPluginModule(path, info.manifest.id).then((module) => ({ info, module }))
+        )
+      );
       const loaded: LoadedPlugin[] = [];
-      for (const info of enabled) {
-        try {
-          const module = await loadPluginModule(path, info.manifest.id);
-          loaded.push({ info, module });
-        } catch (e) {
-          console.error(`Failed to load plugin ${info.manifest.id}:`, e);
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          loaded.push(result.value);
+        } else {
+          console.error('Failed to load plugin:', result.reason);
         }
       }
 

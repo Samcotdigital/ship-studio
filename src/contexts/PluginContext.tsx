@@ -42,7 +42,7 @@ export interface PluginShellProxy {
 /** Storage proxy for plugins */
 export interface PluginStorageProxy {
   read: () => Promise<Record<string, unknown>>;
-  write: (scope: 'global' | 'project', data: Record<string, unknown>) => Promise<void>;
+  write: (data: Record<string, unknown>) => Promise<void>;
 }
 
 /** Invoke proxy for plugins to call Tauri commands */
@@ -82,8 +82,17 @@ export interface PluginContextValue {
 export const PluginContext = createContext<PluginContextValue | null>(null);
 
 /**
- * Expose the current plugin context value on window for SDK access.
- * The SDK package reads from this global to provide hooks.
+ * Expose the PluginContext React context object on window so the SDK
+ * can call React.useContext(ref) and get the correct per-plugin value.
+ * Must be called once at startup (in main.tsx).
+ */
+export function exposePluginContextRef(): void {
+  (window as unknown as Record<string, unknown>).__SHIPSTUDIO_PLUGIN_CONTEXT_REF__ = PluginContext;
+}
+
+/**
+ * @deprecated Use exposePluginContextRef() + PluginContext.Provider instead.
+ * Kept for backward compat with raw-JS plugins that read the single global.
  */
 export function exposePluginContext(value: PluginContextValue | null): void {
   (window as unknown as Record<string, unknown>).__SHIPSTUDIO_PLUGIN_CONTEXT__ = value;

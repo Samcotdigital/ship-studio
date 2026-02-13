@@ -1,6 +1,6 @@
-import { getPluginContext } from '../context';
+import { usePluginContext } from '../context';
 
 /** Returns the app actions proxy (showToast, refreshGitStatus, etc). */
 export function useAppActions() {
-  return getPluginContext().actions;
+  return usePluginContext().actions;
 }

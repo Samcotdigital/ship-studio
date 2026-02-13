@@ -1,8 +1,11 @@
 /**
- * Access the Ship Studio plugin context from the window global.
+ * Access the Ship Studio plugin context.
  *
- * The host app sets window.__SHIPSTUDIO_PLUGIN_CONTEXT__ before
- * rendering each plugin component.
+ * Preferred: usePluginContext() — uses React.useContext with the shared
+ * PluginContext ref, so each plugin always gets its own context even when
+ * multiple plugins render simultaneously.
+ *
+ * Legacy: getPluginContext() — reads the single window global (last-writer-wins).
  *
  * @module context
  */
@@ -32,7 +35,7 @@ export interface PluginContextValue {
   };
   storage: {
     read: () => Promise<Record<string, unknown>>;
-    write: (scope: 'global' | 'project', data: Record<string, unknown>) => Promise<void>;
+    write: (data: Record<string, unknown>) => Promise<void>;
   };
   invoke: {
     call: <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -56,13 +59,44 @@ export interface PluginContextValue {
 }
 
 /**
- * Get the current plugin context from the host app.
- * @throws if called outside a plugin rendering context
+ * React hook that returns the current plugin's context.
+ *
+ * Uses React.useContext with the shared PluginContext ref exposed by the host,
+ * so each plugin always receives its own per-plugin context — even when
+ * multiple plugins render at the same time.
+ *
+ * Must be called inside a React component (it's a hook).
+ */
+export function usePluginContext(): PluginContextValue {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const React = (window as any).__SHIPSTUDIO_REACT__;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CtxRef = (window as any).__SHIPSTUDIO_PLUGIN_CONTEXT_REF__;
+
+  if (CtxRef && React?.useContext) {
+    const ctx = React.useContext(CtxRef) as PluginContextValue | null;
+    if (ctx) return ctx;
+  }
+
+  // Fallback: legacy single global (last-writer-wins, won't work in async code)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = (window as any).__SHIPSTUDIO_PLUGIN_CONTEXT__ as PluginContextValue | undefined;
+  if (!ctx) {
+    throw new Error(
+      '@shipstudio/plugin-sdk: Plugin context not available. ' +
+        'Ensure this is called within a Ship Studio plugin component.'
+    );
+  }
+  return ctx;
+}
+
+/**
+ * @deprecated Use usePluginContext() instead. This reads the legacy single
+ * window global which suffers from context collision when multiple plugins render.
  */
 export function getPluginContext(): PluginContextValue {
-  const ctx = (window as Record<string, unknown>).__SHIPSTUDIO_PLUGIN_CONTEXT__ as
-    | PluginContextValue
-    | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = (window as any).__SHIPSTUDIO_PLUGIN_CONTEXT__ as PluginContextValue | undefined;
   if (!ctx) {
     throw new Error(
       '@shipstudio/plugin-sdk: Plugin context not available. ' +

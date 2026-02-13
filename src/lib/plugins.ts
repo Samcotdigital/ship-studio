@@ -31,6 +31,7 @@ export interface PluginManifest {
   min_app_version: string;
   icon: string;
   required_commands: string[];
+  api_version?: number;
 }
 
 /** Plugin info with registry state */

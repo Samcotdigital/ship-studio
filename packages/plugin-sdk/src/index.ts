@@ -10,7 +10,7 @@
  */
 
 // Context
-export { getPluginContext, type PluginContextValue } from './context';
+export { usePluginContext, getPluginContext, type PluginContextValue } from './context';
 
 // Hooks
 export { useProject } from './hooks/useProject';

@@ -8,5 +8,6 @@
   "repository": "",
   "setup": [],
   "min_app_version": "0.1.0",
-  "icon": ""
+  "icon": "",
+  "api_version": 1
 }

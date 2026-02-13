@@ -7,7 +7,7 @@
  * @module components/PluginSlot
  */
 
-import { Component, type ReactNode } from 'react';
+import { Component, type ReactNode, useState } from 'react';
 import {
   PluginContext,
   exposePluginContext,
@@ -39,12 +39,85 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+interface ErrorBoundaryProps {
+  pluginId: string;
+  pluginName: string;
+  compact: boolean;
+  children: ReactNode;
+}
+
+/** Inline fallback for expanded (non-toolbar) plugin errors */
+function PluginErrorFallback({
+  pluginName,
+  error,
+  onRetry,
+}: {
+  pluginName: string;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  return (
+    <div style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ color: 'var(--error)' }}>!</span>
+        <span>
+          <strong>{pluginName}</strong> crashed: {error?.message || 'Unknown error'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+        <button
+          onClick={() => setShowDetails((v) => !v)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: '11px',
+            textDecoration: 'underline',
+          }}
+        >
+          {showDetails ? 'Hide Details' : 'Details'}
+        </button>
+        <button
+          onClick={onRetry}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--accent)',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: '11px',
+            textDecoration: 'underline',
+          }}
+        >
+          Retry
+        </button>
+      </div>
+      {showDetails && error?.stack && (
+        <pre
+          style={{
+            marginTop: '4px',
+            fontSize: '10px',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            color: 'var(--text-muted)',
+            maxHeight: '120px',
+            overflow: 'auto',
+          }}
+        >
+          {error.stack}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 /** Error boundary that isolates plugin crashes */
-class PluginErrorBoundary extends Component<
-  { pluginId: string; children: ReactNode },
-  ErrorBoundaryState
-> {
-  constructor(props: { pluginId: string; children: ReactNode }) {
+class PluginErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
@@ -57,15 +130,29 @@ class PluginErrorBoundary extends Component<
     console.error(`Plugin ${this.props.pluginId} crashed:`, error);
   }
 
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   render() {
     if (this.state.hasError) {
+      if (this.props.compact) {
+        return (
+          <span
+            className="plugin-error-indicator"
+            title={`${this.props.pluginName} crashed: ${this.state.error?.message || 'Unknown error'}\n\n${this.state.error?.stack || ''}`}
+          >
+            !
+          </span>
+        );
+      }
+
       return (
-        <span
-          className="plugin-error-indicator"
-          title={`Plugin error: ${this.state.error?.message || 'Unknown error'}`}
-        >
-          !
-        </span>
+        <PluginErrorFallback
+          pluginName={this.props.pluginName}
+          error={this.state.error}
+          onRetry={this.handleRetry}
+        />
       );
     }
     return this.props.children;
@@ -93,8 +180,7 @@ function buildContext(
     },
     storage: {
       read: () => readPluginStorage(pluginId, projectPath),
-      write: (_scope: 'global' | 'project', data: Record<string, unknown>) =>
-        writePluginStorage(pluginId, projectPath, data),
+      write: (data: Record<string, unknown>) => writePluginStorage(pluginId, projectPath, data),
     },
     invoke: {
       call: <T = unknown,>(command: string, args?: Record<string, unknown>): Promise<T> => {
@@ -126,12 +212,21 @@ export function PluginSlot({ name, plugins, project, actions, theme }: PluginSlo
           theme,
           plugin.info.manifest.required_commands || []
         );
-        // Expose context for SDK window global access
+        // Expose context on namespaced map for raw-JS plugins
+        const pluginsMap = ((
+          window as unknown as Record<string, unknown>
+        ).__SHIPSTUDIO_PLUGINS__ ??= {}) as Record<string, PluginContextValue>;
+        pluginsMap[plugin.info.manifest.id] = ctx;
+        // Legacy single-global write for v0 compat (last-writer-wins)
         exposePluginContext(ctx);
 
         return (
           <PluginContext.Provider key={plugin.info.manifest.id} value={ctx}>
-            <PluginErrorBoundary pluginId={plugin.info.manifest.id}>
+            <PluginErrorBoundary
+              pluginId={plugin.info.manifest.id}
+              pluginName={plugin.info.manifest.name}
+              compact={name === 'toolbar'}
+            >
               <SlotComponent />
             </PluginErrorBoundary>
           </PluginContext.Provider>

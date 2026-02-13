@@ -17,10 +17,125 @@
  */
 use crate::utils::{create_command, get_extended_path, validate_project_path};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
+
+lazy_static::lazy_static! {
+    /// Per-plugin storage locks to prevent concurrent read-modify-write races.
+    /// Key: "project_path:plugin_id"
+    static ref STORAGE_LOCKS: Mutex<HashMap<String, Arc<Mutex<()>>>> =
+        Mutex::new(HashMap::new());
+}
+
+/// Acquire a lock for a specific plugin's storage file.
+fn get_storage_lock(plugin_id: &str, project_path: &str) -> Arc<Mutex<()>> {
+    let key = format!("{}:{}", project_path, plugin_id);
+    let mut locks = STORAGE_LOCKS.lock().unwrap();
+    locks
+        .entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// Tauri commands that plugins are allowed to invoke via the invoke proxy.
+/// Commands not in this list are rejected at runtime (PluginSlot.tsx)
+/// and at install time (validate_required_commands).
+const PLUGIN_INVOKABLE_COMMANDS: &[&str] = &[
+    // Git read operations
+    "check_git_has_changes",
+    "get_changed_files",
+    "get_file_diff",
+    "get_branch_status",
+    "list_branches",
+    "get_current_branch",
+    "get_stash_info",
+    // Project read operations
+    "list_projects",
+    "list_pages",
+    "read_project_metadata",
+    "get_branch_prefix_preference",
+    "get_auto_accept_mode",
+    // Git write operations
+    "commit_changes",
+    "create_branch",
+    "switch_branch",
+    "fetch_all_branches",
+    "git_pull",
+    // IDE
+    "check_ide_availability",
+    "open_in_ide",
+    "open_url_in_browser",
+    // Plugin self-management
+    "read_plugin_storage",
+    "write_plugin_storage",
+    "read_plugin_manifest",
+];
+
+/// Warn if a plugin declares setup items (reserved, not yet implemented).
+fn warn_on_setup_items(manifest: &PluginManifest) {
+    if !manifest.setup.is_empty() {
+        tracing::warn!(
+            "Plugin '{}' declares {} setup item(s), but plugin setup is not yet implemented. \
+             The 'setup' field is reserved for future use.",
+            manifest.id,
+            manifest.setup.len()
+        );
+    }
+}
+
+/// Validate that all required_commands in the manifest are in the allowed list.
+fn validate_required_commands(manifest: &PluginManifest) -> Result<(), String> {
+    let allowed: std::collections::HashSet<&str> =
+        PLUGIN_INVOKABLE_COMMANDS.iter().copied().collect();
+    let invalid: Vec<&str> = manifest
+        .required_commands
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|cmd| !allowed.contains(cmd))
+        .collect();
+
+    if !invalid.is_empty() {
+        return Err(format!(
+            "Plugin '{}' requests commands that are not available to plugins: {}",
+            manifest.id,
+            invalid.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Check that a plugin's min_app_version is satisfied by the current app version.
+/// Returns Ok(()) if compatible, Err with a message if not.
+fn check_min_app_version(manifest: &PluginManifest, app: &AppHandle) -> Result<(), String> {
+    let min_ver_str = manifest.min_app_version.trim();
+    if min_ver_str.is_empty() {
+        return Ok(());
+    }
+
+    let min_ver = semver::Version::parse(min_ver_str).map_err(|e| {
+        format!(
+            "Invalid min_app_version '{}' in plugin manifest: {}",
+            min_ver_str, e
+        )
+    })?;
+
+    let app_ver_str = app.package_info().version.to_string();
+    let app_ver = semver::Version::parse(&app_ver_str)
+        .map_err(|e| format!("Failed to parse app version '{}': {}", app_ver_str, e))?;
+
+    if app_ver < min_ver {
+        return Err(format!(
+            "Plugin '{}' requires Ship Studio v{} or later (current: v{}). Please update Ship Studio.",
+            manifest.name, min_ver, app_ver
+        ));
+    }
+
+    Ok(())
+}
 
 /// Plugin manifest from plugin.json
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,6 +169,9 @@ pub struct PluginManifest {
     /// Tauri commands this plugin is allowed to invoke
     #[serde(default)]
     pub required_commands: Vec<String>,
+    /// Plugin API version. 0 = legacy/unversioned, 1 = first stable version.
+    #[serde(default)]
+    pub api_version: u32,
 }
 
 /// A setup item contributed by a plugin
@@ -236,7 +354,11 @@ pub fn list_plugins(project_path: String) -> Result<Vec<PluginInfo>, String> {
 
 /// Install a plugin from a GitHub repository URL into a project
 #[tauri::command]
-pub async fn install_plugin(project_path: String, repo_url: String) -> Result<PluginInfo, String> {
+pub async fn install_plugin(
+    app: AppHandle,
+    project_path: String,
+    repo_url: String,
+) -> Result<PluginInfo, String> {
     let plugins_dir = get_plugins_dir(&project_path)?;
     fs::create_dir_all(&plugins_dir).map_err(|e| format!("Failed to create plugins dir: {}", e))?;
 
@@ -273,6 +395,8 @@ pub async fn install_plugin(project_path: String, repo_url: String) -> Result<Pl
         }
     };
 
+    warn_on_setup_items(&manifest);
+
     // Validate manifest has required fields
     if manifest.id.is_empty() || manifest.name.is_empty() {
         let _ = fs::remove_dir_all(&temp_dir);
@@ -287,6 +411,18 @@ pub async fn install_plugin(project_path: String, repo_url: String) -> Result<Pl
     {
         let _ = fs::remove_dir_all(&temp_dir);
         return Err("Plugin ID contains invalid characters".to_string());
+    }
+
+    // Check min_app_version compatibility
+    if let Err(e) = check_min_app_version(&manifest, &app) {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(e);
+    }
+
+    // Validate required_commands are all in the allowed set
+    if let Err(e) = validate_required_commands(&manifest) {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(e);
     }
 
     let plugin_dir = plugins_dir.join(&manifest.id);
@@ -371,7 +507,11 @@ pub fn uninstall_plugin(project_path: String, plugin_id: String) -> Result<(), S
 
 /// Update a plugin by pulling latest from its source repository
 #[tauri::command]
-pub async fn update_plugin(project_path: String, plugin_id: String) -> Result<PluginInfo, String> {
+pub async fn update_plugin(
+    app: AppHandle,
+    project_path: String,
+    plugin_id: String,
+) -> Result<PluginInfo, String> {
     let registry = read_registry(&project_path)?;
     let entry = registry
         .plugins
@@ -419,6 +559,14 @@ pub async fn update_plugin(project_path: String, plugin_id: String) -> Result<Pl
     }
 
     let manifest = read_manifest(&plugin_dir)?;
+
+    warn_on_setup_items(&manifest);
+
+    // Check min_app_version compatibility
+    check_min_app_version(&manifest, &app)?;
+
+    // Validate required_commands are all in the allowed set
+    validate_required_commands(&manifest)?;
 
     // Update registry entry (preserve enabled state, update commit hash)
     let mut registry = read_registry(&project_path)?;
@@ -663,6 +811,8 @@ pub async fn link_dev_plugin(
     // Validate plugin.json exists
     let manifest = read_manifest(&folder_path)?;
 
+    warn_on_setup_items(&manifest);
+
     // Validate dist/index.js exists
     let bundle_path = folder_path.join("dist").join("index.js");
     if !bundle_path.exists() {
@@ -685,6 +835,12 @@ pub async fn link_dev_plugin(
     {
         return Err("Plugin ID contains invalid characters".to_string());
     }
+
+    // Check min_app_version compatibility
+    check_min_app_version(&manifest, &app)?;
+
+    // Validate required_commands are all in the allowed set
+    validate_required_commands(&manifest)?;
 
     // Check for existing plugin with same ID
     let mut registry = read_registry(&project_path)?;
@@ -766,11 +922,17 @@ pub fn unlink_dev_plugin(project_path: String, plugin_id: String) -> Result<(), 
 /// Read plugin storage data
 ///
 /// Storage is at {project}/.shipstudio/plugins/{plugin-id}/storage.json
+/// Acquires a per-plugin lock to prevent races with concurrent writes.
 #[tauri::command]
 pub fn read_plugin_storage(
     plugin_id: String,
     project_path: String,
 ) -> Result<serde_json::Value, String> {
+    let lock = get_storage_lock(&plugin_id, &project_path);
+    let _guard = lock
+        .lock()
+        .map_err(|e| format!("Storage lock poisoned: {}", e))?;
+
     let storage_path = get_storage_path(&plugin_id, &project_path)?;
 
     if !storage_path.exists() {
@@ -784,12 +946,19 @@ pub fn read_plugin_storage(
 }
 
 /// Write plugin storage data
+///
+/// Acquires a per-plugin lock to prevent concurrent read-modify-write races.
 #[tauri::command]
 pub fn write_plugin_storage(
     plugin_id: String,
     project_path: String,
     data: serde_json::Value,
 ) -> Result<(), String> {
+    let lock = get_storage_lock(&plugin_id, &project_path);
+    let _guard = lock
+        .lock()
+        .map_err(|e| format!("Storage lock poisoned: {}", e))?;
+
     let storage_path = get_storage_path(&plugin_id, &project_path)?;
 
     // Ensure parent directory exists

@@ -26,6 +26,9 @@ export interface PluginModule {
   onDeactivate?: () => void;
 }
 
+/** Maximum time (ms) to wait for a plugin's dynamic import to resolve */
+const PLUGIN_LOAD_TIMEOUT_MS = 10_000;
+
 /** Cache of loaded plugin modules, keyed by "projectPath:pluginId" */
 const moduleCache = new Map<string, PluginModule>();
 
@@ -63,8 +66,18 @@ export async function loadPluginModule(
   blobUrlCache.set(key, blobUrl);
 
   try {
-    // Dynamic import the blob URL
-    const mod = await import(/* @vite-ignore */ blobUrl);
+    // Dynamic import with cache-busting fragment and timeout protection
+    const importUrl = `${blobUrl}#t=${Date.now()}`;
+    const mod = await Promise.race([
+      import(/* @vite-ignore */ importUrl),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error(`Plugin "${pluginId}" timed out after ${PLUGIN_LOAD_TIMEOUT_MS}ms`)),
+          PLUGIN_LOAD_TIMEOUT_MS
+        )
+      ),
+    ]);
 
     // Validate module exports
     const pluginModule: PluginModule = {
