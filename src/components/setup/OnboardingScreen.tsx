@@ -248,13 +248,6 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           setActiveItemId(null);
           return;
         }
-      } else if (itemId === 'vercel_auth') {
-        const status = await checkVercelCliStatus();
-        if (status.authenticated) {
-          await fetchStatus();
-          setActiveItemId(null);
-          return;
-        }
       } else if (itemId === 'claude_auth') {
         const isAuthed = await checkClaudeAuthStatus();
         if (isAuthed) {
