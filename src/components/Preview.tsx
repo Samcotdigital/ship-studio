@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { logger } from '../lib/logger';
 import { getWindowLabel } from '../lib/window';
@@ -157,6 +158,8 @@ interface PreviewProps {
   isBranchSwitching?: boolean;
   /** Whether the dev server is restarting */
   isDevServerRestarting?: boolean;
+  /** Whether this is a static HTML project (changes loading/error messaging) */
+  isStaticProject?: boolean;
   /** Extra toolbar elements to render in the center */
   toolbarExtra?: React.ReactNode;
   /** Callback to send prompt to Claude terminal */
@@ -194,6 +197,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onCropCancel,
     isBranchSwitching = false,
     isDevServerRestarting = false,
+    isStaticProject = false,
     toolbarExtra,
     onSendToClaude,
     onToast,
@@ -423,6 +427,24 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [onSendToClaude, onToast]);
+
+  // Auto-reload for static HTML projects when files change on disk
+  useEffect(() => {
+    if (!isStaticProject || !serverReady) return;
+
+    let unlisten: (() => void) | null = null;
+
+    listen<{ windowLabel: string }>('static-file-changed', () => {
+      logger.debug('[Preview] File change detected, reloading preview');
+      setCacheBuster(Date.now());
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [isStaticProject, serverReady]);
 
   useEffect(() => {
     // Skip if not ready to check yet (-1 means waiting for old server to die)
@@ -969,7 +991,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return (
       <div className="preview-loading">
         <div className="spinner" />
-        <p>Starting dev server...</p>
+        <p>{isStaticProject ? 'Starting preview...' : 'Starting dev server...'}</p>
         <p className="hint">Waiting for localhost:{port}</p>
         <p className="hint" style={{ marginTop: 8, fontSize: 11 }}>
           {retryCount > 0 && `Attempt ${retryCount}/${SERVER_MAX_RETRIES}`}
@@ -981,8 +1003,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   if (hasError) {
     return (
       <div className="preview-error">
-        <p>Could not connect to dev server</p>
-        <p className="hint">Ask Claude to run: npm run dev</p>
+        <p>{isStaticProject ? 'Could not start preview' : 'Could not connect to dev server'}</p>
+        <p className="hint">
+          {isStaticProject
+            ? 'Make sure the project contains an index.html file'
+            : 'Ask Claude to run: npm run dev'}
+        </p>
         <button
           onClick={() => {
             // Reset state and trigger fresh retry cycle
