@@ -23,6 +23,16 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.0',
+    items: [
+      'Plugin system - install extensions from the Plugin Library',
+      'Multi-agent support - choose Claude Code or Codex',
+      'New onboarding wizard with step-by-step setup',
+      'Vercel & Sanity CMS moved to plugins',
+      'Toolbar dropdown menu and terminal tab menu',
+    ],
+  },
+  {
     version: '0.3.53',
     items: [
       'HTML/CSS/JS project support - no framework needed',
@@ -122,18 +132,6 @@ const CHANGELOG: ChangelogEntry[] = [
   {
     version: '0.3.25',
     items: ['File diff viewer'],
-  },
-  {
-    version: '0.3.21',
-    items: ['SvelteKit support'],
-  },
-  {
-    version: '0.3.18',
-    items: ['Folders', 'Yolo Mode toggle'],
-  },
-  {
-    version: '0.3.13',
-    items: ['Browser picker', 'Deep links support'],
   },
 ];
 
