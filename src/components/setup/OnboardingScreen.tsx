@@ -296,14 +296,20 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
 
         if (PKG_MGR_PACKAGES.has(itemId)) {
-          for (const item of items) {
-            if (PKG_MGR_PACKAGES.has(item.id) && item.status === 'in_progress') {
-              updateItemStatus(item.id, {
-                status: 'error',
-                errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
-              });
-            }
-          }
+          // Use functional updater to read the latest items state
+          // (the closure `items` may be stale after async operations)
+          setItems((prev) =>
+            prev.map((item) => {
+              if (PKG_MGR_PACKAGES.has(item.id) && item.status === 'in_progress') {
+                return {
+                  ...item,
+                  status: 'error' as const,
+                  errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
+                };
+              }
+              return item;
+            })
+          );
         } else {
           updateItemStatus(itemId, {
             status: 'error',

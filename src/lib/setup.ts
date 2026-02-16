@@ -17,9 +17,10 @@ import { invoke } from '@tauri-apps/api/core';
 /** Platform detection helpers using navigator.userAgent as fallback */
 const getPlatform = (): string => {
   // Use navigator.userAgent for client-side platform detection
+  // Check darwin/mac BEFORE win because 'darwin' contains 'win' as a substring
   const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.includes('darwin') || userAgent.includes('mac')) return 'macos';
   if (userAgent.includes('win')) return 'windows';
-  if (userAgent.includes('mac')) return 'macos';
   if (userAgent.includes('linux')) return 'linux';
   return 'unknown';
 };
