@@ -34,7 +34,7 @@ pub async fn list_pull_requests(project_path: String) -> Result<Vec<PullRequestI
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: Vec<serde_json::Value> =
-        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse PR list: {}", e))?;
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse PR list: {e}"))?;
 
     let prs: Vec<PullRequestInfo> = json
         .iter()
@@ -75,13 +75,13 @@ pub async fn create_pull_request(
         .args(["push", "-u", "origin", "HEAD"])
         .current_dir(&validated_path)
         .output()
-        .map_err(|e| format!("Failed to push branch: {}", e))?;
+        .map_err(|e| format!("Failed to push branch: {e}"))?;
 
     if !push_output.status.success() {
         let stderr = String::from_utf8_lossy(&push_output.stderr);
         // Ignore "everything up-to-date" which isn't a real error
         if !stderr.contains("Everything up-to-date") {
-            return Err(format!("Failed to push branch: {}", stderr));
+            return Err(format!("Failed to push branch: {stderr}"));
         }
     }
 

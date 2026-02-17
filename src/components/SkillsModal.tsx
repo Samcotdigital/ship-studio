@@ -102,7 +102,7 @@ export function SkillsModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchSkills();
+    void fetchSkills();
   }, [isOpen, fetchSkills]);
 
   // Check CLI availability when switching to Add tab
@@ -197,7 +197,7 @@ export function SkillsModal({
   // Handle key press in search input
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleSearch();
+      void handleSearch();
     }
   };
 
@@ -308,7 +308,7 @@ export function SkillsModal({
                       </div>
                       <button
                         className="skill-remove-btn"
-                        onClick={() => handleRemove(skill)}
+                        onClick={() => void handleRemove(skill)}
                         disabled={removingSkill === skillKey}
                       >
                         {removingSkill === skillKey ? 'Removing...' : 'Remove'}
@@ -347,7 +347,7 @@ export function SkillsModal({
                       />
                       <button
                         className="skills-search-btn"
-                        onClick={handleSearch}
+                        onClick={() => void handleSearch()}
                         disabled={isSearching || !searchQuery.trim()}
                       >
                         {isSearching ? 'Searching...' : 'Search'}
@@ -398,7 +398,7 @@ export function SkillsModal({
                           </div>
                           <button
                             className={`skills-install-btn ${installingPackage === result.package ? 'installing' : ''}`}
-                            onClick={() => handleInstall(result.package)}
+                            onClick={() => void handleInstall(result.package)}
                             disabled={installingPackage !== null}
                           >
                             {installingPackage === result.package ? 'Installing...' : 'Install'}

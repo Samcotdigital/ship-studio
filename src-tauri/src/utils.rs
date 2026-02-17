@@ -79,9 +79,9 @@ pub fn get_extended_path() -> String {
     #[cfg(not(windows))]
     if let Some(home) = dirs::home_dir() {
         let home_str = home.to_string_lossy();
-        paths.push(format!("{}/.npm-global/bin", home_str));
-        paths.push(format!("{}/.local/bin", home_str)); // Official Claude installer location
-        paths.push(format!("{}/n/bin", home_str));
+        paths.push(format!("{home_str}/.npm-global/bin"));
+        paths.push(format!("{home_str}/.local/bin")); // Official Claude installer location
+        paths.push(format!("{home_str}/n/bin"));
 
         // Add NVM current/default version if it exists
         // First try the default alias, then fall back to finding the latest version
@@ -314,7 +314,7 @@ pub fn find_executable(cmd: &str) -> Option<std::path::PathBuf> {
 /// Prevents path traversal attacks where frontend could pass arbitrary paths.
 pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(project_path);
-    let canonical = dunce::canonicalize(path).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical = dunce::canonicalize(path).map_err(|e| format!("Invalid path: {e}"))?;
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let shipstudio_dir = home.join("ShipStudio");
@@ -330,8 +330,7 @@ pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, S
     }
 
     Err(format!(
-        "Security error: path '{}' is outside ShipStudio directory",
-        project_path
+        "Security error: path '{project_path}' is outside ShipStudio directory"
     ))
 }
 
@@ -433,11 +432,11 @@ fn format_relative_time_from_now(timestamp_ms: u64, now_ms: u64) -> String {
     let days = hours / 24;
 
     if days > 0 {
-        format!("{}d ago", days)
+        format!("{days}d ago")
     } else if hours > 0 {
-        format!("{}h ago", hours)
+        format!("{hours}h ago")
     } else if minutes > 0 {
-        format!("{}m ago", minutes)
+        format!("{minutes}m ago")
     } else {
         "just now".to_string()
     }

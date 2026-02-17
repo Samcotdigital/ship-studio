@@ -28,9 +28,9 @@ fn load_folder_config() -> Result<FolderConfig, String> {
     }
 
     let contents = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read folders config: {}", e))?;
+        .map_err(|e| format!("Failed to read folders config: {e}"))?;
 
-    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse folders config: {}", e))
+    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse folders config: {e}"))
 }
 
 /// Save the folder config to disk
@@ -41,15 +41,15 @@ fn save_folder_config(config: &FolderConfig) -> Result<(), String> {
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
+                .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
         }
     }
 
     let contents = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize folders config: {}", e))?;
+        .map_err(|e| format!("Failed to serialize folders config: {e}"))?;
 
     std::fs::write(&config_path, contents)
-        .map_err(|e| format!("Failed to write folders config: {}", e))?;
+        .map_err(|e| format!("Failed to write folders config: {e}"))?;
 
     Ok(())
 }
@@ -101,7 +101,7 @@ fn load_thumbnail_base64(project_path: &str) -> Option<String> {
     let bytes = std::fs::read(&thumbnail_path).ok()?;
     use base64::{engine::general_purpose::STANDARD, Engine};
     let b64 = STANDARD.encode(&bytes);
-    Some(format!("data:image/png;base64,{}", b64))
+    Some(format!("data:image/png;base64,{b64}"))
 }
 
 // ============ Tauri Commands ============

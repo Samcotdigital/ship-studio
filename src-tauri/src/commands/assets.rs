@@ -22,7 +22,7 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
     // Canonicalize to resolve any symlinks and ensure it's within public
     // For new files that don't exist yet, we need to check the parent
     let check_path = if full_path.exists() {
-        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {}", e))?
+        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {e}"))?
     } else {
         // For non-existent paths, verify parent exists and is within public
         let parent = full_path
@@ -32,9 +32,9 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
             return Err("Parent directory does not exist".to_string());
         }
         let canonical_parent =
-            dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
+            dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {e}"))?;
         let canonical_public = if public_dir.exists() {
-            dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?
+            dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?
         } else {
             return Err("Public directory does not exist".to_string());
         };
@@ -45,7 +45,7 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
     };
 
     let canonical_public =
-        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?;
 
     if !check_path.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
@@ -56,7 +56,7 @@ fn validate_asset_path(project_path: &Path, asset_path: &str) -> Result<PathBuf,
 
 /// Helper to convert a file path to Asset struct
 fn path_to_asset(path: &PathBuf, public_dir: &PathBuf) -> Result<Asset, String> {
-    let metadata = fs::metadata(path).map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let metadata = fs::metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
 
     let relative_path = path
         .strip_prefix(public_dir)
@@ -94,7 +94,7 @@ fn list_files_recursive(
         return Ok(());
     }
 
-    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {e}"))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -152,7 +152,7 @@ pub async fn upload_asset(
     // Create public directory if it doesn't exist
     if !public_dir.exists() {
         fs::create_dir_all(&public_dir)
-            .map_err(|e| format!("Failed to create public directory: {}", e))?;
+            .map_err(|e| format!("Failed to create public directory: {e}"))?;
     }
 
     // Validate filename
@@ -172,7 +172,7 @@ pub async fn upload_asset(
         let dest_path = public_dir.join(dest);
         if !dest_path.exists() {
             fs::create_dir_all(&dest_path)
-                .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+                .map_err(|e| format!("Failed to create destination directory: {e}"))?;
         }
         dest_path
     };
@@ -181,15 +181,15 @@ pub async fn upload_asset(
 
     // Ensure final path is within public directory
     let canonical_public =
-        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?;
     let canonical_dest =
-        dunce::canonicalize(&dest_dir).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&dest_dir).map_err(|e| format!("Invalid path: {e}"))?;
     if !canonical_dest.starts_with(&canonical_public) {
         return Err("Security error: destination is outside public directory".to_string());
     }
 
     // Write file
-    fs::write(&file_path, file_data).map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&file_path, file_data).map_err(|e| format!("Failed to write file: {e}"))?;
 
     path_to_asset(&file_path, &public_dir)
 }
@@ -203,17 +203,17 @@ pub async fn delete_asset(project_path: String, asset_path: String) -> Result<()
 
     // Double-check it's within public
     let canonical_public =
-        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?;
     let canonical_path =
-        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&full_path).map_err(|e| format!("Invalid path: {e}"))?;
     if !canonical_path.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
     }
 
     if full_path.is_dir() {
-        fs::remove_dir_all(&full_path).map_err(|e| format!("Failed to delete directory: {}", e))?;
+        fs::remove_dir_all(&full_path).map_err(|e| format!("Failed to delete directory: {e}"))?;
     } else {
-        fs::remove_file(&full_path).map_err(|e| format!("Failed to delete file: {}", e))?;
+        fs::remove_file(&full_path).map_err(|e| format!("Failed to delete file: {e}"))?;
     }
 
     Ok(())
@@ -247,20 +247,19 @@ pub async fn rename_asset(
 
     // Check new path is still within public
     let canonical_public =
-        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
-    let canonical_parent =
-        dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?;
+    let canonical_parent = dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {e}"))?;
     if !canonical_parent.starts_with(&canonical_public) {
         return Err("Security error: path is outside public directory".to_string());
     }
 
     // Check if target already exists
     if new_path.exists() {
-        return Err(format!("A file named '{}' already exists", new_name));
+        return Err(format!("A file named '{new_name}' already exists"));
     }
 
     // Rename
-    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
+    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {e}"))?;
 
     path_to_asset(&new_path, &public_dir)
 }
@@ -274,7 +273,7 @@ pub async fn create_asset_folder(project_path: String, folder_path: String) -> R
     // Create public directory if it doesn't exist
     if !public_dir.exists() {
         fs::create_dir_all(&public_dir)
-            .map_err(|e| format!("Failed to create public directory: {}", e))?;
+            .map_err(|e| format!("Failed to create public directory: {e}"))?;
     }
 
     // Validate folder path
@@ -291,13 +290,13 @@ pub async fn create_asset_folder(project_path: String, folder_path: String) -> R
 
     // Ensure it's within public
     let canonical_public =
-        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(&public_dir).map_err(|e| format!("Invalid path: {e}"))?;
 
     // For the new folder, check parent is within public
     if let Some(parent) = full_path.parent() {
         if parent.exists() {
             let canonical_parent =
-                dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {}", e))?;
+                dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {e}"))?;
             if !canonical_parent.starts_with(&canonical_public) {
                 return Err("Security error: path is outside public directory".to_string());
             }
@@ -308,7 +307,7 @@ pub async fn create_asset_folder(project_path: String, folder_path: String) -> R
         return Err("Folder already exists".to_string());
     }
 
-    fs::create_dir_all(&full_path).map_err(|e| format!("Failed to create folder: {}", e))?;
+    fs::create_dir_all(&full_path).map_err(|e| format!("Failed to create folder: {e}"))?;
 
     Ok(())
 }

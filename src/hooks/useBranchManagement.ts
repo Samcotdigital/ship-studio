@@ -1,0 +1,290 @@
+/**
+ * Hook for git branch state and operations.
+ *
+ * Manages: current branch, branch list, pull requests, uncommitted changes,
+ * branch switching, conflict resolution, periodic git status polling,
+ * and publish error handling.
+ *
+ * @module hooks/useBranchManagement
+ */
+
+import { useState, useEffect, useCallback, type RefObject } from 'react';
+import {
+  BranchInfo,
+  PullRequestInfo,
+  listBranches,
+  listPullRequests,
+  getCurrentBranch,
+  switchBranch,
+  pullAndMerge,
+} from '../lib/branches';
+import { getChangedFiles, ChangedFile } from '../lib/git';
+import { invoke } from '@tauri-apps/api/core';
+import { logger } from '../lib/logger';
+import type { PreviewHandle } from '../components/Preview';
+import type { CodeHealthPanelRef } from '../components/CodeHealthPanel';
+import type { Project } from '../lib/project';
+
+export interface UseBranchManagementParams {
+  currentProject: Project | null;
+  previewRef: RefObject<PreviewHandle | null>;
+  healthPanelRef: RefObject<CodeHealthPanelRef | null>;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  fetchBranchInfoExternal?: (projectPath: string) => Promise<void>;
+}
+
+export function useBranchManagement({
+  currentProject,
+  previewRef,
+  healthPanelRef,
+  showToast,
+}: UseBranchManagementParams) {
+  // Branch management state
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
+  const [openPRs, setOpenPRs] = useState<PullRequestInfo[]>([]);
+  const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
+  const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
+  const [showSubmitReview, setShowSubmitReview] = useState<string | null>(null);
+  const [isBranchSwitching, setIsBranchSwitching] = useState(false);
+  const [gitError, setGitError] = useState<{
+    errorType: 'push_rejected' | 'auth_error' | 'merge_conflict' | 'generic';
+    message: string;
+    branchName: string;
+  } | null>(null);
+
+  // Conflict resolution modal state
+  const [showConflictResolution, setShowConflictResolution] = useState(false);
+
+  // Fetch branch info for a project
+  const fetchBranchInfo = useCallback(async (projectPath: string) => {
+    try {
+      const [branch, branchList] = await Promise.all([
+        getCurrentBranch(projectPath).catch(() => null),
+        listBranches(projectPath).catch(() => []),
+      ]);
+      setCurrentBranch(branch);
+      setBranches(branchList);
+
+      // Fetch open PRs for branch status display (non-blocking)
+      void listPullRequests(projectPath)
+        .then((prs) => setOpenPRs(prs.filter((pr) => pr.state === 'OPEN')))
+        .catch(() => setOpenPRs([]));
+
+      // Check for uncommitted changes using the backend
+      void invoke<boolean>('check_git_has_changes', { projectPath })
+        .then((hasChanges) => setHasUncommittedChanges(hasChanges))
+        .catch(() => setHasUncommittedChanges(false));
+    } catch (e) {
+      logger.error('Failed to fetch branch info', { error: e });
+      setCurrentBranch(null);
+      setBranches([]);
+    }
+  }, []);
+
+  // Check git status (called periodically to sync with CLI changes)
+  const checkGitStatus = useCallback(
+    async (projectPath: string) => {
+      try {
+        const [branch, hasChanges, files] = await Promise.all([
+          getCurrentBranch(projectPath).catch(() => null),
+          invoke<boolean>('check_git_has_changes', { projectPath }).catch(() => false),
+          getChangedFiles(projectPath).catch(() => []),
+        ]);
+
+        // Update branch if changed (e.g., user switched via CLI)
+        if (branch && branch !== currentBranch) {
+          setCurrentBranch(branch);
+          // Refresh full branch list when branch changes
+          void listBranches(projectPath)
+            .then(setBranches)
+            .catch((err) => logger.warn('Failed to refresh branch list', { error: err }));
+        }
+
+        setHasUncommittedChanges(hasChanges);
+        setChangedFiles(files);
+      } catch (e) {
+        // Silently ignore errors during periodic checks
+        logger.warn('Error checking git status', { error: e });
+      }
+    },
+    [currentBranch]
+  );
+
+  // Periodically check git status when a project is open and window is focused
+  useEffect(() => {
+    if (!currentProject?.path) return;
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      // Check immediately when starting/resuming
+      void checkGitStatus(currentProject.path);
+      // Then check every 3 seconds
+      interval = setInterval(() => {
+        void checkGitStatus(currentProject.path);
+      }, 3000);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    // Start polling if window is visible
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentProject?.path, checkGitStatus]);
+
+  // Handle branch switch
+  const handleBranchSwitch = useCallback(
+    async (branchName: string) => {
+      setIsBranchSwitching(true);
+      setCurrentBranch(branchName);
+      // Reset uncommitted changes immediately - will be updated by fetchBranchInfo
+      setHasUncommittedChanges(false);
+      if (currentProject) {
+        await fetchBranchInfo(currentProject.path);
+      }
+      // Refresh preview after Next.js has time to detect file changes and rebuild
+      setTimeout(() => previewRef.current?.refresh(), 300);
+      setTimeout(() => {
+        previewRef.current?.refresh();
+        setIsBranchSwitching(false);
+      }, 2500);
+      // Run health checks after branch switch (give files time to settle)
+      setTimeout(() => {
+        void healthPanelRef.current?.refreshScripts();
+        void healthPanelRef.current?.runAllChecks();
+      }, 1000);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- previewRef and healthPanelRef are stable refs
+    [currentProject, fetchBranchInfo]
+  );
+
+  // Handle publish error
+  const handlePublishError = useCallback(
+    (error: string, errorType: 'push_rejected' | 'auth_error' | 'merge_conflict' | 'generic') => {
+      if (currentBranch) {
+        setGitError({
+          errorType,
+          message: error,
+          branchName: currentBranch,
+        });
+      }
+    },
+    [currentBranch]
+  );
+
+  // Handle opening conflict resolution modal
+  // For PR conflicts: switch to head branch, merge base branch, then show UI
+  const handleResolveConflicts = useCallback(
+    async (headBranch?: string, baseBranch?: string) => {
+      setGitError(null);
+
+      if (!currentProject) return;
+
+      // If we have branch info, we're resolving PR conflicts
+      if (headBranch && baseBranch) {
+        try {
+          showToast('Preparing to resolve conflicts...', 'success');
+
+          // Switch to the PR's head branch
+          const switchResult = await switchBranch(currentProject.path, headBranch, true);
+          if (!switchResult.success) {
+            showToast(switchResult.error || 'Failed to switch branch', 'error');
+            return;
+          }
+
+          // Update current branch state
+          setCurrentBranch(headBranch);
+
+          // Merge the base branch to create conflicts locally
+          try {
+            await pullAndMerge(currentProject.path, baseBranch);
+            // If merge succeeds without conflicts, we're done
+            showToast('Branch is up to date, no conflicts!', 'success');
+            void fetchBranchInfo(currentProject.path);
+            return;
+          } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            if (errorMsg.includes('MERGE_CONFLICT')) {
+              // Conflicts created locally - show the UI
+              setShowConflictResolution(true);
+            } else {
+              showToast(`Failed to merge: ${errorMsg}`, 'error');
+            }
+          }
+        } catch (e) {
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          showToast(`Error: ${errorMsg}`, 'error');
+        }
+      } else {
+        // Direct conflict resolution (e.g., from GitErrorHandler after a failed push)
+        setShowConflictResolution(true);
+      }
+    },
+    [currentProject, showToast, fetchBranchInfo]
+  );
+
+  // Handle conflict resolution completed
+  const handleConflictsResolved = useCallback(() => {
+    setShowConflictResolution(false);
+    if (currentProject) {
+      void fetchBranchInfo(currentProject.path);
+    }
+  }, [currentProject, fetchBranchInfo]);
+
+  // Clear all branch state (used when navigating back to projects)
+  const clearBranchState = useCallback(() => {
+    setCurrentBranch(null);
+    setBranches([]);
+    setHasUncommittedChanges(false);
+    setChangedFiles([]);
+  }, []);
+
+  return {
+    // State
+    currentBranch,
+    setCurrentBranch,
+    branches,
+    openPRs,
+    hasUncommittedChanges,
+    changedFiles,
+    showSubmitReview,
+    setShowSubmitReview,
+    isBranchSwitching,
+    gitError,
+    setGitError,
+    showConflictResolution,
+    setShowConflictResolution,
+
+    // Functions
+    fetchBranchInfo,
+    checkGitStatus,
+    handleBranchSwitch,
+    handlePublishError,
+    handleResolveConflicts,
+    handleConflictsResolved,
+    clearBranchState,
+  };
+}

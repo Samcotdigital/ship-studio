@@ -203,10 +203,10 @@ pub async fn detect_health_scripts(project_path: String) -> Result<DetectedScrip
 
     // Read and parse package.json
     let contents = std::fs::read_to_string(&package_json_path)
-        .map_err(|e| format!("Failed to read package.json: {}", e))?;
+        .map_err(|e| format!("Failed to read package.json: {e}"))?;
 
     let package_json: Value = serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+        .map_err(|e| format!("Failed to parse package.json: {e}"))?;
 
     // Get scripts object
     let scripts = package_json
@@ -280,7 +280,7 @@ pub async fn run_health_script(
     // Run the command
     let output = cmd.output().map_err(|e| {
         error!("Failed to execute {} run {}: {}", pm_cmd, script_name, e);
-        format!("Failed to run script: {}", e)
+        format!("Failed to run script: {e}")
     })?;
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -328,7 +328,7 @@ async fn save_health_result(
     // Read existing metadata or create default
     let mut metadata = if metadata_path.exists() {
         let contents = std::fs::read_to_string(&metadata_path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+            .map_err(|e| format!("Failed to read metadata: {e}"))?;
         serde_json::from_str::<ProjectMetadata>(&contents).unwrap_or_default()
     } else {
         ProjectMetadata::default()
@@ -353,14 +353,14 @@ async fn save_health_result(
     let shipstudio_dir = project_path.join(".shipstudio");
     if !shipstudio_dir.exists() {
         std::fs::create_dir_all(&shipstudio_dir)
-            .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
+            .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
     }
 
     // Write updated metadata
     let contents = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+        .map_err(|e| format!("Failed to serialize metadata: {e}"))?;
     std::fs::write(&metadata_path, contents)
-        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+        .map_err(|e| format!("Failed to write metadata: {e}"))?;
 
     Ok(())
 }
@@ -376,10 +376,10 @@ pub async fn get_health_status(project_path: String) -> Result<Option<HealthChec
     }
 
     let contents = std::fs::read_to_string(&metadata_path)
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        .map_err(|e| format!("Failed to read metadata: {e}"))?;
 
     let metadata: ProjectMetadata =
-        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse metadata: {}", e))?;
+        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse metadata: {e}"))?;
 
     Ok(metadata.health)
 }
@@ -395,7 +395,7 @@ pub async fn get_package_json(project_path: String) -> Result<String, String> {
     }
 
     std::fs::read_to_string(&package_json_path)
-        .map_err(|e| format!("Failed to read package.json: {}", e))
+        .map_err(|e| format!("Failed to read package.json: {e}"))
 }
 
 /// Clear health check results for a project
@@ -409,17 +409,17 @@ pub async fn clear_health_status(project_path: String) -> Result<(), String> {
     }
 
     let contents = std::fs::read_to_string(&metadata_path)
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        .map_err(|e| format!("Failed to read metadata: {e}"))?;
 
     let mut metadata: ProjectMetadata =
-        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse metadata: {}", e))?;
+        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse metadata: {e}"))?;
 
     metadata.health = None;
 
     let contents = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+        .map_err(|e| format!("Failed to serialize metadata: {e}"))?;
     std::fs::write(&metadata_path, contents)
-        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+        .map_err(|e| format!("Failed to write metadata: {e}"))?;
 
     Ok(())
 }

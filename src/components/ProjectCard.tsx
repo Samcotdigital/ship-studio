@@ -8,6 +8,7 @@
  * @module components/ProjectCard
  */
 
+import { memo } from 'react';
 import { DashboardProject } from '../lib/project';
 import { BranchIcon, CodeIcon, NewWindowIcon } from './icons';
 import { ProjectCardMenu } from './ProjectCardMenu';
@@ -38,7 +39,7 @@ interface ProjectCardProps {
   onRemove?: () => void;
 }
 
-export function ProjectCard({
+export const ProjectCard = memo(function ProjectCard({
   project,
   thumbnailData,
   onSelect,
@@ -61,6 +62,7 @@ export function ProjectCard({
         onClick={onSelect}
         role="button"
         tabIndex={0}
+        aria-label={`Open ${project.name}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -135,4 +137,4 @@ export function ProjectCard({
       </div>
     </div>
   );
-}
+});

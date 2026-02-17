@@ -69,7 +69,7 @@ export async function loadPluginModule(
   try {
     // Dynamic import with cache-busting fragment and timeout protection
     const importUrl = `${blobUrl}#t=${Date.now()}`;
-    const mod = await Promise.race([
+    const mod = (await Promise.race([
       import(/* @vite-ignore */ importUrl),
       new Promise<never>((_, reject) =>
         setTimeout(
@@ -78,14 +78,16 @@ export async function loadPluginModule(
           PLUGIN_LOAD_TIMEOUT_MS
         )
       ),
-    ]);
+    ])) as Record<string, unknown>;
 
     // Validate module exports
+    const raw = mod;
     const pluginModule: PluginModule = {
-      name: mod.name || pluginId,
-      slots: mod.slots || {},
-      onActivate: typeof mod.onActivate === 'function' ? mod.onActivate : undefined,
-      onDeactivate: typeof mod.onDeactivate === 'function' ? mod.onDeactivate : undefined,
+      name: (raw.name as string) || pluginId,
+      slots: (raw.slots as Record<string, SlotComponent>) || {},
+      onActivate: typeof raw.onActivate === 'function' ? (raw.onActivate as () => void) : undefined,
+      onDeactivate:
+        typeof raw.onDeactivate === 'function' ? (raw.onDeactivate as () => void) : undefined,
     };
 
     moduleCache.set(key, pluginModule);
@@ -105,7 +107,7 @@ export async function loadPluginModule(
     // Clean up blob URL on failure
     URL.revokeObjectURL(blobUrl);
     blobUrlCache.delete(key);
-    throw new Error(`Failed to load plugin ${pluginId}: ${e}`);
+    throw new Error(`Failed to load plugin ${pluginId}: ${String(e)}`);
   }
 }
 

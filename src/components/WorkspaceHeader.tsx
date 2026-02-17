@@ -1,0 +1,295 @@
+/**
+ * Workspace header bar component.
+ *
+ * Renders the top header of the workspace view including:
+ * - Back button to return to projects
+ * - Project name and path
+ * - Toolbar action buttons (education, plugins, assets, IDE, env, backups)
+ * - GitHub button and publish dropdown
+ * - Plugin toolbar/publish slots
+ *
+ * IDE dropdown state (showIdeDropdown, openingIde, ideAvailability) is managed
+ * internally since it is only used within this component.
+ *
+ * @module components/WorkspaceHeader
+ */
+
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { GitHubButton } from './GitHubButton';
+import { PublishBranchDropdown } from './PublishBranchDropdown';
+import { PluginSlot } from './PluginSlot';
+import {
+  CodeIcon,
+  VSCodeIcon,
+  CursorIcon,
+  ImageIcon,
+  GraduationCapIcon,
+  HistoryIcon,
+  DollarIcon,
+  PuzzleIcon,
+} from './icons';
+import { logger } from '../lib/logger';
+import { trackEvent } from '../lib/analytics';
+import type { IntegrationState } from '../hooks/useIntegrationStatus';
+import type { LoadedPlugin } from '../hooks/usePlugins';
+import type { PluginThemeData } from '../contexts/PluginContext';
+
+export interface WorkspaceHeaderProps {
+  // Project
+  projectPath: string;
+  projectName: string;
+
+  // Navigation
+  onBackToProjects: () => void;
+
+  // Education mode
+  isEducationMode: boolean;
+  onToggleEducationMode: () => void;
+
+  // Modal openers
+  onOpenPluginManager: () => void;
+  onOpenAssetsPanel: () => void;
+  onOpenEnvEditor: () => void;
+  onOpenBackupsModal: () => void;
+
+  // GitHub
+  integrations: IntegrationState;
+  onGitHubStatusChange: () => void;
+  onGitHubConnect: () => void;
+  focusActiveTerminal: () => void;
+  onToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+
+  // Publish
+  currentBranch: string | null;
+  hasUncommittedChanges: boolean;
+  isPublishing: boolean;
+  setIsPublishing: (v: boolean) => void;
+  onPublishError: (
+    error: string,
+    errorType: 'push_rejected' | 'auth_error' | 'merge_conflict' | 'generic'
+  ) => void;
+  onPublishStatusChange: () => void;
+  onCreatePR: () => void;
+  forcePublishOpen: boolean;
+  onForcePublishOpenHandled: () => void;
+
+  // Plugin slots
+  getSlotPlugins: (slot: string) => LoadedPlugin[];
+  pluginProject: {
+    name: string;
+    path: string;
+    currentBranch: string;
+    hasUncommittedChanges: boolean;
+    devServerUrl: string;
+  } | null;
+  pluginActions: {
+    showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+    refreshGitStatus: () => void;
+    refreshBranches: () => void;
+    focusTerminal: () => void;
+    openUrl: (url: string) => void;
+    openTerminal: (
+      command: string,
+      args: string[],
+      options?: { title?: string }
+    ) => Promise<number | null>;
+  };
+  pluginTheme: PluginThemeData;
+}
+
+export function WorkspaceHeader({
+  projectPath,
+  projectName,
+  onBackToProjects,
+  isEducationMode,
+  onToggleEducationMode,
+  onOpenPluginManager,
+  onOpenAssetsPanel,
+  onOpenEnvEditor,
+  onOpenBackupsModal,
+  integrations,
+  onGitHubStatusChange,
+  onGitHubConnect,
+  focusActiveTerminal,
+  onToast,
+  currentBranch,
+  hasUncommittedChanges,
+  isPublishing,
+  setIsPublishing,
+  onPublishError,
+  onPublishStatusChange,
+  onCreatePR,
+  forcePublishOpen,
+  onForcePublishOpenHandled,
+  getSlotPlugins,
+  pluginProject,
+  pluginActions,
+  pluginTheme,
+}: WorkspaceHeaderProps) {
+  // IDE dropdown state (internal to header)
+  const [showIdeDropdown, setShowIdeDropdown] = useState(false);
+  const [ideAvailability, setIdeAvailability] = useState<{ vscode: boolean; cursor: boolean }>({
+    vscode: false,
+    cursor: false,
+  });
+  const [openingIde, setOpeningIde] = useState<string | null>(null);
+
+  // Check IDE availability on mount
+  useEffect(() => {
+    void invoke<{ vscode: boolean; cursor: boolean }>('check_ide_availability')
+      .then(setIdeAvailability)
+      .catch(() => setIdeAvailability({ vscode: false, cursor: false }));
+  }, []);
+
+  // Open project in IDE
+  const openInIde = async (ide: 'vscode' | 'cursor') => {
+    setOpeningIde(ide);
+    try {
+      await invoke('open_in_ide', { projectPath, ide });
+      void trackEvent('ide_opened', {
+        ide,
+        project_name: projectName,
+        $screen_name: 'Workspace',
+      });
+      setOpeningIde(null);
+    } catch (e) {
+      logger.error(`Failed to open in ${ide}`, { error: e });
+      setOpeningIde(null);
+    }
+  };
+
+  return (
+    <header className="workspace-header">
+      <button className="back-button" onClick={onBackToProjects}>
+        ← Projects
+      </button>
+      <h1>{projectName}</h1>
+      <button
+        className="project-path"
+        onClick={() => projectPath && void invoke('open_in_finder', { path: projectPath })}
+        title="Open in Finder"
+      >
+        {projectPath}
+      </button>
+
+      <div className="workspace-header-actions">
+        <PluginSlot
+          name="toolbar"
+          plugins={getSlotPlugins('toolbar')}
+          project={pluginProject}
+          actions={pluginActions}
+          theme={pluginTheme}
+        />
+        <button
+          className={`toolbar-icon-btn ${isEducationMode ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleEducationMode();
+          }}
+          title="Education Mode"
+          data-education-id="education-button"
+        >
+          <GraduationCapIcon size={14} />
+        </button>
+        <button
+          className="toolbar-icon-btn"
+          onClick={onOpenPluginManager}
+          title="Manage Plugins"
+          data-education-id="plugin-manager"
+        >
+          <PuzzleIcon size={14} />
+        </button>
+        <button
+          className="toolbar-icon-btn"
+          onClick={onOpenAssetsPanel}
+          title="Assets"
+          data-education-id="assets-button"
+        >
+          <ImageIcon size={14} />
+        </button>
+        <div
+          className="ide-dropdown-container"
+          onMouseEnter={() => setShowIdeDropdown(true)}
+          onMouseLeave={() => setShowIdeDropdown(false)}
+          data-education-id="ide-button"
+        >
+          <button className="toolbar-icon-btn" title="Open in IDE">
+            <CodeIcon size={14} />
+          </button>
+          {showIdeDropdown && (
+            <div className="ide-dropdown">
+              <div className="ide-dropdown-inner">
+                {ideAvailability.vscode && (
+                  <button onClick={() => void openInIde('vscode')} disabled={openingIde !== null}>
+                    <VSCodeIcon size={14} />
+                    {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
+                  </button>
+                )}
+                {ideAvailability.cursor && (
+                  <button onClick={() => void openInIde('cursor')} disabled={openingIde !== null}>
+                    <CursorIcon size={14} />
+                    {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
+                  </button>
+                )}
+                {!ideAvailability.vscode && !ideAvailability.cursor && (
+                  <div className="ide-dropdown-empty">No IDEs found</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        <button
+          className="toolbar-icon-btn"
+          onClick={onOpenEnvEditor}
+          title="Environment Variables"
+          data-education-id="env-button"
+        >
+          <DollarIcon size={14} />
+        </button>
+        <button
+          className="toolbar-icon-btn"
+          onClick={onOpenBackupsModal}
+          title="Backups"
+          data-education-id="backups-button"
+        >
+          <HistoryIcon size={14} />
+        </button>
+        <span data-education-id="github-button">
+          <GitHubButton
+            githubState={integrations.github}
+            projectStatus={integrations.projectGithub}
+            projectPath={projectPath}
+            projectName={projectName}
+            onStatusChange={onGitHubStatusChange}
+            onGitHubConnect={onGitHubConnect}
+            onModalClose={focusActiveTerminal}
+            onToast={onToast}
+          />
+        </span>
+        <PublishBranchDropdown
+          currentBranch={currentBranch || 'main'}
+          projectGithubStatus={integrations.projectGithub}
+          projectPath={projectPath}
+          hasChangesToSync={hasUncommittedChanges}
+          onStatusChange={onPublishStatusChange}
+          onModalClose={focusActiveTerminal}
+          onToast={onToast}
+          isPublishing={isPublishing}
+          setIsPublishing={setIsPublishing}
+          onPublishError={onPublishError}
+          onCreatePR={onCreatePR}
+          forceOpen={forcePublishOpen}
+          onForceOpenHandled={onForcePublishOpenHandled}
+        />
+        <PluginSlot
+          name="publish"
+          plugins={getSlotPlugins('publish')}
+          project={pluginProject}
+          actions={pluginActions}
+          theme={pluginTheme}
+        />
+      </div>
+    </header>
+  );
+}

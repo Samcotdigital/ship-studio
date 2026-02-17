@@ -30,8 +30,8 @@ async fn run_command_with_timeout(
 
     match result {
         Ok(Ok(output)) => Ok(output),
-        Ok(Err(e)) => Err(format!("Command failed: {}", e)),
-        Err(_) => Err(format!("Command timed out after {} seconds", timeout_secs)),
+        Ok(Err(e)) => Err(format!("Command failed: {e}")),
+        Err(_) => Err(format!("Command timed out after {timeout_secs} seconds")),
     }
 }
 
@@ -224,7 +224,7 @@ pub async fn get_project_github_status(project_path: String) -> ProjectGitHubSta
             let url = serde_json::from_str::<serde_json::Value>(&json_str)
                 .ok()
                 .and_then(|v| v.get("url").and_then(|u| u.as_str()).map(|s| s.to_string()))
-                .unwrap_or_else(|| format!("https://github.com/{}", github_repo));
+                .unwrap_or_else(|| format!("https://github.com/{github_repo}"));
 
             ProjectGitHubStatus {
                 status: "connected".to_string(),
@@ -284,7 +284,7 @@ fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
     let gh_output = get_gh_command()
         .args(["api", "user", "--jq", r#".login, .name, .email"#])
         .output()
-        .map_err(|e| format!("Failed to get GitHub user info: {}", e))?;
+        .map_err(|e| format!("Failed to get GitHub user info: {e}"))?;
 
     if !gh_output.status.success() {
         return Err("Failed to get GitHub user info. Please configure git manually:\n  git config --global user.name \"Your Name\"\n  git config --global user.email \"you@example.com\"".to_string());
@@ -303,16 +303,16 @@ fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
             .args(["config", "user.name", display_name])
             .current_dir(repo_path)
             .output()
-            .map_err(|e| format!("Failed to set git user.name: {}", e))?;
+            .map_err(|e| format!("Failed to set git user.name: {e}"))?;
     }
 
     if !has_email {
-        let user_email = email.unwrap_or_else(|| {
+        let user_email = email.unwrap_or({
             // Can't return a reference to a local, so we'll handle this below
             ""
         });
         let final_email = if user_email.is_empty() {
-            format!("{}@users.noreply.github.com", login)
+            format!("{login}@users.noreply.github.com")
         } else {
             user_email.to_string()
         };
@@ -320,7 +320,7 @@ fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
             .args(["config", "user.email", &final_email])
             .current_dir(repo_path)
             .output()
-            .map_err(|e| format!("Failed to set git user.email: {}", e))?;
+            .map_err(|e| format!("Failed to set git user.email: {e}"))?;
     }
 
     Ok(())
@@ -381,7 +381,7 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Stri
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Failed to create initial commit: {}", stderr));
+            return Err(format!("Failed to create initial commit: {stderr}"));
         }
     }
 
@@ -401,7 +401,7 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Stri
     }
 
     // Return the repo URL
-    Ok(format!("https://github.com/{}", repo_name))
+    Ok(format!("https://github.com/{repo_name}"))
 }
 
 /// Lists GitHub repositories for a given owner (user or organization)
@@ -422,12 +422,12 @@ pub async fn list_github_repos(owner: String) -> Result<Vec<GitHubRepo>, String>
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to list repos: {}", stderr));
+        return Err(format!("Failed to list repos: {stderr}"));
     }
 
     let json_str = String::from_utf8_lossy(&output.stdout);
     let repos: Vec<GitHubRepo> =
-        serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse repo list: {}", e))?;
+        serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse repo list: {e}"))?;
 
     Ok(repos)
 }
@@ -466,14 +466,14 @@ pub async fn list_collaborator_repos() -> Result<Vec<GitHubRepo>, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to list collaborator repos: {}", stderr));
+        return Err(format!("Failed to list collaborator repos: {stderr}"));
     }
 
     let json_str = String::from_utf8_lossy(&output.stdout);
 
     // The API returns an array of repo objects with different field names
     let api_repos: Vec<GitHubApiRepo> = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse collaborator repo list: {}", e))?;
+        .map_err(|e| format!("Failed to parse collaborator repo list: {e}"))?;
 
     // Convert to our GitHubRepo format
     let repos: Vec<GitHubRepo> = api_repos

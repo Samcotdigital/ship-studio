@@ -58,7 +58,7 @@ pub async fn generate_pr_description(
                 &truncated[..pos],
                 diff.len() - pos
             ),
-            None => format!("{}\n\n[... diff truncated ...]", truncated),
+            None => format!("{truncated}\n\n[... diff truncated ...]"),
         }
     } else {
         diff
@@ -114,7 +114,7 @@ fn get_commit_messages(path: &std::path::Path, base: &str) -> Result<String, Str
     let output = create_command("git")
         .args([
             "log",
-            &format!("{}..HEAD", base),
+            &format!("{base}..HEAD"),
             "--pretty=format:%s",
             "--no-merges",
         ])
@@ -128,7 +128,7 @@ fn get_commit_messages(path: &std::path::Path, base: &str) -> Result<String, Str
 
 fn get_diff_stat(path: &std::path::Path, base: &str) -> Result<String, String> {
     let output = create_command("git")
-        .args(["diff", &format!("{}...HEAD", base), "--stat"])
+        .args(["diff", &format!("{base}...HEAD"), "--stat"])
         .current_dir(path)
         .output()
         .map_err(|e| e.to_string())?;
@@ -138,7 +138,7 @@ fn get_diff_stat(path: &std::path::Path, base: &str) -> Result<String, String> {
 
 fn get_diff(path: &std::path::Path, base: &str) -> Result<String, String> {
     let output = create_command("git")
-        .args(["diff", &format!("{}...HEAD", base)])
+        .args(["diff", &format!("{base}...HEAD")])
         .current_dir(path)
         .output()
         .map_err(|e| e.to_string())?;

@@ -14,7 +14,7 @@
  * @module components/BranchesTab
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   BranchInfo,
   PullRequestInfo,
@@ -90,22 +90,31 @@ export function BranchesTab({
     void invoke('set_branch_prefix_preference', { projectPath, prefix: checked }).catch(() => {}); // Ignore errors
   };
 
-  // Group branches
-  const currentBranchInfo = branches.find((b) => b.isCurrent);
-  const userBranches = githubUsername
-    ? branches.filter(
-        (b) =>
-          !b.isCurrent &&
-          !b.isDefault &&
-          b.name !== 'staging' &&
-          b.name.startsWith(`${githubUsername}/`)
-      )
-    : [];
-  const teamBranches = branches.filter(
-    (b) => !b.isCurrent && !b.isDefault && b.name !== 'staging' && !userBranches.includes(b)
+  // Group branches (memoized to avoid re-filtering on every render)
+  const currentBranchInfo = useMemo(() => branches.find((b) => b.isCurrent), [branches]);
+  const userBranches = useMemo(
+    () =>
+      githubUsername
+        ? branches.filter(
+            (b) =>
+              !b.isCurrent &&
+              !b.isDefault &&
+              b.name !== 'staging' &&
+              b.name.startsWith(`${githubUsername}/`)
+          )
+        : [],
+    [branches, githubUsername]
   );
-  const mainBranches = branches.filter(
-    (b) => !b.isCurrent && (b.isDefault || b.name === 'staging')
+  const teamBranches = useMemo(
+    () =>
+      branches.filter(
+        (b) => !b.isCurrent && !b.isDefault && b.name !== 'staging' && !userBranches.includes(b)
+      ),
+    [branches, userBranches]
+  );
+  const mainBranches = useMemo(
+    () => branches.filter((b) => !b.isCurrent && (b.isDefault || b.name === 'staging')),
+    [branches]
   );
 
   const handleSwitch = async (branchName: string) => {

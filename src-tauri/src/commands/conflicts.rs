@@ -118,7 +118,7 @@ pub async fn get_conflict_info(project_path: String) -> Result<Vec<ConflictedFil
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to get conflicted files: {}", stderr));
+        return Err(format!("Failed to get conflicted files: {stderr}"));
     }
 
     let file_list = String::from_utf8_lossy(&output.stdout);
@@ -187,7 +187,7 @@ pub async fn resolve_conflict(
 
     // Read the current file content
     let content =
-        std::fs::read_to_string(&full_path).map_err(|e| format!("Failed to read file: {}", e))?;
+        std::fs::read_to_string(&full_path).map_err(|e| format!("Failed to read file: {e}"))?;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut result = Vec::new();
@@ -247,17 +247,16 @@ pub async fn resolve_conflict(
     // Write the modified content back
     let new_content = result.join("\n");
     let final_content = if content.ends_with('\n') {
-        format!("{}\n", new_content)
+        format!("{new_content}\n")
     } else {
         new_content
     };
 
-    std::fs::write(&full_path, final_content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    std::fs::write(&full_path, final_content).map_err(|e| format!("Failed to write file: {e}"))?;
 
     // Check if there are any remaining conflicts in this file
     let updated_content = std::fs::read_to_string(&full_path)
-        .map_err(|e| format!("Failed to read updated file: {}", e))?;
+        .map_err(|e| format!("Failed to read updated file: {e}"))?;
 
     let has_more_conflicts = updated_content.contains("<<<<<<<");
 
@@ -271,7 +270,7 @@ pub async fn resolve_conflict(
 
         if !add_output.status.success() {
             let stderr = String::from_utf8_lossy(&add_output.stderr);
-            return Err(format!("Failed to stage resolved file: {}", stderr));
+            return Err(format!("Failed to stage resolved file: {stderr}"));
         }
     }
 
@@ -291,7 +290,7 @@ pub async fn abort_merge(project_path: String) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to abort merge: {}", stderr));
+        return Err(format!("Failed to abort merge: {stderr}"));
     }
 
     Ok(())
@@ -311,7 +310,7 @@ pub async fn complete_merge(project_path: String) -> Result<(), String> {
 
     if !add_output.status.success() {
         let stderr = String::from_utf8_lossy(&add_output.stderr);
-        return Err(format!("Failed to stage changes: {}", stderr));
+        return Err(format!("Failed to stage changes: {stderr}"));
     }
 
     // Create the merge commit
@@ -324,7 +323,7 @@ pub async fn complete_merge(project_path: String) -> Result<(), String> {
     if !commit_output.status.success() {
         let stderr = String::from_utf8_lossy(&commit_output.stderr);
         if !stderr.contains("nothing to commit") {
-            return Err(format!("Failed to create merge commit: {}", stderr));
+            return Err(format!("Failed to create merge commit: {stderr}"));
         }
     }
 

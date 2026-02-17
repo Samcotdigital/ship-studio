@@ -1,0 +1,241 @@
+//! # Git Commands
+//!
+//! Commands for Git operations, branch management, and repository management.
+//!
+//! Organized into submodules:
+//! - `status` — change detection, file diffs, branch status
+//! - `branches` — list, create, delete, switch branches
+//! - `sync` — fetch, pull, merge, commit, discard
+//! - `stash` — stash management, backups, restore
+
+mod branches;
+mod stash;
+mod status;
+mod sync;
+
+pub use branches::*;
+pub use stash::*;
+pub use status::*;
+pub use sync::*;
+
+use crate::types::PrerequisiteCheck;
+use crate::utils::{create_command, find_executable, validate_project_path};
+use tracing::{debug, error, info, instrument};
+
+// ============ Git Helper Functions ============
+
+/// Checks if there are uncommitted changes (staged or unstaged tracked files).
+pub fn git_has_uncommitted_changes(path: &std::path::Path) -> Result<bool, String> {
+    let status = create_command("git")
+        .args(["status", "--porcelain", "-uno"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(!String::from_utf8_lossy(&status.stdout).trim().is_empty())
+}
+
+/// Checks if there are any changes (including untracked) in the working directory.
+pub fn git_has_any_changes(path: &std::path::Path) -> Result<bool, String> {
+    let status = create_command("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(!String::from_utf8_lossy(&status.stdout).trim().is_empty())
+}
+
+/// Stages all changes and commits with the given message.
+/// Returns true if a commit was made, false if nothing to commit.
+pub fn git_stage_and_commit(path: &std::path::Path, message: &str) -> Result<bool, String> {
+    // Stage all changes
+    let add_output = create_command("git")
+        .args(["add", "-A"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !add_output.status.success() {
+        return Err(String::from_utf8_lossy(&add_output.stderr).to_string());
+    }
+
+    // Check if there are staged changes to commit
+    let has_changes = git_has_any_changes(path)?;
+
+    if !has_changes {
+        return Ok(false);
+    }
+
+    // Commit
+    let commit_output = create_command("git")
+        .args(["commit", "-m", message])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !commit_output.status.success() {
+        return Err(String::from_utf8_lossy(&commit_output.stderr).to_string());
+    }
+
+    Ok(true)
+}
+
+/// Get the current branch name synchronously (for internal use)
+pub fn get_current_branch_sync(path: &std::path::Path) -> Option<String> {
+    let output = create_command("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch == "HEAD" || branch.is_empty() {
+        return None;
+    }
+
+    Some(branch)
+}
+
+/// Calculates how many commits `branch` is ahead/behind compared to `compare_to`.
+pub fn get_ahead_behind(path: &std::path::Path, branch: &str, compare_to: &str) -> (i32, i32) {
+    let output = create_command("git")
+        .args([
+            "rev-list",
+            "--left-right",
+            "--count",
+            &format!("{branch}...{compare_to}"),
+        ])
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let counts = String::from_utf8_lossy(&out.stdout);
+            let parts: Vec<&str> = counts.trim().split('\t').collect();
+            if parts.len() == 2 {
+                (parts[0].parse().unwrap_or(0), parts[1].parse().unwrap_or(0))
+            } else {
+                (0, 0)
+            }
+        }
+        _ => (0, 0),
+    }
+}
+
+/// Helper to load project metadata with automatic schema migration
+pub(crate) fn load_project_metadata(
+    project_path: &std::path::Path,
+) -> crate::types::ProjectMetadata {
+    let metadata_path = project_path.join(".shipstudio/project.json");
+    let mut metadata: crate::types::ProjectMetadata = std::fs::read_to_string(&metadata_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default();
+
+    // Apply migrations if needed and save the updated metadata
+    if metadata.migrate() {
+        let _ = save_project_metadata(project_path, &metadata);
+    }
+
+    metadata
+}
+
+/// Helper to save project metadata
+pub(crate) fn save_project_metadata(
+    project_path: &std::path::Path,
+    metadata: &crate::types::ProjectMetadata,
+) -> Result<(), String> {
+    let shipstudio_dir = project_path.join(".shipstudio");
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir).map_err(|e| e.to_string())?;
+    }
+    let metadata_path = shipstudio_dir.join("project.json");
+    let json = serde_json::to_string_pretty(metadata).map_err(|e| e.to_string())?;
+    std::fs::write(&metadata_path, json).map_err(|e| e.to_string())
+}
+
+// ============ Tauri Commands ============
+
+/// Checks if required tools (node, npm, git, gh, claude) are installed.
+#[tauri::command]
+#[instrument(name = "check_prerequisites")]
+pub async fn check_prerequisites() -> Vec<PrerequisiteCheck> {
+    let commands = vec!["node", "npm", "git", "gh", "claude"];
+    let mut results = Vec::new();
+
+    for cmd in commands {
+        let (available, path) = match find_executable(cmd) {
+            Some(p) => (true, Some(p.to_string_lossy().to_string())),
+            None => (false, None),
+        };
+        debug!(command = cmd, available, "Prerequisite check");
+        results.push(PrerequisiteCheck {
+            name: cmd.to_string(),
+            available,
+            path,
+        });
+    }
+
+    info!(
+        total = results.len(),
+        available = results.iter().filter(|r| r.available).count(),
+        "Prerequisites checked"
+    );
+    results
+}
+
+/// Returns the path to ~/ShipStudio directory
+#[tauri::command]
+pub async fn get_shipstudio_dir() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+    Ok(shipstudio_dir.to_string_lossy().to_string())
+}
+
+/// Creates ~/ShipStudio directory if it doesn't exist
+#[tauri::command]
+pub async fn ensure_shipstudio_dir() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir).map_err(|e| e.to_string())?;
+    }
+
+    Ok(shipstudio_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+#[instrument(name = "init_git_repo", skip(project_path), fields(project = %project_path))]
+pub async fn init_git_repo(project_path: String) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    info!("Initializing git repository");
+
+    // Initialize git repo
+    let output = create_command("git")
+        .args(["init"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| {
+            error!(error = %e, "Failed to execute git init");
+            e.to_string()
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        error!(error = %stderr, "git init failed");
+        return Err(stderr);
+    }
+
+    // Stage and commit all files
+    git_stage_and_commit(&validated_path, "Initial commit from Ship Studio")?;
+
+    info!("Git repository initialized successfully");
+    Ok(())
+}

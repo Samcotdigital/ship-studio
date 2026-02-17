@@ -236,7 +236,7 @@ describe('OnboardingScreen', () => {
 
     mockInvoke('get_full_setup_status', FRESH_STATUS);
 
-    await act(async () => {
+    act(() => {
       fireEvent.click(screen.getByText('Retry'));
     });
 
@@ -274,7 +274,7 @@ describe('OnboardingScreen', () => {
     });
 
     const installButtons = screen.getAllByText('Install');
-    await act(async () => {
+    act(() => {
       fireEvent.click(installButtons[0]);
     });
 
@@ -293,7 +293,7 @@ describe('OnboardingScreen', () => {
     });
 
     const installButtons = screen.getAllByText('Install');
-    await act(async () => {
+    act(() => {
       fireEvent.click(installButtons[0]);
     });
 
@@ -301,7 +301,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
     });
 
-    await act(async () => {
+    act(() => {
       fireEvent.click(screen.getByTestId('terminal-exit-0'));
     });
 
@@ -320,7 +320,7 @@ describe('OnboardingScreen', () => {
     });
 
     const installButtons = screen.getAllByText('Install');
-    await act(async () => {
+    act(() => {
       fireEvent.click(installButtons[0]);
     });
 
@@ -328,7 +328,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
     });
 
-    await act(async () => {
+    act(() => {
       fireEvent.click(screen.getByTestId('terminal-exit-1'));
     });
 
@@ -346,7 +346,7 @@ describe('OnboardingScreen', () => {
     });
 
     const installButtons = screen.getAllByText('Install');
-    await act(async () => {
+    act(() => {
       fireEvent.click(installButtons[0]);
     });
 
@@ -354,7 +354,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
     });
 
-    await act(async () => {
+    act(() => {
       fireEvent.click(screen.getByText('Cancel'));
     });
 
@@ -467,7 +467,7 @@ describe('OnboardingScreen', () => {
 
       // Install homebrew (terminal item)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -478,7 +478,7 @@ describe('OnboardingScreen', () => {
       // After terminal succeeds, mock returns step 1 complete
       mockInvoke('get_full_setup_status', STEP1_COMPLETE_STATUS);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -505,7 +505,7 @@ describe('OnboardingScreen', () => {
       });
 
       const backButton = screen.getByText('Back');
-      await act(async () => {
+      act(() => {
         fireEvent.click(backButton);
       });
 
@@ -550,7 +550,7 @@ describe('OnboardingScreen', () => {
 
       // Click Install on git (batch install of git+gh)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -560,7 +560,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Click Next to advance to step 3
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Next'));
       });
 
@@ -594,7 +594,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Skip for Now')).toBeInTheDocument();
 
       // Click skip → celebration
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Skip for Now'));
       });
 
@@ -615,7 +615,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Go back
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Back'));
       });
 
@@ -623,7 +623,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Package Manager')).toBeInTheDocument();
 
       // Go forward again
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Next'));
       });
 
@@ -681,7 +681,7 @@ describe('OnboardingScreen', () => {
 
       // Install Claude Code (terminal item)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -706,7 +706,7 @@ describe('OnboardingScreen', () => {
       );
       mockInvoke('set_default_agent_id', undefined);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -773,7 +773,7 @@ describe('OnboardingScreen', () => {
 
       // Install homebrew (terminal item)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -784,7 +784,7 @@ describe('OnboardingScreen', () => {
       // After terminal succeeds, mock returns step 1 complete
       mockInvoke('get_full_setup_status', STEP1_COMPLETE_STATUS);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -843,7 +843,7 @@ describe('OnboardingScreen', () => {
         })
       );
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -854,7 +854,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Click Next to advance to step 3
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Next'));
       });
 
@@ -862,7 +862,7 @@ describe('OnboardingScreen', () => {
 
       // Now install Claude (terminal item) — after it succeeds, we're all done
       const claudeInstalls = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(claudeInstalls[0]); // Claude Code install
       });
 
@@ -874,7 +874,7 @@ describe('OnboardingScreen', () => {
       mockInvoke('get_full_setup_status', CLAUDE_ONLY_STATUS);
       mockInvoke('set_default_agent_id', undefined);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -889,7 +889,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Click Next → hosting step is also complete (vercel ready in status) → celebration
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Next'));
       });
 
@@ -913,7 +913,7 @@ describe('OnboardingScreen', () => {
       // Retry succeeds with fresh status
       mockInvoke('get_full_setup_status', FRESH_STATUS);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Retry'));
       });
 
@@ -952,7 +952,7 @@ describe('OnboardingScreen', () => {
       // Click Install on node (triggers batch install of all missing brew packages)
       const installButtons = screen.getAllByText('Install');
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -973,7 +973,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -981,7 +981,7 @@ describe('OnboardingScreen', () => {
         expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
       });
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-127'));
       });
 
@@ -1002,7 +1002,7 @@ describe('OnboardingScreen', () => {
 
       // Click Install on homebrew (first Install button)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1011,7 +1011,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Terminal fails
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-1'));
       });
 
@@ -1051,7 +1051,7 @@ describe('OnboardingScreen', () => {
       });
       mockInvoke('get_full_setup_status', updatedStatus);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Retry'));
       });
 
@@ -1080,7 +1080,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1108,7 +1108,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1149,7 +1149,7 @@ describe('OnboardingScreen', () => {
       mockCheckGitHubCliStatus.mockResolvedValueOnce({ installed: true, authenticated: false });
 
       // Click Connect → opens terminal
-      await act(async () => {
+      act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
@@ -1158,7 +1158,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Terminal exits 0 (user thought auth was done, but it wasn't)
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -1196,7 +1196,7 @@ describe('OnboardingScreen', () => {
       const connectButtons = screen.getAllByText('Connect');
       expect(connectButtons.length).toBeGreaterThan(0);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
@@ -1205,7 +1205,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Terminal exits 0 but auth check fails
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -1239,7 +1239,7 @@ describe('OnboardingScreen', () => {
 
       // Click Connect for gh_auth
       const connectButtons = screen.getAllByText('Connect');
-      await act(async () => {
+      act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
@@ -1271,7 +1271,7 @@ describe('OnboardingScreen', () => {
       });
 
       const connectButtons = screen.getAllByText('Connect');
-      await act(async () => {
+      act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
@@ -1295,7 +1295,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1304,7 +1304,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Exit with null (process killed / terminal closed)
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-null'));
       });
 
@@ -1324,7 +1324,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1333,7 +1333,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Terminal fails
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-1'));
       });
 
@@ -1341,7 +1341,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Close')).toBeInTheDocument();
 
       // Click Close
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Close'));
       });
 
@@ -1361,7 +1361,7 @@ describe('OnboardingScreen', () => {
       });
 
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1392,7 +1392,7 @@ describe('OnboardingScreen', () => {
 
       // Click Install (opens terminal)
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1426,7 +1426,7 @@ describe('OnboardingScreen', () => {
 
       // Open terminal for homebrew
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1439,7 +1439,7 @@ describe('OnboardingScreen', () => {
       ).length;
 
       // Cancel terminal
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Cancel'));
       });
 
@@ -1659,7 +1659,7 @@ describe('OnboardingScreen', () => {
       // are: Claude Code (Install), Codex (Install). Click the Codex Install button.
       const installButtons = screen.getAllByText('Install');
       // Codex Install is the second Install button (Claude Code is first)
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[installButtons.length - 1]);
       });
 
@@ -1684,7 +1684,7 @@ describe('OnboardingScreen', () => {
       );
       mockInvoke('set_default_agent_id', undefined);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 
@@ -1740,7 +1740,7 @@ describe('OnboardingScreen', () => {
       // Retry — still fails
       mockInvokeErr('get_full_setup_status', new Error('Still down'));
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Retry'));
       });
 
@@ -1753,7 +1753,7 @@ describe('OnboardingScreen', () => {
       // Retry again — now succeeds
       mockInvoke('get_full_setup_status', FRESH_STATUS);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Retry'));
       });
 
@@ -1773,7 +1773,7 @@ describe('OnboardingScreen', () => {
 
       // First attempt: install homebrew fails
       const installButtons = screen.getAllByText('Install');
-      await act(async () => {
+      act(() => {
         fireEvent.click(installButtons[0]);
       });
 
@@ -1781,7 +1781,7 @@ describe('OnboardingScreen', () => {
         expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
       });
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-1'));
       });
 
@@ -1789,7 +1789,7 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Close')).toBeInTheDocument();
 
       // Close terminal
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Close'));
       });
 
@@ -1803,7 +1803,7 @@ describe('OnboardingScreen', () => {
       // Second attempt: retry succeeds
       mockInvoke('get_full_setup_status', STEP1_COMPLETE_STATUS);
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByText('Retry'));
       });
 
@@ -1812,7 +1812,7 @@ describe('OnboardingScreen', () => {
         expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
       });
 
-      await act(async () => {
+      act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
 

@@ -12,44 +12,10 @@
  * @module components/Preview
  */
 
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { useClickOutside } from '../hooks/useClickOutside';
-import { logger } from '../lib/logger';
-import { getWindowLabel } from '../lib/window';
-
-/** How often to refresh the page list (ms) */
-const PAGE_REFRESH_INTERVAL_MS = 5000;
-/** Timeout for dev server health check requests (ms) */
-const SERVER_CHECK_TIMEOUT_MS = 3000;
-/** Maximum retries before showing error state */
-const SERVER_MAX_RETRIES = 60;
-
-/** Responsive breakpoint options */
-type Breakpoint = 'full' | 'desktop' | 'laptop' | 'tablet' | 'mobile';
-
-/** Information about a Next.js page/route */
-interface PageInfo {
-  /** The URL route (e.g., "/", "/about", "/blog/[slug]") */
-  route: string;
-  /** Absolute path to the page file */
-  file_path: string;
-}
-
-const BREAKPOINTS: Record<Breakpoint, { width: string; label: string }> = {
-  full: { width: '100%', label: 'Full' },
-  desktop: { width: '1440px', label: 'Desktop' },
-  laptop: { width: '1024px', label: 'Laptop' },
-  tablet: { width: '768px', label: 'Tablet' },
-  mobile: { width: '375px', label: 'Mobile' },
-};
-
-/** Pixel widths for fixed breakpoints (excludes 'full' which is 100%) */
-const BREAKPOINT_WIDTHS: number[] = [1440, 1024, 768, 375];
-
-/** Space reserved for the resize handle on the right side of the viewport */
-const VIEWPORT_PADDING_PX = 12;
+import { useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { usePreviewConnection, SERVER_MAX_RETRIES } from '../hooks/usePreviewConnection';
+import { usePreviewCapture } from '../hooks/usePreviewCapture';
+import { usePreviewResize, BREAKPOINTS, type Breakpoint } from '../hooks/usePreviewResize';
 
 // SVG icons for breakpoints
 const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
@@ -206,644 +172,43 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   },
   ref
 ) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [serverReady, setServerReady] = useState(false);
-  const [customWidth, setCustomWidth] = useState<number | null>(null); // null = 100% (desktop)
-  const [pages, setPages] = useState<PageInfo[]>([]);
-  const [currentPage, setCurrentPage] = useState('/');
-  // Separate state for controlling iframe src — only updated on explicit navigation
-  // (page select, refresh, project change). Proxy messages update currentPage (display)
-  // but NOT iframePath, so in-iframe client-side navigation doesn't cause a full reload.
-  const [iframePath, setIframePath] = useState('/');
-  const [showPageDropdown, setShowPageDropdown] = useState(false);
-  const [pageSearch, setPageSearch] = useState('');
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [proxyPort, setProxyPort] = useState<number | null>(null);
+  // Server connection, health checks, page navigation (extracted to hook)
+  const conn = usePreviewConnection({
+    port,
+    projectPath,
+    isDevServerRestarting,
+    isStaticProject,
+    onServerReady,
+    onPageChange,
+    onSendToClaude,
+    onToast,
+  });
 
-  // Crop selection state
-  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
-  const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
+  // Screenshot capture and crop selection (extracted to hook)
+  const capture = usePreviewCapture({
+    projectPath,
+    baseUrl: conn.baseUrl,
+    currentPage: conn.currentPage,
+    isCropMode,
+    onCropStart,
+    onCropComplete,
+    onCropCancel,
+  });
+
+  // Responsive viewport resizing and breakpoint switching (extracted to hook)
+  const resize = usePreviewResize({
+    iframeWrapperRef: capture.iframeWrapperRef,
+  });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const iframeWrapperRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const cropOverlayRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-
-  // Dev server URL (for health checks - always use direct URL, not proxy)
-  const devServerUrl = `http://localhost:${port}`;
-  // Cache-buster to prevent showing stale content when switching projects
-  const [cacheBuster, setCacheBuster] = useState(() => Date.now());
-  // Use proxy URL when available (for nav tracking), fall back to dev server directly
-  // Add shipstudio=1 param so sites can detect they're in Ship Studio preview (e.g., to disable iframe detection)
-  const baseUrl = proxyPort ? `http://localhost:${proxyPort}` : devServerUrl;
-  const currentUrl = `${baseUrl}${iframePath === '/' ? '' : iframePath}?_cb=${cacheBuster}&shipstudio=1`;
-
-  // Reset state when project or port changes
-  useEffect(() => {
-    setIsLoading(true);
-    setHasError(false);
-    setServerReady(false);
-    setRetryCount(-1); // -1 = not checking yet
-    setCurrentPage('/');
-    setIframePath('/');
-    setPages([]);
-    setShowPageDropdown(false);
-    setPageSearch('');
-    setCacheBuster(Date.now()); // New cache-buster for new project
-
-    // Delay server check to allow old dev server to terminate
-    const timer = setTimeout(() => setRetryCount(0), 1500);
-    return () => clearTimeout(timer);
-  }, [projectPath, port]);
-
-  // Track previous restart state to detect transitions
-  const wasRestartingRef = useRef(false);
-
-  // Reset server state when dev server is restarting, start polling when done
-  useEffect(() => {
-    if (isDevServerRestarting) {
-      // Dev server is restarting - reset server state to stop proxy and iframe loading
-      setServerReady(false);
-      setIsLoading(true);
-      setHasError(false);
-      setRetryCount(-1); // Pause server checks
-      wasRestartingRef.current = true;
-    } else if (wasRestartingRef.current) {
-      // Dev server restart complete - start polling for new server
-      // Small delay to allow the new server to bind to the port
-      wasRestartingRef.current = false;
-      const timer = setTimeout(() => setRetryCount(0), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isDevServerRestarting]);
-
-  // Load pages
-  const loadPages = useCallback(async () => {
-    try {
-      const pageList = await invoke<PageInfo[]>('list_pages', { projectPath });
-      setPages(pageList);
-    } catch (error) {
-      console.error('Failed to load pages:', error);
-    }
-  }, [projectPath]);
-
-  // Load pages on mount and periodically
-  useEffect(() => {
-    void loadPages();
-    const interval = setInterval(() => void loadPages(), PAGE_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [projectPath, loadPages]);
-
-  // Close dropdown when clicking outside
-  const closePageDropdown = useCallback(() => {
-    setShowPageDropdown(false);
-    setPageSearch('');
-  }, []);
-  useClickOutside(dropdownRef, closePageDropdown, showPageDropdown);
-
-  // Focus search input when dropdown opens
-  useEffect(() => {
-    if (showPageDropdown && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [showPageDropdown]);
-
-  // Notify parent when server becomes ready
-  useEffect(() => {
-    if (serverReady && onServerReady) {
-      logger.info('[Preview] Server ready, calling onServerReady callback');
-      onServerReady();
-    }
-  }, [serverReady, onServerReady]);
-
-  // Notify parent when page changes
-  useEffect(() => {
-    onPageChange?.(currentPage);
-  }, [currentPage, onPageChange]);
-
-  // Start/stop preview proxy for navigation tracking
-  useEffect(() => {
-    if (!serverReady) {
-      setProxyPort(null);
-      return;
-    }
-
-    let cancelled = false;
-    const windowLabel = getWindowLabel();
-
-    invoke<number>('start_preview_proxy', {
-      windowLabel,
-      targetPort: port,
-    })
-      .then((proxyP) => {
-        if (!cancelled) {
-          logger.info('[Preview] Proxy started', { proxyPort: proxyP, targetPort: port });
-          setProxyPort(proxyP);
-        }
-      })
-      .catch((err) => {
-        logger.error('[Preview] Failed to start proxy, using direct URL', { error: err });
-        // Fallback: use dev server directly (current behavior)
-      });
-
-    return () => {
-      cancelled = true;
-      setProxyPort(null);
-      invoke('stop_preview_proxy', { windowLabel }).catch(() => {});
-    };
-  }, [serverReady, port]);
-
-  // Listen for navigation and error events from the injected proxy scripts
-  useEffect(() => {
-    const handleMessage = (
-      event: MessageEvent<{
-        type?: string;
-        pathname?: string;
-        status?: number;
-        message?: string;
-      }>
-    ) => {
-      const data = event.data;
-      if (data && data.type === 'shipstudio:navigate' && typeof data.pathname === 'string') {
-        const pathname: string = data.pathname || '/';
-        // Only update if actually different (prevents feedback loops)
-        setCurrentPage((prev) => (prev === pathname ? prev : pathname));
-      }
-      if (data && data.type === 'shipstudio:error') {
-        logger.warn('[Preview] Dev server error detected via proxy', {
-          status: data.status,
-          message: data.message?.substring(0, 200),
-        });
-      }
-      if (data && data.type === 'shipstudio:copy-error' && data.message) {
-        navigator.clipboard.writeText(data.message).then(
-          () => onToast?.('Error copied to clipboard', 'success'),
-          () => onToast?.('Failed to copy to clipboard', 'error')
-        );
-      }
-      if (data && data.type === 'shipstudio:send-error-to-claude' && data.message) {
-        const prompt = `My dev server is returning an error:\n\n${data.message}\n\nPlease help me fix this.`;
-        onSendToClaude?.(prompt);
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [onSendToClaude, onToast]);
-
-  // Auto-reload for static HTML projects when files change on disk
-  useEffect(() => {
-    if (!isStaticProject || !serverReady) return;
-
-    let unlisten: (() => void) | null = null;
-
-    listen<{ windowLabel: string }>('static-file-changed', () => {
-      logger.debug('[Preview] File change detected, reloading preview');
-      setCacheBuster(Date.now());
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    return () => {
-      unlisten?.();
-    };
-  }, [isStaticProject, serverReady]);
-
-  useEffect(() => {
-    // Skip if not ready to check yet (-1 means waiting for old server to die)
-    if (retryCount < 0) {
-      logger.info('[Preview] Waiting for old server to die (retryCount=-1)');
-      return;
-    }
-    logger.info('[Preview] Starting server check', { retryCount, url: devServerUrl });
-
-    const checkServer = async () => {
-      setIsLoading(true);
-      setHasError(false);
-      setServerReady(false);
-
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), SERVER_CHECK_TIMEOUT_MS);
-
-        await fetch(devServerUrl, {
-          mode: 'no-cors',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        logger.info('[Preview] Server check succeeded', { port });
-        setIsLoading(false);
-        setHasError(false);
-        setServerReady(true);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        logger.info('[Preview] Server check failed', {
-          retry: retryCount,
-          maxRetries: SERVER_MAX_RETRIES,
-          error: errorMsg,
-          url: devServerUrl,
-        });
-        if (retryCount < SERVER_MAX_RETRIES) {
-          setTimeout(() => setRetryCount((c) => c + 1), 1000);
-        } else {
-          setIsLoading(false);
-          setHasError(true);
-        }
-      }
-    };
-
-    void checkServer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- port is covered by devServerUrl
-  }, [devServerUrl, retryCount]);
-
-  // Periodic health check after server is ready - detect if it crashes
-  // Use a ref to track consecutive failures (allows tolerance for temporary slowdowns)
-  const healthCheckFailuresRef = useRef(0);
-  const HEALTH_CHECK_MAX_FAILURES = 3; // Allow 3 consecutive failures before showing error
-
-  useEffect(() => {
-    if (!serverReady) {
-      // Reset failure count when server is not ready
-      healthCheckFailuresRef.current = 0;
-      return;
-    }
-
-    const healthCheck = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), SERVER_CHECK_TIMEOUT_MS);
-
-        await fetch(devServerUrl, {
-          mode: 'no-cors',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        // Reset failure count on success
-        healthCheckFailuresRef.current = 0;
-      } catch {
-        // Increment failure count
-        healthCheckFailuresRef.current += 1;
-        console.warn(
-          `[Preview] Dev server health check failed (${healthCheckFailuresRef.current}/${HEALTH_CHECK_MAX_FAILURES})`
-        );
-
-        // Only show error after consecutive failures (tolerates temporary slowdowns)
-        if (healthCheckFailuresRef.current >= HEALTH_CHECK_MAX_FAILURES) {
-          console.warn(
-            '[Preview] Dev server appears to have crashed after multiple failed health checks'
-          );
-          setServerReady(false);
-          setHasError(true);
-          setIsLoading(false);
-        }
-      }
-    };
-
-    // Check every 10 seconds while server is ready
-    const interval = setInterval(() => void healthCheck(), 10000);
-    return () => clearInterval(interval);
-  }, [serverReady, devServerUrl]);
-
-  const handleRefresh = () => {
-    // Sync iframePath to the actual current page so refresh loads what the user sees,
-    // not the stale iframePath from the last explicit navigation
-    setIframePath(currentPage);
-    setCacheBuster(Date.now());
-  };
-
-  const handlePageSelect = (route: string) => {
-    setCurrentPage(route);
-    setIframePath(route); // Explicit navigation — update iframe src
-    setShowPageDropdown(false);
-    setPageSearch('');
-    // Update cache-buster to force reload with new page
-    setCacheBuster(Date.now());
-  };
-
-  // Shared helper: capture the current window and return the temp file path
-  const captureWindowScreenshot = useCallback(async (): Promise<string | null> => {
-    const { getScreenshotableWindows, getWindowScreenshot } =
-      await import('tauri-plugin-screenshots-api');
-
-    const windows = await getScreenshotableWindows();
-    const ourWindow = windows.find(
-      (w) =>
-        w.title?.toLowerCase().includes('ship studio') || w.title?.toLowerCase().includes('tauri')
-    );
-
-    if (!ourWindow) {
-      return null;
-    }
-
-    return await getWindowScreenshot(ourWindow.id);
-  }, []);
-
-  // Capture viewport screenshot by capturing the window and cropping to iframe bounds
-  // This captures what's actually visible on screen (including any navigation the user did in the iframe)
-  const captureForClaude = useCallback(async (): Promise<string | null> => {
-    if (isCapturing) {
-      return null;
-    }
-
-    setIsCapturing(true);
-    try {
-      if (!iframeWrapperRef.current) return null;
-
-      const tempPath = await captureWindowScreenshot();
-      if (!tempPath) return null;
-
-      const rect = iframeWrapperRef.current.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      // Account for macOS title bar in window screenshot
-      const TITLE_BAR_HEIGHT = 31;
-
-      const finalPath = await invoke<string>('crop_and_save_screenshot', {
-        projectPath,
-        sourcePath: tempPath,
-        x: Math.round(rect.left * dpr),
-        y: Math.round((rect.top + TITLE_BAR_HEIGHT) * dpr),
-        width: Math.round(rect.width * dpr),
-        height: Math.round(rect.height * dpr),
-      });
-      return finalPath;
-    } catch (error) {
-      console.error('[Preview] Viewport capture failed:', error);
-      return null;
-    } finally {
-      setIsCapturing(false);
-    }
-  }, [projectPath, captureWindowScreenshot, isCapturing]);
-
-  // Full-page capture using Playwright (scrolls page to trigger lazy content, then captures)
-  // Uses currentPage (tracked via proxy) so it captures the actual visible page,
-  // even if the user navigated via in-iframe links.
-  const captureFullPage = useCallback(async (): Promise<string | null> => {
-    if (isCapturing) return null;
-
-    setIsCapturing(true);
-    try {
-      const captureUrl = `${baseUrl}${currentPage === '/' ? '' : currentPage}?_cb=${Date.now()}&shipstudio=1`;
-      const filePath = await invoke<string>('capture_fullpage_playwright', {
-        projectPath,
-        url: captureUrl,
-      });
-      return filePath;
-    } catch (error) {
-      console.error('[Preview] Full page capture failed:', error);
-      // Fall back to viewport capture if Playwright fails
-      return captureForClaude();
-    } finally {
-      setIsCapturing(false);
-    }
-  }, [isCapturing, projectPath, baseUrl, currentPage, captureForClaude]);
-
-  // Capture a specific region of the preview
-  const captureRegion = useCallback(
-    async (
-      regionX: number,
-      regionY: number,
-      regionWidth: number,
-      regionHeight: number
-    ): Promise<string | null> => {
-      if (!iframeWrapperRef.current) {
-        return null;
-      }
-
-      try {
-        const tempPath = await captureWindowScreenshot();
-        if (!tempPath) return null;
-
-        // Get the iframe's position relative to the window
-        const iframeRect = iframeWrapperRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        // Account for macOS title bar in window screenshot
-        const TITLE_BAR_HEIGHT = 31;
-
-        // Calculate absolute position of the selection within the window
-        const absoluteX = Math.round((iframeRect.left + regionX) * dpr);
-        const absoluteY = Math.round((iframeRect.top + regionY + TITLE_BAR_HEIGHT) * dpr);
-        const width = Math.round(regionWidth * dpr);
-        const height = Math.round(regionHeight * dpr);
-
-        // Crop to selection bounds and save
-        const finalPath = await invoke<string>('crop_and_save_screenshot', {
-          projectPath,
-          sourcePath: tempPath,
-          x: absoluteX,
-          y: absoluteY,
-          width,
-          height,
-        });
-
-        return finalPath;
-      } catch (error) {
-        console.error('[Preview] Region capture failed:', error);
-        return null;
-      }
-    },
-    [projectPath, captureWindowScreenshot]
-  );
-
-  // Handle crop selection mouse events
-  const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cropOverlayRef.current) return;
-    const rect = cropOverlayRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setSelectionStart({ x, y });
-    setSelectionEnd({ x, y });
-    setIsSelecting(true);
-  }, []);
-
-  const handleCropMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isSelecting || !cropOverlayRef.current) return;
-      const rect = cropOverlayRef.current.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-      setSelectionEnd({ x, y });
-    },
-    [isSelecting]
-  );
-
-  const handleCropMouseUp = useCallback(async () => {
-    if (!isSelecting || !selectionStart || !selectionEnd) return;
-    setIsSelecting(false);
-
-    // Calculate selection bounds
-    const x = Math.min(selectionStart.x, selectionEnd.x);
-    const y = Math.min(selectionStart.y, selectionEnd.y);
-    const width = Math.abs(selectionEnd.x - selectionStart.x);
-    const height = Math.abs(selectionEnd.y - selectionStart.y);
-
-    // Minimum selection size
-    if (width < 10 || height < 10) {
-      setSelectionStart(null);
-      setSelectionEnd(null);
-      return;
-    }
-
-    // Store bounds before resetting state
-    const bounds = { x, y, width, height };
-
-    // Reset selection state and notify parent immediately (hides overlay, shows loading)
-    setSelectionStart(null);
-    setSelectionEnd(null);
-    onCropStart?.();
-
-    // Capture the selected region
-    const filePath = await captureRegion(bounds.x, bounds.y, bounds.width, bounds.height);
-
-    // Notify parent with the result
-    onCropComplete?.(filePath);
-  }, [isSelecting, selectionStart, selectionEnd, captureRegion, onCropStart, onCropComplete]);
-
-  // Handle escape key to cancel crop mode
-  useEffect(() => {
-    if (!isCropMode) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSelectionStart(null);
-        setSelectionEnd(null);
-        setIsSelecting(false);
-        onCropCancel?.();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isCropMode, onCropCancel]);
-
-  // Reset selection when crop mode changes
-  useEffect(() => {
-    if (!isCropMode) {
-      setSelectionStart(null);
-      setSelectionEnd(null);
-      setIsSelecting(false);
-    }
-  }, [isCropMode]);
-
-  // Determine which breakpoint matches the current width
-  const getActiveBreakpoint = useCallback((): Breakpoint => {
-    if (customWidth === null) return 'full';
-    if (customWidth <= 375) return 'mobile';
-    if (customWidth <= 768) return 'tablet';
-    if (customWidth <= 1024) return 'laptop';
-    if (customWidth <= 1440) return 'desktop';
-    return 'full';
-  }, [customWidth]);
-
-  // Resize state
-  const [isResizing, setIsResizing] = useState(false);
-
-  // Track viewport width to hide breakpoints that won't fit
-  // ResizeObserver fires efficiently (not on every frame) so no debouncing needed
-  const [viewportWidth, setViewportWidth] = useState<number>(0);
-  const observerRef = useRef<ResizeObserver | null>(null);
-
-  // Callback ref to set up ResizeObserver when viewport element mounts/unmounts
-  const setViewportRefs = useCallback((node: HTMLDivElement | null) => {
-    // Update the regular ref for other code that uses viewportRef
-    viewportRef.current = node;
-
-    // Clean up previous observer
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-
-    if (node) {
-      // Set initial width (subtract padding for resize handle)
-      setViewportWidth(node.offsetWidth - VIEWPORT_PADDING_PX);
-
-      // Observe future size changes
-      observerRef.current = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setViewportWidth(entry.contentRect.width - VIEWPORT_PADDING_PX);
-        }
-      });
-      observerRef.current.observe(node);
-    }
-  }, []);
-
-  // Auto-switch to a fitting breakpoint if current selection no longer fits
-  useEffect(() => {
-    if (viewportWidth === 0 || customWidth === null) return;
-
-    if (customWidth > viewportWidth) {
-      // Current breakpoint doesn't fit - switch to largest that does
-      const fittingWidth = BREAKPOINT_WIDTHS.find((w) => w <= viewportWidth);
-      setCustomWidth(fittingWidth ?? null); // null = full width if nothing fits
-    }
-  }, [viewportWidth, customWidth]);
-
-  // Handle resize drag - like SplitPane
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-    document.body.style.cursor = 'ew-resize';
-    document.body.style.userSelect = 'none';
-
-    const startX = e.clientX;
-    const startWidth = iframeWrapperRef.current?.offsetWidth || 0;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!viewportRef.current) return;
-
-      const deltaX = e.clientX - startX;
-      // Multiply by 2 because preview is centered (handle moves half of width change)
-      const newWidth = startWidth + deltaX * 2;
-      const maxWidth = viewportRef.current.offsetWidth - 12; // Leave space for handle
-
-      if (newWidth >= maxWidth - 10) {
-        // Snap to full width (desktop)
-        setCustomWidth(null);
-      } else {
-        setCustomWidth(Math.max(320, Math.min(newWidth, maxWidth)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, []);
-
-  // Handle breakpoint button click
-  const handleBreakpointClick = useCallback((bp: Breakpoint) => {
-    if (bp === 'full') {
-      setCustomWidth(null);
-    } else if (bp === 'desktop') {
-      setCustomWidth(1440);
-    } else if (bp === 'laptop') {
-      setCustomWidth(1024);
-    } else if (bp === 'tablet') {
-      setCustomWidth(768);
-    } else {
-      setCustomWidth(375);
-    }
-  }, []);
 
   // Force refresh the preview iframe with cache busting
   // Uses currentPage (tracked via proxy) so it refreshes the actual visible page,
   // not the stale iframe src attribute (which doesn't update on client-side navigation).
   const refresh = useCallback(() => {
-    if (iframeRef.current && serverReady) {
-      setIframePath(currentPage);
-      const refreshUrl = `${baseUrl}${currentPage === '/' ? '' : currentPage}?_cb=${Date.now()}&shipstudio=1`;
+    if (iframeRef.current && conn.serverReady) {
+      conn.setIframePath(conn.currentPage);
+      const refreshUrl = `${conn.baseUrl}${conn.currentPage === '/' ? '' : conn.currentPage}?_cb=${Date.now()}&shipstudio=1`;
       iframeRef.current.src = 'about:blank';
       setTimeout(() => {
         if (iframeRef.current) {
@@ -851,39 +216,42 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         }
       }, 100);
     }
-  }, [serverReady, baseUrl, currentPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- specific conn properties are listed; conn object changes on every render
+  }, [conn.serverReady, conn.baseUrl, conn.currentPage, conn.setIframePath]);
 
   // Expose methods to parent
   useImperativeHandle(
     ref,
     () => ({
-      captureForClaude,
-      captureFullPage,
-      isCapturing: () => isCapturing,
+      captureForClaude: capture.captureForClaude,
+      captureFullPage: capture.captureFullPage,
+      isCapturing: () => capture.isCapturing,
       refresh,
-      isServerReady: () => serverReady,
+      isServerReady: () => conn.serverReady,
     }),
-    [captureForClaude, captureFullPage, isCapturing, refresh, serverReady]
+    [
+      capture.captureForClaude,
+      capture.captureFullPage,
+      capture.isCapturing,
+      refresh,
+      conn.serverReady,
+    ]
   );
 
-  const filteredPages = pages.filter((page) =>
-    page.route.toLowerCase().includes(pageSearch.toLowerCase())
-  );
-
-  if (isLoading) {
+  if (conn.isLoading) {
     return (
       <div className="preview-loading">
         <div className="spinner" />
         <p>{isStaticProject ? 'Starting preview...' : 'Starting dev server...'}</p>
         <p className="hint">Waiting for localhost:{port}</p>
         <p className="hint" style={{ marginTop: 8, fontSize: 11 }}>
-          {retryCount > 0 && `Attempt ${retryCount}/${SERVER_MAX_RETRIES}`}
+          {conn.retryCount > 0 && `Attempt ${conn.retryCount}/${SERVER_MAX_RETRIES}`}
         </p>
       </div>
     );
   }
 
-  if (hasError) {
+  if (conn.hasError) {
     return (
       <div className="preview-error">
         <p>{isStaticProject ? 'Could not start preview' : 'Could not connect to dev server'}</p>
@@ -892,18 +260,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             ? 'Make sure the project contains an index.html file'
             : 'Ask Claude to run: npm run dev'}
         </p>
-        <button
-          onClick={() => {
-            // Reset state and trigger fresh retry cycle
-            // Set to -1 first (useEffect skips negative values), then 0 to ensure re-trigger
-            setHasError(false);
-            setIsLoading(true);
-            setRetryCount(-1);
-            setTimeout(() => setRetryCount(0), 50);
-          }}
-        >
-          Retry
-        </button>
+        <button onClick={conn.handleRetry}>Retry</button>
       </div>
     );
   }
@@ -912,12 +269,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     <div className="preview-container">
       <div className="preview-toolbar">
         {/* Page Switcher */}
-        <div className="page-switcher" ref={dropdownRef} data-education-id="page-switcher">
+        <div className="page-switcher" ref={conn.dropdownRef} data-education-id="page-switcher">
           <button
             className="page-switcher-btn"
-            onClick={() => setShowPageDropdown(!showPageDropdown)}
+            onClick={() => conn.setShowPageDropdown(!conn.showPageDropdown)}
           >
-            <span className="page-route">{currentPage}</span>
+            <span className="page-route">{conn.currentPage}</span>
             <svg
               width="12"
               height="12"
@@ -929,22 +286,22 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {showPageDropdown && (
+          {conn.showPageDropdown && (
             <div className="page-dropdown">
               <input
-                ref={searchInputRef}
+                ref={conn.searchInputRef}
                 type="text"
                 className="page-search"
                 placeholder="Search pages..."
-                value={pageSearch}
-                onChange={(e) => setPageSearch(e.target.value)}
+                value={conn.pageSearch}
+                onChange={(e) => conn.setPageSearch(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && filteredPages.length > 0) {
-                    handlePageSelect(filteredPages[0].route);
+                  if (e.key === 'Enter' && conn.filteredPages.length > 0) {
+                    conn.handlePageSelect(conn.filteredPages[0].route);
                   }
                   if (e.key === 'Escape') {
-                    setShowPageDropdown(false);
-                    setPageSearch('');
+                    conn.setShowPageDropdown(false);
+                    conn.setPageSearch('');
                   }
                 }}
                 autoComplete="off"
@@ -953,14 +310,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
                 spellCheck={false}
               />
               <div className="page-list">
-                {filteredPages.length === 0 ? (
+                {conn.filteredPages.length === 0 ? (
                   <div className="page-list-empty">No pages found</div>
                 ) : (
-                  filteredPages.map((page) => (
+                  conn.filteredPages.map((page) => (
                     <button
                       key={page.route}
-                      className={`page-item ${page.route === currentPage ? 'active' : ''}`}
-                      onClick={() => handlePageSelect(page.route)}
+                      className={`page-item ${page.route === conn.currentPage ? 'active' : ''}`}
+                      onClick={() => conn.handlePageSelect(page.route)}
                     >
                       {page.route}
                     </button>
@@ -973,7 +330,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
         <button
           className="preview-refresh"
-          onClick={handleRefresh}
+          onClick={conn.handleRefresh}
           title="Refresh preview"
           data-education-id="preview-refresh"
         >
@@ -990,15 +347,15 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             // Hide other breakpoints if they won't fit in the viewport
             if (bp !== 'full') {
               const bpWidth = parseInt(BREAKPOINTS[bp].width, 10);
-              if (viewportWidth > 0 && bpWidth > viewportWidth) {
+              if (resize.viewportWidth > 0 && bpWidth > resize.viewportWidth) {
                 return null;
               }
             }
             return (
               <button
                 key={bp}
-                className={`breakpoint-btn ${getActiveBreakpoint() === bp ? 'active' : ''}`}
-                onClick={() => handleBreakpointClick(bp)}
+                className={`breakpoint-btn ${resize.getActiveBreakpoint() === bp ? 'active' : ''}`}
+                onClick={() => resize.handleBreakpointClick(bp)}
                 title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
               >
                 <BreakpointIcon type={bp} />
@@ -1007,21 +364,25 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           })}
         </div>
       </div>
-      <div className="preview-viewport" ref={setViewportRefs} data-education-id="preview-viewport">
+      <div
+        className="preview-viewport"
+        ref={resize.setViewportRefs}
+        data-education-id="preview-viewport"
+      >
         {/* Overlay to capture mouse events during resize */}
-        {isResizing && <div className="preview-resize-overlay" />}
+        {resize.isResizing && <div className="preview-resize-overlay" />}
         <div
-          ref={iframeWrapperRef}
+          ref={capture.iframeWrapperRef}
           className="preview-iframe-wrapper"
           style={{
-            width: customWidth === null ? 'calc(100% - 12px)' : `${customWidth}px`,
+            width: resize.customWidth === null ? 'calc(100% - 12px)' : `${resize.customWidth}px`,
             maxWidth: 'calc(100% - 12px)',
           }}
         >
           <iframe
             key={projectPath}
             ref={iframeRef}
-            src={serverReady ? currentUrl : 'about:blank'}
+            src={conn.serverReady ? conn.currentUrl : 'about:blank'}
             className="preview-iframe"
             title="Preview"
           />
@@ -1042,32 +403,32 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           {/* Crop selection overlay */}
           {isCropMode && (
             <div
-              ref={cropOverlayRef}
+              ref={capture.cropOverlayRef}
               className="crop-overlay"
-              onMouseDown={handleCropMouseDown}
-              onMouseMove={handleCropMouseMove}
-              onMouseUp={() => void handleCropMouseUp()}
+              onMouseDown={capture.handleCropMouseDown}
+              onMouseMove={capture.handleCropMouseMove}
+              onMouseUp={() => void capture.handleCropMouseUp()}
               onMouseLeave={() => {
-                if (isSelecting) {
-                  void handleCropMouseUp();
+                if (capture.isSelecting) {
+                  void capture.handleCropMouseUp();
                 }
               }}
             >
               {/* Selection rectangle */}
               {/* Selection box with box-shadow creating the dark overlay */}
-              {selectionStart && selectionEnd && (
+              {capture.selectionStart && capture.selectionEnd && (
                 <div
                   className="crop-selection"
                   style={{
-                    left: Math.min(selectionStart.x, selectionEnd.x),
-                    top: Math.min(selectionStart.y, selectionEnd.y),
-                    width: Math.abs(selectionEnd.x - selectionStart.x),
-                    height: Math.abs(selectionEnd.y - selectionStart.y),
+                    left: Math.min(capture.selectionStart.x, capture.selectionEnd.x),
+                    top: Math.min(capture.selectionStart.y, capture.selectionEnd.y),
+                    width: Math.abs(capture.selectionEnd.x - capture.selectionStart.x),
+                    height: Math.abs(capture.selectionEnd.y - capture.selectionStart.y),
                   }}
                 />
               )}
               {/* Instructions */}
-              {!selectionStart && (
+              {!capture.selectionStart && (
                 <div className="crop-instructions">
                   Click and drag to select area
                   <span className="crop-hint">Press Esc to cancel</span>
@@ -1077,7 +438,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           )}
         </div>
         {/* Resize handle */}
-        <div className="preview-resize-handle" onMouseDown={handleResizeStart}>
+        <div className="preview-resize-handle" onMouseDown={resize.handleResizeStart}>
           <div className="preview-resize-handle-bar" />
         </div>
       </div>

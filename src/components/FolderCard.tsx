@@ -7,7 +7,7 @@
  * @module components/FolderCard
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, memo } from 'react';
 import { FolderInfo } from '../lib/folders';
 import { FolderIcon, EditIcon, TrashIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
@@ -24,7 +24,12 @@ interface FolderCardProps {
   onDelete: () => void;
 }
 
-export function FolderCard({ folder, onOpen, onRename, onDelete }: FolderCardProps) {
+export const FolderCard = memo(function FolderCard({
+  folder,
+  onOpen,
+  onRename,
+  onDelete,
+}: FolderCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -118,4 +123,4 @@ export function FolderCard({ folder, onOpen, onRename, onDelete }: FolderCardPro
       </div>
     </div>
   );
-}
+});

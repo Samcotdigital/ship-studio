@@ -54,14 +54,22 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
   useEffect(() => {
     if (!isOpen) return;
 
-    setIsLoadingSkills(true);
+    let cancelled = false;
+    setIsLoadingSkills(true); // eslint-disable-line react-hooks/set-state-in-effect -- intentional: triggers loading UI before async fetch
     listAgentSkills(projectPath)
-      .then(setSkills)
+      .then((result) => {
+        if (!cancelled) setSkills(result);
+      })
       .catch((err) => {
         console.error('Failed to load skills:', err);
-        setSkills([]);
+        if (!cancelled) setSkills([]);
       })
-      .finally(() => setIsLoadingSkills(false));
+      .finally(() => {
+        if (!cancelled) setIsLoadingSkills(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, projectPath]);
 
   useEffect(() => {

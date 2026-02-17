@@ -26,8 +26,8 @@ pub fn find_binary_by_name(binary_name: &str) -> Option<std::path::PathBuf> {
         return Some(path);
     }
 
-    let exe_name = format!("{}.exe", binary_name);
-    let cmd_name = format!("{}.cmd", binary_name);
+    let _exe_name = format!("{binary_name}.exe");
+    let _cmd_name = format!("{binary_name}.cmd");
 
     #[cfg(windows)]
     {
@@ -97,14 +97,14 @@ pub fn find_binary_by_name(binary_name: &str) -> Option<std::path::PathBuf> {
         // Check common installation locations (Unix)
         if let Some(home) = dirs::home_dir() {
             let common_paths = vec![
-                home.join(format!(".local/bin/{}", binary_name)),
-                home.join(format!(".npm-global/bin/{}", binary_name)),
+                home.join(format!(".local/bin/{binary_name}")),
+                home.join(format!(".npm-global/bin/{binary_name}")),
                 home.join(".nvm/versions/node")
                     .join("*")
-                    .join(format!("bin/{}", binary_name)),
-                home.join(format!("n/bin/{}", binary_name)),
-                std::path::PathBuf::from(format!("/usr/local/bin/{}", binary_name)),
-                std::path::PathBuf::from(format!("/opt/homebrew/bin/{}", binary_name)),
+                    .join(format!("bin/{binary_name}")),
+                home.join(format!("n/bin/{binary_name}")),
+                std::path::PathBuf::from(format!("/usr/local/bin/{binary_name}")),
+                std::path::PathBuf::from(format!("/opt/homebrew/bin/{binary_name}")),
             ];
 
             for path in common_paths {
@@ -149,7 +149,7 @@ pub fn find_binary_by_name(binary_name: &str) -> Option<std::path::PathBuf> {
                 if output.status.success() {
                     let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     let bin_path =
-                        std::path::PathBuf::from(&prefix).join(format!("bin/{}", binary_name));
+                        std::path::PathBuf::from(&prefix).join(format!("bin/{binary_name}"));
                     if bin_path.exists() {
                         return Some(bin_path);
                     }
@@ -229,7 +229,7 @@ pub async fn install_claude_cli() -> Result<(), String> {
             .args(["-c", install_cmd])
             .env("PATH", get_extended_path())
             .output()
-            .map_err(|e| format!("Failed to run installer: {}", e))?;
+            .map_err(|e| format!("Failed to run installer: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

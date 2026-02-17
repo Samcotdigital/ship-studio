@@ -72,7 +72,7 @@ export function GitHubCalendar({
 
   // Reset data loaded state when username changes
   useEffect(() => {
-    setDataLoaded(false);
+    setDataLoaded(false); // eslint-disable-line react-hooks/set-state-in-effect -- intentional: reset loading state when username prop changes
   }, [username]);
 
   // Only hide after auth check is DONE and confirmed NOT authenticated

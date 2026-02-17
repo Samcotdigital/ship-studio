@@ -8,28 +8,12 @@
  * - Check sync status between .env.local and .env.example
  * - Toggle value visibility (show/hide sensitive values)
  *
+ * State and logic are managed by the useEnvEditor hook.
+ *
  * @module components/EnvEditor
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { trackError } from '../lib/analytics';
-
-/** Represents an environment file in the project */
-interface EnvFile {
-  /** File name (e.g., ".env.local") */
-  name: string;
-  /** Absolute path to the file */
-  path: string;
-}
-
-/** A single environment variable key-value pair */
-interface EnvVar {
-  /** Variable name (e.g., "DATABASE_URL") */
-  key: string;
-  /** Variable value */
-  value: string;
-}
+import { useEnvEditor } from '../hooks/useEnvEditor';
 
 /** Props for the EnvEditor component */
 interface EnvEditorProps {
@@ -44,344 +28,38 @@ interface EnvEditorProps {
 }
 
 export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorProps) {
-  const [envFiles, setEnvFiles] = useState<EnvFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<EnvFile | null>(null);
-  const [vars, setVars] = useState<EnvVar[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showNewFileInput, setShowNewFileInput] = useState(false);
-  const [newFileName, setNewFileName] = useState('.env.local');
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [visibleValues, setVisibleValues] = useState<Set<number>>(new Set());
-  const [showPasteModal, setShowPasteModal] = useState(false);
-  const [pasteContent, setPasteContent] = useState('');
-  const [syncStatus, setSyncStatus] = useState<{
-    missingInExample: string[];
-    missingInLocal: string[];
-  } | null>(null);
-
-  // Check sync status between .env.local and .env.example
-  const checkSyncStatus = useCallback(async (files: EnvFile[]) => {
-    const envLocal = files.find((f) => f.name === '.env.local');
-    const envExample = files.find((f) => f.name === '.env.example' || f.name === '.env');
-
-    if (!envLocal || !envExample) {
-      setSyncStatus(null);
-      return;
-    }
-
-    try {
-      const [localVars, exampleVars] = await Promise.all([
-        invoke<EnvVar[]>('read_env_file', { filePath: envLocal.path }),
-        invoke<EnvVar[]>('read_env_file', { filePath: envExample.path }),
-      ]);
-
-      const localKeys = new Set(localVars.map((v) => v.key));
-      const exampleKeys = new Set(exampleVars.map((v) => v.key));
-
-      const missingInExample = localVars.filter((v) => !exampleKeys.has(v.key)).map((v) => v.key);
-      const missingInLocal = exampleVars.filter((v) => !localKeys.has(v.key)).map((v) => v.key);
-
-      if (missingInExample.length > 0 || missingInLocal.length > 0) {
-        setSyncStatus({ missingInExample, missingInLocal });
-      } else {
-        setSyncStatus(null);
-      }
-    } catch (e) {
-      console.error('Failed to check sync status:', e);
-      setSyncStatus(null);
-    }
-  }, []);
-
-  // Load env files list
-  const loadEnvFiles = useCallback(async () => {
-    try {
-      const files = await invoke<EnvFile[]>('list_env_files', { projectPath });
-      setEnvFiles(files);
-
-      // Auto-select first file or .env.local if available
-      if (files.length > 0 && !selectedFile) {
-        const envLocal = files.find((f) => f.name === '.env.local');
-        setSelectedFile(envLocal || files[0]);
-      }
-
-      // Check sync status
-      void checkSyncStatus(files);
-    } catch (e) {
-      console.error('Failed to load env files:', e);
-    }
-  }, [projectPath, selectedFile, checkSyncStatus]);
-
-  // Load vars for selected file
-  const loadVars = useCallback(async () => {
-    if (!selectedFile) return;
-
-    setIsLoading(true);
-    setError(null);
-    try {
-      const fileVars = await invoke<EnvVar[]>('read_env_file', { filePath: selectedFile.path });
-      setVars(fileVars);
-      setHasChanges(false);
-      setVisibleValues(new Set()); // Reset visibility when loading new file
-    } catch (e) {
-      trackError('env_read', e, 'Workspace');
-      setError(`Failed to read ${selectedFile.name}`);
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedFile]);
-
-  useEffect(() => {
-    if (isOpen) {
-      void loadEnvFiles();
-    }
-  }, [isOpen, loadEnvFiles]);
-
-  useEffect(() => {
-    if (selectedFile) {
-      void loadVars();
-    }
-  }, [selectedFile, loadVars]);
-
-  const handleSave = async () => {
-    if (!selectedFile) return;
-
-    setIsSaving(true);
-    setError(null);
-    try {
-      await invoke('write_env_file', { filePath: selectedFile.path, vars });
-      setHasChanges(false);
-      // Re-check sync status after saving
-      void checkSyncStatus(envFiles);
-      onToast?.(`Saved ${selectedFile.name}`, 'success');
-    } catch (e) {
-      trackError('env_save', e, 'Workspace');
-      setError(`Failed to save ${selectedFile.name}`);
-      onToast?.(`Failed to save ${selectedFile.name}`, 'error');
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAddVar = () => {
-    const newKey = `NEW_VAR_${vars.length + 1}`;
-    setVars([...vars, { key: newKey, value: '' }]);
-    setEditingKey(newKey);
-    setHasChanges(true);
-  };
-
-  /** Parse .env content string into key-value pairs */
-  const parseEnvContent = (content: string): EnvVar[] => {
-    const parsed: EnvVar[] = [];
-    const lines = content.split('\n');
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // Skip empty lines and comments
-      if (!trimmed || trimmed.startsWith('#')) continue;
-
-      // Match KEY=value pattern (value can be empty)
-      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-      if (match) {
-        let value = match[2];
-        // Remove surrounding quotes if present
-        if (
-          (value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))
-        ) {
-          value = value.slice(1, -1);
-        }
-        parsed.push({ key: match[1], value });
-      }
-    }
-    return parsed;
-  };
-
-  /** Handle pasting .env content - merges with existing vars */
-  const handlePasteEnv = () => {
-    const parsed = parseEnvContent(pasteContent);
-    if (parsed.length === 0) {
-      setShowPasteModal(false);
-      setPasteContent('');
-      return;
-    }
-
-    // Merge with existing vars (update existing keys, add new ones)
-    const existingKeys = new Map(vars.map((v, i) => [v.key, i]));
-    const updatedVars = [...vars];
-
-    for (const newVar of parsed) {
-      const existingIndex = existingKeys.get(newVar.key);
-      if (existingIndex !== undefined) {
-        // Update existing variable
-        updatedVars[existingIndex] = newVar;
-      } else {
-        // Add new variable
-        updatedVars.push(newVar);
-      }
-    }
-
-    setVars(updatedVars);
-    setHasChanges(true);
-    setShowPasteModal(false);
-    setPasteContent('');
-    onToast?.(`Added ${parsed.length} variable${parsed.length > 1 ? 's' : ''}`, 'success');
-  };
-
-  const handleUpdateVar = (index: number, field: 'key' | 'value', newValue: string) => {
-    const updated = [...vars];
-    updated[index] = { ...updated[index], [field]: newValue };
-    setVars(updated);
-    setHasChanges(true);
-  };
-
-  const handleDeleteVar = (index: number) => {
-    setVars(vars.filter((_, i) => i !== index));
-    setHasChanges(true);
-    // Update visible indices after deletion
-    setVisibleValues((prev) => {
-      const updated = new Set<number>();
-      prev.forEach((i) => {
-        if (i < index) updated.add(i);
-        else if (i > index) updated.add(i - 1);
-      });
-      return updated;
-    });
-  };
-
-  const toggleValueVisibility = (index: number) => {
-    setVisibleValues((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(index)) {
-        updated.delete(index);
-      } else {
-        updated.add(index);
-      }
-      return updated;
-    });
-  };
-
-  // Sync missing keys to .env.example (keys only, not values)
-  const handleSyncToExample = async () => {
-    if (!syncStatus?.missingInExample.length) return;
-
-    const envExample = envFiles.find((f) => f.name === '.env.example' || f.name === '.env');
-    const envLocal = envFiles.find((f) => f.name === '.env.local');
-
-    if (!envExample || !envLocal) return;
-
-    try {
-      // Read current .env.example
-      const exampleVars = await invoke<EnvVar[]>('read_env_file', { filePath: envExample.path });
-
-      // Add missing keys with placeholder values
-      const newVars = [...exampleVars];
-      for (const key of syncStatus.missingInExample) {
-        newVars.push({ key, value: '' });
-      }
-
-      // Write back to .env.example
-      await invoke('write_env_file', { filePath: envExample.path, vars: newVars });
-      // Refresh sync status
-      void checkSyncStatus(envFiles);
-
-      // If we're viewing .env.example, reload it
-      if (selectedFile?.name === '.env.example' || selectedFile?.name === '.env') {
-        void loadVars();
-      }
-      onToast?.('Synced keys to .env.example', 'success');
-    } catch (e) {
-      trackError('env_sync_example', e, 'Workspace');
-      setError('Failed to sync to .env.example');
-      onToast?.('Failed to sync to .env.example', 'error');
-      console.error(e);
-    }
-  };
-
-  // Add missing keys from .env.example to .env.local
-  const handleSyncToLocal = async () => {
-    if (!syncStatus?.missingInLocal.length) return;
-
-    const envLocal = envFiles.find((f) => f.name === '.env.local');
-
-    if (!envLocal) return;
-
-    try {
-      // Read current .env.local
-      const localVars = await invoke<EnvVar[]>('read_env_file', { filePath: envLocal.path });
-
-      // Add missing keys with empty values
-      const newVars = [...localVars];
-      for (const key of syncStatus.missingInLocal) {
-        newVars.push({ key, value: '' });
-      }
-
-      // Write back to .env.local
-      await invoke('write_env_file', { filePath: envLocal.path, vars: newVars });
-
-      // Refresh sync status
-      void checkSyncStatus(envFiles);
-
-      // If we're viewing .env.local, reload it
-      if (selectedFile?.name === '.env.local') {
-        void loadVars();
-      }
-      onToast?.('Added missing keys to .env.local', 'success');
-    } catch (e) {
-      trackError('env_sync_local', e, 'Workspace');
-      setError('Failed to sync to .env.local');
-      onToast?.('Failed to sync to .env.local', 'error');
-      console.error(e);
-    }
-  };
-
-  const handleCreateFile = async () => {
-    if (!newFileName.trim()) return;
-
-    const fileName = newFileName.trim();
-    try {
-      const path = await invoke<string>('create_env_file', {
-        projectPath,
-        fileName,
-      });
-      setShowNewFileInput(false);
-      setNewFileName('.env.local');
-      const files = await invoke<EnvFile[]>('list_env_files', { projectPath });
-      setEnvFiles(files);
-      void checkSyncStatus(files);
-      setSelectedFile({ name: fileName, path });
-      onToast?.(`Created ${fileName}`, 'success');
-    } catch (e) {
-      trackError('env_file_create', e, 'Workspace');
-      setError(e as string);
-      onToast?.(`Failed to create ${fileName}`, 'error');
-    }
-  };
-
-  const handleDeleteFile = async () => {
-    if (!selectedFile) return;
-
-    if (!confirm(`Delete ${selectedFile.name}? This cannot be undone.`)) return;
-
-    const fileName = selectedFile.name;
-    try {
-      await invoke('delete_env_file', { filePath: selectedFile.path });
-      setSelectedFile(null);
-      setVars([]);
-      const files = await invoke<EnvFile[]>('list_env_files', { projectPath });
-      setEnvFiles(files);
-      void checkSyncStatus(files);
-      onToast?.(`Deleted ${fileName}`, 'success');
-    } catch (e) {
-      trackError('env_file_delete', e, 'Workspace');
-      setError(`Failed to delete ${fileName}`);
-      onToast?.(`Failed to delete ${fileName}`, 'error');
-    }
-  };
+  const {
+    envFiles,
+    selectedFile,
+    setSelectedFile,
+    vars,
+    isLoading,
+    isSaving,
+    error,
+    showNewFileInput,
+    setShowNewFileInput,
+    newFileName,
+    setNewFileName,
+    editingKey,
+    setEditingKey,
+    hasChanges,
+    visibleValues,
+    showPasteModal,
+    setShowPasteModal,
+    pasteContent,
+    setPasteContent,
+    syncStatus,
+    handleSave,
+    handleAddVar,
+    handlePasteEnv,
+    handleUpdateVar,
+    handleDeleteVar,
+    toggleValueVisibility,
+    handleSyncToExample,
+    handleSyncToLocal,
+    handleCreateFile,
+    handleDeleteFile,
+  } = useEnvEditor({ projectPath, isOpen, onClose, onToast });
 
   if (!isOpen) return null;
 

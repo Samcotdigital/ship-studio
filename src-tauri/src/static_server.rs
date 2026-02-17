@@ -117,23 +117,22 @@ pub async fn start_static_server(
     let project_root = PathBuf::from(&project_path);
     if !project_root.exists() || !project_root.is_dir() {
         return Err(format!(
-            "Project path does not exist or is not a directory: {}",
-            project_path
+            "Project path does not exist or is not a directory: {project_path}"
         ));
     }
 
     // Canonicalize once at startup for path traversal checks
     let canonical_root = dunce::canonicalize(&project_root)
-        .map_err(|e| format!("Failed to canonicalize project path: {}", e))?;
+        .map_err(|e| format!("Failed to canonicalize project path: {e}"))?;
 
     // Bind to a random available port on localhost
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
-        .map_err(|e| format!("Failed to bind static server port: {}", e))?;
+        .map_err(|e| format!("Failed to bind static server port: {e}"))?;
 
     let port = listener
         .local_addr()
-        .map_err(|e| format!("Failed to get static server address: {}", e))?
+        .map_err(|e| format!("Failed to get static server address: {e}"))?
         .port();
 
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
@@ -179,7 +178,7 @@ pub async fn start_static_server(
 
     STATIC_SERVER_INSTANCES
         .lock()
-        .map_err(|e| format!("Failed to acquire static server lock: {}", e))?
+        .map_err(|e| format!("Failed to acquire static server lock: {e}"))?
         .insert(window_label.clone(), instance);
 
     tracing::info!(
@@ -407,7 +406,7 @@ fn resolve_file_path(project_root: &Path, url_path: &str) -> Option<PathBuf> {
             // 1. Exact path
             project_root.join(relative),
             // 2. Path + ".html"
-            project_root.join(format!("{}.html", relative)),
+            project_root.join(format!("{relative}.html")),
             // 3. Path + "/index.html"
             project_root.join(relative).join("index.html"),
         ]

@@ -138,7 +138,7 @@ pub async fn publish_to_staging(
         let stderr = String::from_utf8_lossy(&push_output.stderr);
         if stderr.contains("rejected") || stderr.contains("non-fast-forward") {
             warn!(error = %stderr, "Push rejected - staging branch has diverged");
-            return Err(format!("PUSH_REJECTED: Staging branch has diverged. Pull changes first or resolve conflicts.\n{}", stderr));
+            return Err(format!("PUSH_REJECTED: Staging branch has diverged. Pull changes first or resolve conflicts.\n{stderr}"));
         }
         if !stderr.contains("Everything up-to-date") {
             error!(error = %stderr, "Failed to push to staging");
@@ -235,7 +235,7 @@ pub async fn publish_branch(
 
         if !commit_output.status.success() {
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
-            return Err(format!("Failed to commit: {}", stderr));
+            return Err(format!("Failed to commit: {stderr}"));
         }
     }
 
@@ -251,11 +251,11 @@ pub async fn publish_branch(
         // Check for common errors
         if stderr.contains("rejected") || stderr.contains("non-fast-forward") {
             warn!(error = %stderr, branch = %branch, "Push rejected");
-            return Err(format!("PUSH_REJECTED:{}", stderr));
+            return Err(format!("PUSH_REJECTED:{stderr}"));
         }
         if stderr.contains("Permission denied") || stderr.contains("could not read Username") {
             error!(error = %stderr, branch = %branch, "Authentication error");
-            return Err(format!("AUTH_ERROR:{}", stderr));
+            return Err(format!("AUTH_ERROR:{stderr}"));
         }
         if !stderr.contains("Everything up-to-date") {
             error!(error = %stderr, branch = %branch, "Push failed");

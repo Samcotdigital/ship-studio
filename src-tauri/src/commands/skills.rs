@@ -65,10 +65,10 @@ fn parse_skill_md(content: &str) -> Option<(String, String)> {
 
     for line in frontmatter.lines() {
         let line = line.trim();
-        if line.starts_with("name:") {
-            name = Some(line[5..].trim().to_string());
-        } else if line.starts_with("description:") {
-            description = Some(line[12..].trim().to_string());
+        if let Some(val) = line.strip_prefix("name:") {
+            name = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("description:") {
+            description = Some(val.trim().to_string());
         }
     }
 
@@ -301,7 +301,7 @@ pub async fn search_skills(query: String) -> Result<Vec<SkillSearchResult>, Stri
         .env_remove("npm_config_npm-globalconfig")
         .env_remove("npm_config_verify-deps-before-run")
         .output()
-        .map_err(|e| format!("Failed to run skills CLI: {}", e))?;
+        .map_err(|e| format!("Failed to run skills CLI: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -311,7 +311,7 @@ pub async fn search_skills(query: String) -> Result<Vec<SkillSearchResult>, Stri
         if stderr.contains("No skills found") || stdout.is_empty() {
             return Ok(Vec::new());
         }
-        return Err(format!("Skills search failed: {}", stderr));
+        return Err(format!("Skills search failed: {stderr}"));
     }
 
     parse_skills_find_output(&stdout)
@@ -400,7 +400,7 @@ fn parse_skill_entry(line: &str) -> Option<SkillSearchResult> {
     let name = skill_name.replace('-', " ").replace(':', " - ");
 
     // Generate a description from the skill name
-    let description = format!("Skill: {}", skill_name);
+    let description = format!("Skill: {skill_name}");
 
     Some(SkillSearchResult {
         name,
@@ -458,7 +458,7 @@ pub async fn install_skill(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to run skills CLI: {}", e))?;
+        .map_err(|e| format!("Failed to run skills CLI: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -468,7 +468,7 @@ pub async fn install_skill(
         } else {
             stderr
         };
-        return Err(format!("Failed to install skill: {}", details));
+        return Err(format!("Failed to install skill: {details}"));
     }
 
     Ok(())
@@ -522,7 +522,7 @@ pub async fn remove_skill(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to run skills CLI: {}", e))?;
+        .map_err(|e| format!("Failed to run skills CLI: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -532,7 +532,7 @@ pub async fn remove_skill(
         } else {
             stderr
         };
-        return Err(format!("Failed to remove skill: {}", details));
+        return Err(format!("Failed to remove skill: {details}"));
     }
 
     Ok(())

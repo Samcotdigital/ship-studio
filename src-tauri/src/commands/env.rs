@@ -151,7 +151,7 @@ pub async fn create_env_file(project_path: String, file_name: String) -> Result<
     }
 
     if env_path.exists() {
-        return Err(format!("{} already exists", file_name));
+        return Err(format!("{file_name} already exists"));
     }
 
     std::fs::write(&env_path, "").map_err(|e| e.to_string())?;
@@ -165,7 +165,7 @@ pub async fn delete_env_file(file_path: String) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let shipstudio_dir = home.join("ShipStudio");
 
-    let canonical = dunce::canonicalize(path).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical = dunce::canonicalize(path).map_err(|e| format!("Invalid path: {e}"))?;
     if !canonical.starts_with(&shipstudio_dir) {
         return Err("Security error: cannot delete files outside ShipStudio directory".to_string());
     }

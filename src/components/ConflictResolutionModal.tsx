@@ -134,6 +134,7 @@ export function ConflictResolutionModal({
       currentFile,
       currentFileIndex,
       currentConflictIndex,
+      totalConflicts,
       projectPath,
       onClose,
       onResolved,

@@ -126,7 +126,7 @@ fn send_event(event_name: &str, distinct_id: &str, properties: serde_json::Value
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
-    let url = format!("{}/capture/", POSTHOG_HOST);
+    let url = format!("{POSTHOG_HOST}/capture/");
     let event_name_owned = event_name.to_string();
     let distinct_id_owned = distinct_id.to_string();
 

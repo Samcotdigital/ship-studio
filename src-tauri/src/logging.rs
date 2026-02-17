@@ -53,7 +53,7 @@ pub fn init_logging() -> Result<(), String> {
 
     // Create log directory if it doesn't exist
     std::fs::create_dir_all(&log_dir)
-        .map_err(|e| format!("Failed to create log directory: {}", e))?;
+        .map_err(|e| format!("Failed to create log directory: {e}"))?;
 
     // Set up file appender with daily rotation
     let file_appender = tracing_appender::rolling::daily(&log_dir, "ship-studio.log");

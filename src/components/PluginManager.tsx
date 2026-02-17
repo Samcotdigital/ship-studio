@@ -94,7 +94,7 @@ export function PluginManager({
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchPlugins();
+    void fetchPlugins();
   }, [isOpen, fetchPlugins]);
 
   // Fetch registry when library tab is selected
@@ -114,7 +114,7 @@ export function PluginManager({
 
   useEffect(() => {
     if (!isOpen || activeTab !== 'library') return;
-    fetchRegistry();
+    void fetchRegistry();
   }, [isOpen, activeTab, fetchRegistry]);
 
   // Handle uninstall
@@ -269,7 +269,7 @@ export function PluginManager({
   };
 
   // Handle reload dev plugin
-  const handleReloadDevPlugin = async (pluginId: string) => {
+  const handleReloadDevPlugin = (pluginId: string) => {
     setReloadingId(pluginId);
     try {
       onPluginsChanged();
@@ -396,7 +396,9 @@ export function PluginManager({
                             return (
                               <button
                                 className="plugin-update-btn plugin-update-available"
-                                onClick={() => handleUpdate(plugin.manifest.id)}
+                                onClick={() => {
+                                  void handleUpdate(plugin.manifest.id);
+                                }}
                               >
                                 Update
                               </button>
@@ -419,7 +421,9 @@ export function PluginManager({
                           return (
                             <button
                               className="plugin-update-btn"
-                              onClick={() => handleCheckUpdate(plugin.manifest.id)}
+                              onClick={() => {
+                                void handleCheckUpdate(plugin.manifest.id);
+                              }}
                             >
                               Check for updates
                             </button>
@@ -428,7 +432,9 @@ export function PluginManager({
                       )}
                       <button
                         className={`plugin-toggle-btn ${plugin.enabled ? 'enabled' : ''}`}
-                        onClick={() => handleToggle(plugin.manifest.id, !plugin.enabled)}
+                        onClick={() => {
+                          void handleToggle(plugin.manifest.id, !plugin.enabled);
+                        }}
                         disabled={togglingId === plugin.manifest.id}
                         title={plugin.enabled ? 'Disable' : 'Enable'}
                       >
@@ -437,7 +443,9 @@ export function PluginManager({
                       {plugin.is_dev ? (
                         <button
                           className="plugin-remove-btn"
-                          onClick={() => handleUnlinkDevPlugin(plugin.manifest.id)}
+                          onClick={() => {
+                            void handleUnlinkDevPlugin(plugin.manifest.id);
+                          }}
                           disabled={unlinkingId === plugin.manifest.id}
                         >
                           {unlinkingId === plugin.manifest.id ? 'Unlinking...' : 'Unlink'}
@@ -445,7 +453,9 @@ export function PluginManager({
                       ) : (
                         <button
                           className="plugin-remove-btn"
-                          onClick={() => handleUninstall(plugin.manifest.id)}
+                          onClick={() => {
+                            void handleUninstall(plugin.manifest.id);
+                          }}
                           disabled={removingId === plugin.manifest.id}
                         >
                           {removingId === plugin.manifest.id ? 'Removing...' : 'Remove'}
@@ -460,7 +470,9 @@ export function PluginManager({
 
               <button
                 className="plugins-link-dev-btn"
-                onClick={handleLinkDevPlugin}
+                onClick={() => {
+                  void handleLinkDevPlugin();
+                }}
                 disabled={isLinkingDev}
               >
                 {isLinkingDev ? 'Linking...' : 'Link Dev Plugin'}
@@ -511,7 +523,9 @@ export function PluginManager({
                         ) : (
                           <button
                             className="plugin-library-install-btn"
-                            onClick={() => handleLibraryInstall(entry)}
+                            onClick={() => {
+                              void handleLibraryInstall(entry);
+                            }}
                             disabled={isThisInstalling || installingId !== null}
                           >
                             {isThisInstalling ? 'Installing...' : 'Install'}
@@ -539,7 +553,7 @@ export function PluginManager({
                       value={repoUrl}
                       onChange={(e) => setRepoUrl(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleUrlInstall();
+                        if (e.key === 'Enter') void handleUrlInstall();
                       }}
                       autoComplete="off"
                       autoCorrect="off"
@@ -549,7 +563,9 @@ export function PluginManager({
                     />
                     <button
                       className="plugins-install-btn"
-                      onClick={handleUrlInstall}
+                      onClick={() => {
+                        void handleUrlInstall();
+                      }}
                       disabled={isInstallingUrl || !repoUrl.trim()}
                     >
                       {isInstallingUrl ? 'Installing...' : 'Install'}

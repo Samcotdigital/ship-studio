@@ -121,11 +121,7 @@ fn parse_status_text(text: &str) -> String {
     let lower = text.to_lowercase();
     // Remove common unicode status indicators
     let lower = lower
-        .replace('\u{2713}', "") // ✓
-        .replace('\u{2714}', "") // ✔
-        .replace('!', "")
-        .replace('\u{2717}', "") // ✗
-        .replace('\u{2718}', "") // ✘
+        .replace(['\u{2713}', '\u{2714}', '!', '\u{2717}', '\u{2718}'], "") // ✘
         .trim()
         .to_string();
 
@@ -334,7 +330,7 @@ pub async fn add_mcp_server(
         } else {
             stderr
         };
-        return Err(format!("Failed to add MCP server: {}", details));
+        return Err(format!("Failed to add MCP server: {details}"));
     }
 
     Ok(())
@@ -388,7 +384,7 @@ pub async fn remove_mcp_server(
         } else {
             stderr
         };
-        return Err(format!("Failed to remove MCP server: {}", details));
+        return Err(format!("Failed to remove MCP server: {details}"));
     }
 
     Ok(())

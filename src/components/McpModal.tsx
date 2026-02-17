@@ -94,7 +94,7 @@ export function McpModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchServers();
+    void fetchServers();
   }, [isOpen, fetchServers]);
 
   // Filter servers based on scope filter and search query
@@ -152,7 +152,7 @@ export function McpModal({
   // Handle key press in add input
   const handleAddKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleAdd();
+      void handleAdd();
     }
   };
 
@@ -286,7 +286,7 @@ export function McpModal({
                     </div>
                     <button
                       className="mcp-remove-btn"
-                      onClick={() => handleRemove(server)}
+                      onClick={() => void handleRemove(server)}
                       disabled={removingServer === serverKey(server)}
                     >
                       {removingServer === serverKey(server) ? 'Removing...' : 'Remove'}
@@ -323,7 +323,7 @@ export function McpModal({
                   />
                   <button
                     className="mcp-add-btn"
-                    onClick={handleAdd}
+                    onClick={() => void handleAdd()}
                     disabled={isAdding || !addCommand.trim()}
                   >
                     {isAdding ? 'Adding...' : 'Add'}

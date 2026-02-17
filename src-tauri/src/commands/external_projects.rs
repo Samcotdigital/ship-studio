@@ -32,10 +32,10 @@ pub fn load_config() -> Result<ExternalProjectsConfig, String> {
     }
 
     let contents = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read external projects config: {}", e))?;
+        .map_err(|e| format!("Failed to read external projects config: {e}"))?;
 
     serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse external projects config: {}", e))
+        .map_err(|e| format!("Failed to parse external projects config: {e}"))
 }
 
 /// Save the external projects config to disk
@@ -46,15 +46,15 @@ pub fn save_config(config: &ExternalProjectsConfig) -> Result<(), String> {
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
+                .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
         }
     }
 
     let contents = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize external projects config: {}", e))?;
+        .map_err(|e| format!("Failed to serialize external projects config: {e}"))?;
 
     std::fs::write(&config_path, contents)
-        .map_err(|e| format!("Failed to write external projects config: {}", e))?;
+        .map_err(|e| format!("Failed to write external projects config: {e}"))?;
 
     Ok(())
 }
@@ -88,7 +88,7 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
     let folder_path = match folder {
         Some(path) => path
             .into_path()
-            .map_err(|e| format!("Invalid folder path: {}", e))?,
+            .map_err(|e| format!("Invalid folder path: {e}"))?,
         None => return Ok(None), // User cancelled
     };
 
@@ -103,8 +103,7 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
     }
 
     // Canonicalize the path
-    let canonical =
-        dunce::canonicalize(&folder_path).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical = dunce::canonicalize(&folder_path).map_err(|e| format!("Invalid path: {e}"))?;
     let canonical_str = canonical.to_string_lossy().to_string();
 
     // Check if already inside ~/ShipStudio
@@ -169,7 +168,7 @@ pub async fn unregister_external_project(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn is_project_external(path: String) -> Result<bool, String> {
     let canonical =
-        dunce::canonicalize(Path::new(&path)).map_err(|e| format!("Invalid path: {}", e))?;
+        dunce::canonicalize(Path::new(&path)).map_err(|e| format!("Invalid path: {e}"))?;
 
     let config = load_config()?;
     for project in &config.projects {

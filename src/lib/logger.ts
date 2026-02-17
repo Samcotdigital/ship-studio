@@ -31,6 +31,9 @@ class Logger {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
+    // Clear any stale interval (defensive guard)
+    if (this.flushInterval) clearInterval(this.flushInterval);
+
     // Flush logs to backend every 10 seconds
     this.flushInterval = setInterval(() => {
       void this.flush();

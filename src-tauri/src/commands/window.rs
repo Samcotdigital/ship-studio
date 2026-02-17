@@ -28,24 +28,24 @@ pub async fn enter_compact_mode(window: Window) -> Result<(), String> {
     // Set always-on-top so window floats above browser
     window
         .set_always_on_top(true)
-        .map_err(|e| format!("Failed to set always on top: {}", e))?;
+        .map_err(|e| format!("Failed to set always on top: {e}"))?;
 
     // Resize to compact dimensions
     window
         .set_size(LogicalSize::new(COMPACT_WIDTH, COMPACT_HEIGHT_DEFAULT))
-        .map_err(|e| format!("Failed to set window size: {}", e))?;
+        .map_err(|e| format!("Failed to set window size: {e}"))?;
 
     // Restore saved position if available
     if let Some(pos) = position {
         window
             .set_position(LogicalPosition::new(pos.x as f64, pos.y as f64))
-            .map_err(|e| format!("Failed to set position: {}", e))?;
+            .map_err(|e| format!("Failed to set position: {e}"))?;
     }
 
     // Focus and bring to front
     window
         .set_focus()
-        .map_err(|e| format!("Failed to focus window: {}", e))?;
+        .map_err(|e| format!("Failed to focus window: {e}"))?;
 
     tracing::info!("Compact mode entered successfully");
     Ok(())
@@ -64,17 +64,17 @@ pub async fn exit_compact_mode(window: Window) -> Result<(), String> {
     // Disable always-on-top
     window
         .set_always_on_top(false)
-        .map_err(|e| format!("Failed to disable always on top: {}", e))?;
+        .map_err(|e| format!("Failed to disable always on top: {e}"))?;
 
     // Restore full size
     window
         .set_size(LogicalSize::new(FULL_MODE_WIDTH, FULL_MODE_HEIGHT))
-        .map_err(|e| format!("Failed to set window size: {}", e))?;
+        .map_err(|e| format!("Failed to set window size: {e}"))?;
 
     // Center window on screen
     window
         .center()
-        .map_err(|e| format!("Failed to center window: {}", e))?;
+        .map_err(|e| format!("Failed to center window: {e}"))?;
 
     tracing::info!("Compact mode exited successfully");
     Ok(())
@@ -87,7 +87,7 @@ pub async fn set_always_on_top(window: Window, enabled: bool) -> Result<(), Stri
 
     window
         .set_always_on_top(enabled)
-        .map_err(|e| format!("Failed to set always on top: {}", e))?;
+        .map_err(|e| format!("Failed to set always on top: {e}"))?;
 
     // Persist the preference
     let mut state = read_app_state();
@@ -140,7 +140,7 @@ pub async fn set_compact_expanded(
 
     window
         .set_size(LogicalSize::new(COMPACT_WIDTH, final_height))
-        .map_err(|e| format!("Failed to set window size: {}", e))?;
+        .map_err(|e| format!("Failed to set window size: {e}"))?;
 
     // Persist the preference
     let mut state = read_app_state();
@@ -156,7 +156,7 @@ pub async fn set_compact_expanded(
 pub async fn get_window_position(window: Window) -> Result<WindowPosition, String> {
     let position = window
         .outer_position()
-        .map_err(|e| format!("Failed to get window position: {}", e))?;
+        .map_err(|e| format!("Failed to get window position: {e}"))?;
 
     Ok(WindowPosition {
         x: position.x,
@@ -169,7 +169,7 @@ pub async fn get_window_position(window: Window) -> Result<WindowPosition, Strin
 pub async fn set_window_position(window: Window, x: i32, y: i32) -> Result<(), String> {
     window
         .set_position(LogicalPosition::new(x as f64, y as f64))
-        .map_err(|e| format!("Failed to set window position: {}", e))?;
+        .map_err(|e| format!("Failed to set window position: {e}"))?;
 
     Ok(())
 }
@@ -179,7 +179,7 @@ pub async fn set_window_position(window: Window, x: i32, y: i32) -> Result<(), S
 pub async fn start_window_drag(window: Window) -> Result<(), String> {
     window
         .start_dragging()
-        .map_err(|e| format!("Failed to start dragging: {}", e))?;
+        .map_err(|e| format!("Failed to start dragging: {e}"))?;
 
     Ok(())
 }
@@ -192,12 +192,12 @@ pub async fn focus_window(window: Window) -> Result<(), String> {
     // Ensure window is visible
     window
         .show()
-        .map_err(|e| format!("Failed to show window: {}", e))?;
+        .map_err(|e| format!("Failed to show window: {e}"))?;
 
     // Set focus
     window
         .set_focus()
-        .map_err(|e| format!("Failed to focus window: {}", e))?;
+        .map_err(|e| format!("Failed to focus window: {e}"))?;
 
     Ok(())
 }
@@ -209,7 +209,7 @@ pub async fn set_window_title(window: Window, title: String) -> Result<(), Strin
 
     window
         .set_title(&title)
-        .map_err(|e| format!("Failed to set window title: {}", e))?;
+        .map_err(|e| format!("Failed to set window title: {e}"))?;
 
     Ok(())
 }
