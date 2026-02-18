@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from '../lib/logger';
 
 interface UsePreviewCaptureParams {
   /** Absolute path to the project directory */
@@ -94,7 +95,9 @@ export function usePreviewCapture({
       });
       return finalPath;
     } catch (error) {
-      console.error('[Preview] Viewport capture failed:', error);
+      logger.error('[Preview] Viewport capture failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     } finally {
       setIsCapturing(false);
@@ -116,7 +119,9 @@ export function usePreviewCapture({
       });
       return filePath;
     } catch (error) {
-      console.error('[Preview] Full page capture failed:', error);
+      logger.error('[Preview] Full page capture failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Fall back to viewport capture if Playwright fails
       return captureForClaude();
     } finally {
@@ -164,7 +169,9 @@ export function usePreviewCapture({
 
         return finalPath;
       } catch (error) {
-        console.error('[Preview] Region capture failed:', error);
+        logger.error('[Preview] Region capture failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return null;
       }
     },

@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version-file: '.nvmrc'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -93,19 +93,18 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  # Build verification (only on main)
+  # Build verification (PRs and main)
   build-check:
     name: Build Verification
     runs-on: macos-latest
     needs: [frontend, backend]
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version-file: '.nvmrc'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4

@@ -23,8 +23,10 @@ import {
   createBranch,
   discardChanges,
   formatRelativeTime,
+  getBranchPrefixPreference,
+  setBranchPrefixPreference,
 } from '../lib/branches';
-import { invoke } from '@tauri-apps/api/core';
+import { gitPull } from '../lib/git';
 import { BranchIcon, PlusIcon } from './icons';
 import { UnsavedChangesModal } from './UnsavedChangesModal';
 import { trackEvent, trackError } from '../lib/analytics';
@@ -79,7 +81,7 @@ export function BranchesTab({
 
   // Load prefix preference on mount
   useEffect(() => {
-    void invoke<boolean>('get_branch_prefix_preference', { projectPath })
+    void getBranchPrefixPreference(projectPath)
       .then(setPrefixUsername)
       .catch(() => {}); // Ignore errors, default to true
   }, [projectPath]);
@@ -87,7 +89,7 @@ export function BranchesTab({
   // Save prefix preference when changed
   const handlePrefixChange = (checked: boolean) => {
     setPrefixUsername(checked);
-    void invoke('set_branch_prefix_preference', { projectPath, prefix: checked }).catch(() => {}); // Ignore errors
+    void setBranchPrefixPreference(projectPath, checked).catch(() => {}); // Ignore errors
   };
 
   // Group branches (memoized to avoid re-filtering on every render)
@@ -168,7 +170,7 @@ export function BranchesTab({
       await discardChanges(projectPath);
 
       // Pull latest from remote
-      await invoke('git_pull', { projectPath });
+      await gitPull(projectPath);
 
       onToast?.(`Reverted to GitHub version`, 'success');
       onRefresh();

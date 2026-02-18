@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use tauri::Emitter;
 
 /// Counter for generating unique PTY IDs
@@ -23,11 +23,10 @@ struct PtyInfo {
     window_label: String,
 }
 
-lazy_static::lazy_static! {
-    /// Global registry of spawned PTY processes
-    /// Maps our internal PTY ID -> PtyInfo (PID + window label)
-    static ref PTY_REGISTRY: Mutex<HashMap<u32, PtyInfo>> = Mutex::new(HashMap::new());
-}
+/// Global registry of spawned PTY processes
+/// Maps our internal PTY ID -> PtyInfo (PID + window label)
+static PTY_REGISTRY: LazyLock<Mutex<HashMap<u32, PtyInfo>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Spawns a command in a pseudo-terminal (PTY) and streams output to the frontend.
 ///

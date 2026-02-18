@@ -62,6 +62,15 @@ export async function getFileDiff(projectPath: string, filePath: string): Promis
 }
 
 /**
+ * Pull latest changes from remote.
+ *
+ * @param projectPath - Absolute path to the project
+ */
+export async function gitPull(projectPath: string): Promise<void> {
+  return invoke<void>('git_pull', { projectPath });
+}
+
+/**
  * Stage all changes and create a commit.
  *
  * @param projectPath - Absolute path to the project

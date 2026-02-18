@@ -39,21 +39,22 @@ pub use status::*;
 
 use crate::types::AppState;
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 // ============ Shared State ============
 
 // Mock state for testing - tracks which items have been "installed" in debug mode
-lazy_static::lazy_static! {
-    pub(super) static ref MOCK_INSTALLED: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-    static ref MOCK_INITIALIZED: Mutex<bool> = Mutex::new(false);
-    /// Global registry of spawned auth process PIDs for cleanup
-    /// Maps auth type (e.g., "github", "claude") -> OS process ID (PID)
-    pub(super) static ref AUTH_PIDS: Mutex<std::collections::HashMap<String, u32>> = Mutex::new(std::collections::HashMap::new());
-    /// Tracks whether onboarding was completed this session in force-onboarding mode.
-    /// Once set, stop overriding all_ready so background verification doesn't loop.
-    pub(super) static ref FORCE_ONBOARDING_COMPLETED: Mutex<bool> = Mutex::new(false);
-}
+pub(super) static MOCK_INSTALLED: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+static MOCK_INITIALIZED: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+/// Global registry of spawned auth process PIDs for cleanup
+/// Maps auth type (e.g., "github", "claude") -> OS process ID (PID)
+pub(super) static AUTH_PIDS: LazyLock<Mutex<std::collections::HashMap<String, u32>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+/// Tracks whether onboarding was completed this session in force-onboarding mode.
+/// Once set, stop overriding all_ready so background verification doesn't loop.
+pub(super) static FORCE_ONBOARDING_COMPLETED: LazyLock<Mutex<bool>> =
+    LazyLock::new(|| Mutex::new(false));
 
 /// All setup item IDs in dependency order
 const ALL_ITEMS: &[&str] = &[

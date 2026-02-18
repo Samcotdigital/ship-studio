@@ -8,12 +8,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { listen } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { WarningIcon } from './icons';
 import { trackEvent, trackError } from '../lib/analytics';
+import { installVersion } from '../lib/updater';
 
 interface ChangelogEntry {
   version: string;
@@ -186,7 +186,7 @@ export function Changelog({ className = '' }: ChangelogProps) {
     setRewindError(null);
 
     try {
-      await invoke('install_version', { version: rewindVersion });
+      await installVersion(rewindVersion);
       void trackEvent('version_rewind_completed', {
         target_version: rewindVersion,
         $screen_name: 'Dashboard',

@@ -16,9 +16,9 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { BranchIcon, ChevronIcon, FileIcon, TrashIcon } from './icons';
 import { ChangedFile, ChangeStatus } from '../lib/git';
+import { discardChanges } from '../lib/branches';
 import { DiffModal } from './DiffModal';
 
 interface BranchIndicatorProps {
@@ -104,7 +104,7 @@ export function BranchIndicator({
     setConfirmDiscard(false);
     setIsDiscarding(true);
     try {
-      await invoke('discard_changes', { projectPath });
+      await discardChanges(projectPath);
       onToast?.('All changes discarded', 'success');
       onDiscard?.();
       setShowDropdown(false);

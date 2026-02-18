@@ -3,24 +3,24 @@
 //! Global state for tracking open windows and their associated projects.
 //! Used to prevent opening duplicate windows for the same project.
 
-use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
-lazy_static! {
-    /// Maps project_path -> window_label for all open project windows.
-    /// This allows us to focus an existing window if the user tries to open
-    /// a project that's already open in another window.
-    pub static ref OPEN_PROJECT_WINDOWS: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+/// Maps project_path -> window_label for all open project windows.
+/// This allows us to focus an existing window if the user tries to open
+/// a project that's already open in another window.
+pub static OPEN_PROJECT_WINDOWS: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-    /// Maps window_label -> reserved port for dev server.
-    /// This prevents race conditions where multiple windows try to claim the same port
-    /// before any dev server has actually bound to it.
-    pub static ref RESERVED_PORTS: Mutex<HashMap<String, u16>> = Mutex::new(HashMap::new());
+/// Maps window_label -> reserved port for dev server.
+/// This prevents race conditions where multiple windows try to claim the same port
+/// before any dev server has actually bound to it.
+pub static RESERVED_PORTS: LazyLock<Mutex<HashMap<String, u16>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-    /// Set of all currently reserved ports for quick lookup.
-    pub static ref RESERVED_PORT_SET: Mutex<HashSet<u16>> = Mutex::new(HashSet::new());
-}
+/// Set of all currently reserved ports for quick lookup.
+pub static RESERVED_PORT_SET: LazyLock<Mutex<HashSet<u16>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Register a project window in the global state.
 /// Called when a new project window is created.

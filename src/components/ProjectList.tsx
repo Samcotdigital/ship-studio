@@ -13,9 +13,16 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { DashboardProject, getDashboardProjects, setHideMainBranchWarning } from '../lib/project';
+import {
+  DashboardProject,
+  getDashboardProjects,
+  setHideMainBranchWarning,
+  getProjectThumbnail,
+  deleteProject,
+  exportProjectAsTemplate,
+  openProjectInNewWindow,
+} from '../lib/project';
 import { unregisterExternalProject } from '../lib/external-projects';
 import { logger } from '../lib/logger';
 import {
@@ -136,11 +143,12 @@ export function ProjectList({
           let thumbnailData: string | null = null;
           if (project.thumbnail) {
             try {
-              thumbnailData = await invoke<string | null>('get_project_thumbnail', {
-                projectPath: project.path,
-              });
+              thumbnailData = await getProjectThumbnail(project.path);
             } catch (e) {
-              console.error('Failed to load thumbnail for', project.name, e);
+              logger.error('Failed to load thumbnail', {
+                error: e instanceof Error ? e.message : String(e),
+                projectName: project.name,
+              });
             }
           }
           return { ...project, thumbnailData };
@@ -149,7 +157,9 @@ export function ProjectList({
 
       setProjects(projectsWithThumbnails);
     } catch (error) {
-      console.error('Failed to load projects:', error);
+      logger.error('Failed to load projects', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -161,7 +171,9 @@ export function ProjectList({
       const paths = await getFiledProjectPaths();
       setFiledPaths(new Set(paths));
     } catch (error) {
-      console.error('Failed to load folders:', error);
+      logger.error('Failed to load folders', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -247,11 +259,13 @@ export function ProjectList({
   const handleDelete = async (project: DashboardProject) => {
     setDeleting(true);
     try {
-      await invoke('delete_project', { path: project.path });
+      await deleteProject(project.path);
       setDeleteConfirm(null);
       await loadAll();
     } catch (error) {
-      console.error('Failed to delete project:', error);
+      logger.error('Failed to delete project', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       alert('Failed to delete project: ' + String(error));
     } finally {
       setDeleting(false);
@@ -266,22 +280,24 @@ export function ProjectList({
         prev.map((p) => (p.path === projectPath ? { ...p, hide_main_branch_warning: hidden } : p))
       );
     } catch (error) {
-      console.error('Failed to toggle main branch warning:', error);
+      logger.error('Failed to toggle main branch warning', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       alert('Failed to update main branch warning: ' + String(error));
     }
   };
 
   const handleExportAsTemplate = async (projectPath: string) => {
     try {
-      const result = await invoke<string | null>('export_project_as_template', {
-        projectPath,
-      });
+      const result = await exportProjectAsTemplate(projectPath);
       if (result) {
         alert(`Template exported to:\n${result}`);
       }
       // If result is null, user cancelled the dialog - no action needed
     } catch (error) {
-      console.error('Failed to export template:', error);
+      logger.error('Failed to export template', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       alert('Failed to export template: ' + String(error));
     }
   };
@@ -291,17 +307,16 @@ export function ProjectList({
       await unregisterExternalProject(project.path);
       await loadAll();
     } catch (error) {
-      console.error('Failed to remove external project:', error);
+      logger.error('Failed to remove external project', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       alert('Failed to remove project: ' + String(error));
     }
   };
 
   const handleOpenInNewWindow = async (project: DashboardProject) => {
     try {
-      await invoke('open_project_in_new_window', {
-        projectPath: project.path,
-        projectName: project.name,
-      });
+      await openProjectInNewWindow(project.path, project.name);
     } catch (error) {
       logger.error('[ProjectList] Failed to open in new window', {
         error,
@@ -330,7 +345,9 @@ export function ProjectList({
       setDeleteFolderConfirm(null);
       await loadAll();
     } catch (error) {
-      console.error('Failed to delete folder:', error);
+      logger.error('Failed to delete folder', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       alert('Failed to delete folder: ' + String(error));
     } finally {
       setDeletingFolder(false);

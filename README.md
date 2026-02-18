@@ -133,26 +133,61 @@ This will start both the Vite dev server and the Tauri application.
 
 ```
 ship-studio/
-├── src/                      # React frontend
-│   ├── components/           # UI components
-│   │   ├── Terminal.tsx      # Claude Code terminal with PTY
-│   │   ├── Preview.tsx       # Live preview with native webview for CMS
-│   │   ├── GitHubButton.tsx  # GitHub repo creation & publishing
-│   │   ├── VercelButton.tsx  # Vercel deployment & live site button
-│   │   ├── CreateProject.tsx # Project creation wizard
-│   │   ├── EnvEditor.tsx     # Environment variable editor modal
-│   │   └── SplitPane.tsx     # Resizable split pane layout
-│   ├── lib/                  # Utilities
-│   │   ├── github.ts         # GitHub CLI helpers
-│   │   ├── vercel.ts         # Vercel CLI helpers
-│   │   └── project.ts        # Project management
-│   ├── App.tsx               # Main application & state management
-│   └── App.css               # All styles (CSS variables, dark theme)
-├── src-tauri/                # Rust backend
+├── src/                          # React frontend
+│   ├── components/               # UI components (~55 files)
+│   │   ├── Terminal.tsx          # Claude Code terminal with PTY
+│   │   ├── Preview.tsx          # Live preview with native webview
+│   │   ├── WorkspaceView.tsx    # Main workspace layout
+│   │   ├── ProjectList.tsx      # Project dashboard
+│   │   ├── BranchesTab.tsx      # Branch management UI
+│   │   ├── PluginManager.tsx    # Plugin install/manage UI
+│   │   ├── setup/               # Onboarding wizard components
+│   │   └── ...
+│   ├── lib/                      # Tauri command wrappers & utilities
+│   │   ├── git.ts               # Git operations (status, commits, branches)
+│   │   ├── github.ts            # GitHub CLI helpers (auth, push, clone)
+│   │   ├── project.ts           # Project metadata and file operations
+│   │   ├── setup.ts             # Setup wizard and integration status
+│   │   ├── branches.ts          # Branch operations and PR status
+│   │   ├── polling.ts           # Exponential backoff utilities
+│   │   ├── logger.ts            # Structured frontend logging
+│   │   ├── plugins.ts           # Plugin system helpers
+│   │   ├── analytics.ts         # PostHog analytics
+│   │   └── ...                  # ~30 modules total
+│   ├── hooks/                    # Custom React hooks
+│   ├── styles/                   # CSS files (base.css, etc.)
+│   ├── App.tsx                   # Main application & state management
+│   └── App.css                   # Global styles (CSS variables, dark theme)
+├── src-tauri/                    # Rust backend
 │   ├── src/
-│   │   └── lib.rs            # 50+ Tauri commands (see Backend API below)
-│   ├── Cargo.toml            # Rust dependencies
-│   └── tauri.conf.json       # Tauri configuration & CSP
+│   │   ├── lib.rs               # App setup & command registration
+│   │   ├── state.rs             # Shared application state
+│   │   ├── types.rs             # Shared type definitions
+│   │   ├── utils.rs             # Path validation, helpers
+│   │   ├── cache.rs             # TTL-based git caching
+│   │   ├── commands/            # Modular command handlers
+│   │   │   ├── git/             # Git operations (branches, status, stash, sync)
+│   │   │   ├── projects/        # Project CRUD (detection, metadata, templates)
+│   │   │   ├── setup/           # Onboarding (auth, install, status checks)
+│   │   │   ├── plugins/         # Plugin lifecycle & storage
+│   │   │   ├── ide/             # IDE launch & screenshot capture
+│   │   │   ├── github.rs        # GitHub CLI integration
+│   │   │   ├── pty.rs           # Pseudo-terminal for embedded terminal
+│   │   │   ├── publishing.rs    # Vercel deployment workflow
+│   │   │   ├── pull_requests.rs # PR listing and creation
+│   │   │   ├── conflicts.rs     # Merge conflict resolution
+│   │   │   ├── ai.rs            # AI-powered PR generation via Claude CLI
+│   │   │   ├── assets.rs        # /public folder file management
+│   │   │   ├── env.rs           # Environment variable management
+│   │   │   ├── claude.rs        # Claude Code binary detection
+│   │   │   ├── skills.rs        # Skill/workflow management
+│   │   │   ├── mcp.rs           # MCP server configuration
+│   │   │   ├── health.rs        # Code health analysis
+│   │   │   ├── analytics.rs     # Analytics event tracking
+│   │   │   └── ...
+│   │   └── ...
+│   ├── Cargo.toml                # Rust dependencies
+│   └── tauri.conf.json           # Tauri configuration & CSP
 └── package.json
 ```
 
@@ -234,7 +269,7 @@ When you open a project, Ship Studio automatically captures a screenshot of your
 
 ## Backend API (Tauri Commands)
 
-The Rust backend (`src-tauri/src/lib.rs`) exposes these commands to the frontend:
+The Rust backend (`src-tauri/src/commands/`) exposes these commands to the frontend. Commands are organized into domain-specific modules and registered in `src-tauri/src/lib.rs`:
 
 ### Project Management
 | Command | Description |

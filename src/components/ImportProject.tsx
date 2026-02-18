@@ -13,7 +13,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { trackError } from '../lib/analytics';
 import {
@@ -24,6 +23,12 @@ import {
   detectPackageManager,
   GitHubRepo,
 } from '../lib/github';
+import {
+  listProjects,
+  ensureShipStudioDir,
+  spawnPty,
+  ensureGitignoreHasShipstudio,
+} from '../lib/project';
 import { getWindowLabel } from '../lib/window';
 import { checkNpmCachePermissions } from '../lib/setup';
 
@@ -165,16 +170,16 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       );
     }
 
-    const installId = await invoke<number>('spawn_pty', {
-      options: {
+    const installId = await spawnPty(
+      {
         cwd: projectPath,
         command: packageManager,
         args: ['install'],
         rows: 10,
         cols: 80,
       },
-      windowLabel: getWindowLabel(),
-    });
+      getWindowLabel()
+    );
 
     await waitForPtyExit(installId);
   };
@@ -191,7 +196,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
 
       // Setup project
       setCurrentStep('setup');
-      await invoke('ensure_gitignore_has_shipstudio', { projectPath: importedProjectPath });
+      await ensureGitignoreHasShipstudio(importedProjectPath);
 
       setCurrentStep('done');
       await new Promise((r) => setTimeout(r, 800));
@@ -221,7 +226,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
 
     // Check for duplicate project names
     try {
-      const existingProjects = await invoke<{ name: string; path: string }[]>('list_projects');
+      const existingProjects = await listProjects();
       const duplicate = existingProjects.find(
         (p) => p.name.toLowerCase() === safeName.toLowerCase()
       );
@@ -239,7 +244,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
 
     try {
       // Ensure ShipStudio directory exists
-      const shipstudioDir = await invoke<string>('ensure_shipstudio_dir');
+      const shipstudioDir = await ensureShipStudioDir();
       const projectPath = `${shipstudioDir}/${safeName}`;
 
       // Clone repository using gh CLI (uses GitHub CLI authentication)
@@ -248,16 +253,16 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
         selectedOwner === '__collaborator__'
           ? selectedRepo.name
           : `${selectedOwner}/${selectedRepo.name}`;
-      const cloneId = await invoke<number>('spawn_pty', {
-        options: {
+      const cloneId = await spawnPty(
+        {
           cwd: shipstudioDir,
           command: 'gh',
           args: ['repo', 'clone', repoFullName, safeName],
           rows: 10,
           cols: 80,
         },
-        windowLabel: getWindowLabel(),
-      });
+        getWindowLabel()
+      );
 
       await waitForPtyExit(cloneId);
 
@@ -273,7 +278,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       setCurrentStep('setup');
 
       // Ensure .shipstudio is gitignored
-      await invoke('ensure_gitignore_has_shipstudio', { projectPath });
+      await ensureGitignoreHasShipstudio(projectPath);
 
       setCurrentStep('done');
 

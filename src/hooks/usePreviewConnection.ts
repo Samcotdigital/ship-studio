@@ -109,7 +109,9 @@ export function usePreviewConnection({
       const pageList = await invoke<PageInfo[]>('list_pages', { projectPath });
       setPages(pageList);
     } catch (error) {
-      console.error('Failed to load pages:', error);
+      logger.error('Failed to load pages', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }, [projectPath]);
 
@@ -292,12 +294,12 @@ export function usePreviewConnection({
         healthCheckFailuresRef.current = 0;
       } catch {
         healthCheckFailuresRef.current += 1;
-        console.warn(
+        logger.warn(
           `[Preview] Dev server health check failed (${healthCheckFailuresRef.current}/${HEALTH_CHECK_MAX_FAILURES})`
         );
 
         if (healthCheckFailuresRef.current >= HEALTH_CHECK_MAX_FAILURES) {
-          console.warn(
+          logger.warn(
             '[Preview] Dev server appears to have crashed after multiple failed health checks'
           );
           setServerReady(false);

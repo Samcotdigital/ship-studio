@@ -13,7 +13,6 @@ export default tseslint.config(
       'src-tauri/',
       '*.config.js',
       '*.config.ts',
-      'vite.config.ts',
     ],
   },
 
@@ -52,7 +51,7 @@ export default tseslint.config(
 
       // React hooks rules
       ...reactHooks.configs.recommended.rules,
-      'react-hooks/set-state-in-effect': 'warn', // Downgrade for gradual adoption
+      'react-hooks/set-state-in-effect': 'error',
 
       // TypeScript rules
       '@typescript-eslint/no-unused-vars': [
@@ -63,24 +62,23 @@ export default tseslint.config(
         },
       ],
 
-      // Downgrade strict type-checked rules to warnings for gradual adoption
-      // These catch real issues but are common in existing React codebases
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-misused-promises': 'warn',
-      '@typescript-eslint/require-await': 'warn',
-      '@typescript-eslint/restrict-template-expressions': 'warn',
-      '@typescript-eslint/restrict-plus-operands': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/await-thenable': 'warn',
-      '@typescript-eslint/no-base-to-string': 'warn',
-      '@typescript-eslint/no-redundant-type-constituents': 'warn',
-      '@typescript-eslint/only-throw-error': 'warn',
+      // Strict type-checked rules
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/require-await': 'error',
+      '@typescript-eslint/restrict-template-expressions': 'error',
+      '@typescript-eslint/restrict-plus-operands': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-base-to-string': 'error',
+      '@typescript-eslint/no-redundant-type-constituents': 'error',
+      '@typescript-eslint/only-throw-error': 'error',
 
-      // Warn on console.log (allow warn/error)
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      // Disallow console.log (allow warn/error for logger.ts internals)
+      'no-console': ['error', { allow: ['warn', 'error'] }],
     },
   },
 

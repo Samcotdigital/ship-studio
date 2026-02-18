@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { CloseIcon } from './icons';
 import { listAgentSkills, AgentSkill } from '../lib/claude';
 import { trackEvent } from '../lib/analytics';
+import { logger } from '../lib/logger';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -61,7 +62,9 @@ export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
         if (!cancelled) setSkills(result);
       })
       .catch((err) => {
-        console.error('Failed to load skills:', err);
+        logger.error('Failed to load skills', {
+          error: err instanceof Error ? err.message : String(err),
+        });
         if (!cancelled) setSkills([]);
       })
       .finally(() => {

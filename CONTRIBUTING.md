@@ -29,17 +29,37 @@ This starts both the Vite dev server (frontend) and Tauri app (backend).
 ## Project Architecture
 
 ```
-src/                    # React frontend (TypeScript)
-├── components/         # UI components
-├── lib/               # Tauri command wrappers
-├── hooks/             # Custom React hooks
-├── styles/            # CSS files
-└── App.tsx            # Main app component & state
+src/                        # React frontend (TypeScript)
+├── components/             # UI components (~55 files)
+│   └── setup/              # Onboarding wizard components
+├── lib/                    # Tauri command wrappers (~30 modules)
+├── hooks/                  # Custom React hooks
+├── styles/                 # CSS files
+└── App.tsx                 # Main app component & state
 
-src-tauri/             # Rust backend
-├── src/lib.rs         # All Tauri commands (~2800 lines)
-├── Cargo.toml         # Rust dependencies
-└── tauri.conf.json    # Tauri configuration
+src-tauri/                  # Rust backend
+├── src/
+│   ├── lib.rs              # App setup & command registration
+│   ├── state.rs            # Shared application state
+│   ├── types.rs            # Type definitions
+│   ├── utils.rs            # Path validation, helpers
+│   ├── cache.rs            # TTL-based git caching
+│   └── commands/           # Modular command handlers
+│       ├── git/            # Git operations (branches, status, stash, sync)
+│       ├── projects/       # Project CRUD (detection, metadata, templates)
+│       ├── setup/          # Onboarding (auth, install, status checks)
+│       ├── plugins/        # Plugin lifecycle & storage
+│       ├── ide/            # IDE launch & screenshot capture
+│       ├── github.rs       # GitHub CLI integration
+│       ├── pty.rs          # Pseudo-terminal management
+│       ├── publishing.rs   # Vercel deployment workflow
+│       ├── conflicts.rs    # Merge conflict resolution
+│       ├── ai.rs           # AI-powered PR generation
+│       ├── assets.rs       # /public folder file management
+│       ├── env.rs          # Environment variable management
+│       └── ...             # ~25 modules total
+├── Cargo.toml              # Rust dependencies
+└── tauri.conf.json         # Tauri configuration
 ```
 
 ### Key Technologies
@@ -128,19 +148,19 @@ Add screenshot capture for project thumbnails
 
 ### Adding a New Tauri Command
 
-1. Add the command function in `src-tauri/src/lib.rs`:
+1. Add the command function in the appropriate module under `src-tauri/src/commands/`. For example, to add a git-related command, edit `src-tauri/src/commands/git/mod.rs` (or create a new submodule). For a new domain, create a new file in `src-tauri/src/commands/`:
 ```rust
 #[tauri::command]
-async fn my_new_command(arg: String) -> Result<String, String> {
+pub async fn my_new_command(arg: String) -> Result<String, String> {
     // Implementation
 }
 ```
 
-2. Register it in the handler at the bottom of `lib.rs`:
+2. Export the command from `src-tauri/src/commands/mod.rs` and register it in the handler in `src-tauri/src/lib.rs`:
 ```rust
 .invoke_handler(tauri::generate_handler![
     // ... existing commands
-    my_new_command,
+    commands::my_module::my_new_command,
 ])
 ```
 

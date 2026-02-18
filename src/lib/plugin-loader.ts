@@ -11,6 +11,7 @@
 
 import { readPluginBundle } from './plugins';
 import { trackError } from './analytics';
+import { logger } from './logger';
 
 /** A component that a plugin registers for a specific UI slot */
 export type SlotComponent = React.ComponentType<Record<string, never>>;
@@ -98,7 +99,9 @@ export async function loadPluginModule(
         pluginModule.onActivate();
       } catch (e) {
         trackError('plugin_onactivate', e, 'Workspace');
-        console.error(`Plugin ${pluginId} onActivate failed:`, e);
+        logger.error(`Plugin ${pluginId} onActivate failed`, {
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
 
@@ -123,7 +126,9 @@ export function unloadPluginModule(projectPath: string, pluginId: string): void 
       mod.onDeactivate();
     } catch (e) {
       trackError('plugin_ondeactivate', e, 'Workspace');
-      console.error(`Plugin ${pluginId} onDeactivate failed:`, e);
+      logger.error(`Plugin ${pluginId} onDeactivate failed`, {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 

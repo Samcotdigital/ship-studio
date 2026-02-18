@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { trackError } from '../lib/analytics';
+import { logger } from '../lib/logger';
 
 /** Represents an environment file in the project */
 export interface EnvFile {
@@ -141,7 +142,9 @@ export function useEnvEditor({
         setSyncStatus(null);
       }
     } catch (e) {
-      console.error('Failed to check sync status:', e);
+      logger.error('Failed to check sync status', {
+        error: e instanceof Error ? e.message : String(e),
+      });
       setSyncStatus(null);
     }
   }, []);
@@ -161,7 +164,9 @@ export function useEnvEditor({
       // Check sync status
       void checkSyncStatus(files);
     } catch (e) {
-      console.error('Failed to load env files:', e);
+      logger.error('Failed to load env files', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }, [projectPath, selectedFile, checkSyncStatus]);
 
@@ -179,7 +184,9 @@ export function useEnvEditor({
     } catch (e) {
       trackError('env_read', e, 'Workspace');
       setError(`Failed to read ${selectedFile.name}`);
-      console.error(e);
+      logger.error('Failed to read env file', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setIsLoading(false);
     }
@@ -212,7 +219,9 @@ export function useEnvEditor({
       trackError('env_save', e, 'Workspace');
       setError(`Failed to save ${selectedFile.name}`);
       onToast?.(`Failed to save ${selectedFile.name}`, 'error');
-      console.error(e);
+      logger.error('Failed to save env file', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setIsSaving(false);
     }
@@ -349,7 +358,9 @@ export function useEnvEditor({
       trackError('env_sync_example', e, 'Workspace');
       setError('Failed to sync to .env.example');
       onToast?.('Failed to sync to .env.example', 'error');
-      console.error(e);
+      logger.error('Failed to sync to .env.example', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   };
 
@@ -386,7 +397,9 @@ export function useEnvEditor({
       trackError('env_sync_local', e, 'Workspace');
       setError('Failed to sync to .env.local');
       onToast?.('Failed to sync to .env.local', 'error');
-      console.error(e);
+      logger.error('Failed to sync to .env.local', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   };
 

@@ -18,10 +18,9 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -57,10 +56,9 @@ struct ProxyInstance {
     _task_handle: JoinHandle<()>,
 }
 
-lazy_static! {
-    /// Maps window_label -> ProxyInstance
-    static ref PROXY_INSTANCES: Mutex<HashMap<String, ProxyInstance>> = Mutex::new(HashMap::new());
-}
+/// Maps window_label -> ProxyInstance
+static PROXY_INSTANCES: LazyLock<Mutex<HashMap<String, ProxyInstance>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Start a reverse proxy for the given window, forwarding to `target_port`.
 /// Returns the proxy's listening port.

@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { listPlugins, PluginInfo } from '../lib/plugins';
 import { loadPluginModule, unloadPluginModule, PluginModule } from '../lib/plugin-loader';
+import { logger } from '../lib/logger';
 
 /** API versions the host supports. Plugins with unsupported versions are skipped. */
 const SUPPORTED_API_VERSIONS = [0, 1];
@@ -53,7 +54,7 @@ export function usePlugins(projectPath: string | null): UsePluginsReturn {
       const compatible = enabled.filter((info) => {
         const v = info.manifest.api_version ?? 0;
         if (!SUPPORTED_API_VERSIONS.includes(v)) {
-          console.warn(
+          logger.warn(
             `Plugin "${info.manifest.id}" requires API v${v} which is not supported (supported: ${SUPPORTED_API_VERSIONS.join(', ')}). Skipping.`
           );
           return false;
@@ -71,7 +72,9 @@ export function usePlugins(projectPath: string | null): UsePluginsReturn {
         if (result.status === 'fulfilled') {
           loaded.push(result.value);
         } else {
-          console.error('Failed to load plugin:', result.reason);
+          logger.error('Failed to load plugin', {
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          });
         }
       }
 
@@ -79,7 +82,7 @@ export function usePlugins(projectPath: string | null): UsePluginsReturn {
         setPlugins(loaded);
       }
     } catch (e) {
-      console.error('Failed to list plugins:', e);
+      logger.error('Failed to list plugins', { error: e instanceof Error ? e.message : String(e) });
       if (mountedRef.current && currentPathRef.current === path) {
         setPlugins([]);
       }

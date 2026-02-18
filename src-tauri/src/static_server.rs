@@ -14,12 +14,11 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use lazy_static::lazy_static;
 use notify::{EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tokio::net::TcpListener;
@@ -97,11 +96,9 @@ struct StaticServerInstance {
     watcher_shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
-lazy_static! {
-    /// Maps window_label -> StaticServerInstance
-    static ref STATIC_SERVER_INSTANCES: Mutex<HashMap<String, StaticServerInstance>> =
-        Mutex::new(HashMap::new());
-}
+/// Maps window_label -> StaticServerInstance
+static STATIC_SERVER_INSTANCES: LazyLock<Mutex<HashMap<String, StaticServerInstance>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Start a static file server for the given window, serving files from `project_path`.
 /// Returns the server's listening port. Also starts a file watcher that emits

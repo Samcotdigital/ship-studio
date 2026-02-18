@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Update } from '@tauri-apps/plugin-updater';
 import { checkForUpdate, downloadAndInstall, restartApp, UpdateInfo } from '../lib/updater';
 import { trackEvent, trackError } from '../lib/analytics';
+import { logger } from '../lib/logger';
 import '../styles/update-banner.css';
 
 /** How often to check for updates (1 hour) */
@@ -50,8 +51,8 @@ export function UpdateBanner() {
           }
           setUpdateAvailable(result);
         }
-      } catch (err) {
-        console.warn('[UpdateBanner] Check failed:', err);
+      } catch {
+        logger.warn('[UpdateBanner] Check failed');
       }
     };
 
@@ -87,7 +88,7 @@ export function UpdateBanner() {
       });
       setStatus('ready');
     } catch (err: unknown) {
-      console.warn('[UpdateBanner] Download failed:', err);
+      logger.warn('[UpdateBanner] Download failed');
       trackError('update_download', err, 'Dashboard');
       setStatus('error');
       // Extract as much error info as possible
@@ -116,7 +117,7 @@ export function UpdateBanner() {
     try {
       await restartApp();
     } catch (err) {
-      console.warn('[UpdateBanner] Restart failed:', err);
+      logger.warn('[UpdateBanner] Restart failed');
       trackError('app_restart', err, 'Dashboard');
       setError('Failed to restart. Please restart manually.');
     }

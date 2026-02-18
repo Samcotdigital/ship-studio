@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CameraIcon, CloseIcon } from './icons';
+import { logger } from '../lib/logger';
 
 /** Duration to show the toast before auto-dismiss (ms) */
 const TOAST_DURATION_MS = 5000;
@@ -36,7 +37,11 @@ export function ScreenshotToast({ filePath, onDismiss, onViewFull }: ScreenshotT
   useEffect(() => {
     invoke<string>('get_screenshot_base64', { filePath })
       .then(setImageSrc)
-      .catch((err) => console.error('Failed to load screenshot:', err));
+      .catch((err) =>
+        logger.error('Failed to load screenshot', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
   }, [filePath]);
 
   // Auto-dismiss after timeout
@@ -109,7 +114,11 @@ export function ScreenshotPreviewModal({ filePath, onClose }: ScreenshotPreviewM
   useEffect(() => {
     invoke<string>('get_screenshot_base64', { filePath })
       .then(setImageSrc)
-      .catch((err) => console.error('Failed to load screenshot:', err));
+      .catch((err) =>
+        logger.error('Failed to load screenshot', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
   }, [filePath]);
 
   // Close on escape key

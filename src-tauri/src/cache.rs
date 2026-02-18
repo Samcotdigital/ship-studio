@@ -3,8 +3,8 @@
 //! Provides caching for git command results to reduce subprocess calls.
 //! Cache entries have a TTL and can be invalidated on write operations.
 
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tracing::debug;
@@ -173,7 +173,7 @@ impl GitCache {
 }
 
 /// Global git cache instance
-pub static GIT_CACHE: Lazy<GitCache> = Lazy::new(GitCache::new);
+pub static GIT_CACHE: LazyLock<GitCache> = LazyLock::new(GitCache::new);
 
 #[cfg(test)]
 mod tests {

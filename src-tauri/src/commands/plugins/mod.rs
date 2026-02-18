@@ -26,15 +26,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::AppHandle;
 
-lazy_static::lazy_static! {
-    /// Per-plugin storage locks to prevent concurrent read-modify-write races.
-    /// Key: "project_path:plugin_id"
-    static ref STORAGE_LOCKS: Mutex<HashMap<String, Arc<Mutex<()>>>> =
-        Mutex::new(HashMap::new());
-}
+/// Per-plugin storage locks to prevent concurrent read-modify-write races.
+/// Key: "project_path:plugin_id"
+static STORAGE_LOCKS: LazyLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Acquire a lock for a specific plugin's storage file.
 pub(crate) fn get_storage_lock(plugin_id: &str, project_path: &str) -> Arc<Mutex<()>> {

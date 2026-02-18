@@ -12,6 +12,7 @@
  */
 
 import { readFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { logger } from './logger';
 
 /** Track if fonts have been loaded */
 let fontsLoaded = false;
@@ -35,8 +36,7 @@ export async function loadNerdFonts(): Promise<void> {
 
   fontLoadPromise = (async () => {
     try {
-      // eslint-disable-next-line no-console
-      console.log('[Fonts] Loading Nerd Fonts from resources...');
+      logger.info('[Fonts] Loading Nerd Fonts from resources...');
 
       // Read font files as binary data from Tauri resources
       const [regularData, boldData] = await Promise.all([
@@ -48,8 +48,7 @@ export async function loadNerdFonts(): Promise<void> {
         }),
       ]);
 
-      // eslint-disable-next-line no-console
-      console.log('[Fonts] Font data loaded:', {
+      logger.info('[Fonts] Font data loaded', {
         regularSize: regularData.byteLength,
         boldSize: boldData.byteLength,
       });
@@ -76,12 +75,13 @@ export async function loadNerdFonts(): Promise<void> {
       await document.fonts.ready;
 
       const isLoaded = document.fonts.check('12px "JetBrainsMono NF"');
-      // eslint-disable-next-line no-console
-      console.log('[Fonts] Nerd Fonts registered, available:', isLoaded);
+      logger.info('[Fonts] Nerd Fonts registered, available: ' + String(isLoaded));
 
       fontsLoaded = true;
     } catch (err) {
-      console.error('[Fonts] Failed to load Nerd Fonts:', err);
+      logger.error('[Fonts] Failed to load Nerd Fonts', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       // Don't throw - let the terminal use fallback fonts
     }
   })();

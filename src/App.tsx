@@ -23,7 +23,7 @@
  * @module App
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
 import { usePlugins } from './hooks/usePlugins';
@@ -47,6 +47,7 @@ import { initDefaultAgent } from './lib/agent';
 import { UpdateBanner } from './components/UpdateBanner';
 import { logger } from './lib/logger';
 import { trackEvent } from './lib/analytics';
+import type { AppView } from './lib/types';
 import './styles/index.css';
 
 // Initialize logger
@@ -54,9 +55,6 @@ logger.init();
 
 // Track app launch
 void trackEvent('app_launched', { $screen_name: 'Dashboard' });
-
-/** Current application view/screen */
-type AppView = 'loading' | 'onboarding' | 'projects' | 'project-loading' | 'workspace';
 
 /** Props for the App component */
 interface AppProps {
@@ -349,47 +347,57 @@ function App({ initialProjectPath }: AppProps) {
   });
 
   // Plugin data for PluginSlot components (defined before early returns so all views can use them)
-  const pluginProject = currentProject
-    ? {
-        name: currentProject.name,
-        path: currentProject.path,
-        currentBranch: currentBranch || 'main',
-        hasUncommittedChanges,
-        devServerUrl: `http://localhost:${devServerPort}`,
-      }
-    : null;
+  const pluginProject = useMemo(
+    () =>
+      currentProject
+        ? {
+            name: currentProject.name,
+            path: currentProject.path,
+            currentBranch: currentBranch || 'main',
+            hasUncommittedChanges,
+            devServerUrl: `http://localhost:${String(devServerPort)}`,
+          }
+        : null,
+    [currentProject, currentBranch, hasUncommittedChanges, devServerPort]
+  );
 
-  const pluginActions = {
-    showToast,
-    refreshGitStatus: () => {
-      if (currentProject) void fetchBranchInfo(currentProject.path);
-    },
-    refreshBranches: () => {
-      if (currentProject) void fetchBranchInfo(currentProject.path);
-    },
-    focusTerminal: focusActiveTerminal,
-    openUrl: (url: string) => {
-      void import('@tauri-apps/plugin-opener').then(({ openUrl }) => openUrl(url));
-    },
-    openTerminal: openPluginTerminal,
-  };
+  const pluginActions = useMemo(
+    () => ({
+      showToast,
+      refreshGitStatus: () => {
+        if (currentProject) void fetchBranchInfo(currentProject.path);
+      },
+      refreshBranches: () => {
+        if (currentProject) void fetchBranchInfo(currentProject.path);
+      },
+      focusTerminal: focusActiveTerminal,
+      openUrl: (url: string) => {
+        void import('@tauri-apps/plugin-opener').then(({ openUrl }) => openUrl(url));
+      },
+      openTerminal: openPluginTerminal,
+    }),
+    [showToast, currentProject, fetchBranchInfo, focusActiveTerminal, openPluginTerminal]
+  );
 
-  const pluginTheme = {
-    bgPrimary: 'var(--bg-primary)',
-    bgSecondary: 'var(--bg-secondary)',
-    bgTertiary: 'var(--bg-tertiary)',
-    textPrimary: 'var(--text-primary)',
-    textSecondary: 'var(--text-secondary)',
-    textMuted: 'var(--text-muted)',
-    border: 'var(--border)',
-    accent: 'var(--accent, #10b981)',
-    accentHover: 'var(--accent-hover)',
-    action: 'var(--action)',
-    actionHover: 'var(--action-hover)',
-    actionText: 'var(--action-text)',
-    error: 'var(--error)',
-    success: 'var(--success)',
-  };
+  const pluginTheme = useMemo(
+    () => ({
+      bgPrimary: 'var(--bg-primary)',
+      bgSecondary: 'var(--bg-secondary)',
+      bgTertiary: 'var(--bg-tertiary)',
+      textPrimary: 'var(--text-primary)',
+      textSecondary: 'var(--text-secondary)',
+      textMuted: 'var(--text-muted)',
+      border: 'var(--border)',
+      accent: 'var(--accent, #10b981)',
+      accentHover: 'var(--accent-hover)',
+      action: 'var(--action)',
+      actionHover: 'var(--action-hover)',
+      actionText: 'var(--action-text)',
+      error: 'var(--error)',
+      success: 'var(--success)',
+    }),
+    []
+  );
 
   if (view === 'loading') {
     return (

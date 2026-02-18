@@ -15,8 +15,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { GitHubButton } from './GitHubButton';
+import { checkIdeAvailability, openInIde as launchIde, openInFinder } from '../lib/ide';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { PluginSlot } from './PluginSlot';
 import {
@@ -137,7 +137,7 @@ export function WorkspaceHeader({
 
   // Check IDE availability on mount
   useEffect(() => {
-    void invoke<{ vscode: boolean; cursor: boolean }>('check_ide_availability')
+    void checkIdeAvailability()
       .then(setIdeAvailability)
       .catch(() => setIdeAvailability({ vscode: false, cursor: false }));
   }, []);
@@ -146,7 +146,7 @@ export function WorkspaceHeader({
   const openInIde = async (ide: 'vscode' | 'cursor') => {
     setOpeningIde(ide);
     try {
-      await invoke('open_in_ide', { projectPath, ide });
+      await launchIde(projectPath, ide);
       void trackEvent('ide_opened', {
         ide,
         project_name: projectName,
@@ -167,7 +167,7 @@ export function WorkspaceHeader({
       <h1>{projectName}</h1>
       <button
         className="project-path"
-        onClick={() => projectPath && void invoke('open_in_finder', { path: projectPath })}
+        onClick={() => projectPath && void openInFinder(projectPath)}
         title="Open in Finder"
       >
         {projectPath}

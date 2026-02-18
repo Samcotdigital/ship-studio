@@ -7,7 +7,7 @@
 //! Users can opt out via the `set_analytics_enabled` command.
 
 use crate::commands::setup::{read_app_state, write_app_state};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -24,7 +24,7 @@ struct AnalyticsCache {
     http_client: reqwest::Client,
 }
 
-static ANALYTICS: Lazy<Mutex<Option<AnalyticsCache>>> = Lazy::new(|| Mutex::new(None));
+static ANALYTICS: LazyLock<Mutex<Option<AnalyticsCache>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Initialize the analytics system. Called once at app startup from lib.rs.
 /// Reads or generates a device_id and caches the enabled state.

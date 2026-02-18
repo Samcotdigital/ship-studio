@@ -12,6 +12,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { CloseIcon, SearchIcon } from './icons';
 import { type McpServer, listMcpServers, addMcpServer, removeMcpServer } from '../lib/mcp';
 import { trackEvent, trackSearch } from '../lib/analytics';
+import { logger } from '../lib/logger';
 
 type Tab = 'connected' | 'add';
 type ScopeFilter = 'all' | 'user' | 'project';
@@ -85,7 +86,9 @@ export function McpModal({
       const result = await listMcpServers(projectPath, agentId);
       setServers(result);
     } catch (err) {
-      console.error('Failed to load MCP servers:', err);
+      logger.error('Failed to load MCP servers', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setServers([]);
     } finally {
       setIsLoadingServers(false);
@@ -126,7 +129,9 @@ export function McpModal({
       await fetchServers();
       setActiveTab('connected');
     } catch (err) {
-      console.error('Failed to add MCP server:', err);
+      logger.error('Failed to add MCP server', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setAddError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsAdding(false);
@@ -143,7 +148,9 @@ export function McpModal({
       void trackEvent('mcp_server_removed', { scope: server.scope, $screen_name: 'MCP Modal' });
       await fetchServers();
     } catch (err) {
-      console.error('Failed to remove MCP server:', err);
+      logger.error('Failed to remove MCP server', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setRemovingServer(null);
     }

@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { FolderInfo, listFolders } from '../lib/folders';
 import { FolderIcon, CheckIcon } from './icons';
+import { logger } from '../lib/logger';
 
 /** Props for the MoveFolderModal component */
 interface MoveFolderModalProps {
@@ -41,7 +42,11 @@ export function MoveFolderModal({
       setLoading(true);
       listFolders()
         .then(setFolders)
-        .catch((err) => console.error('Failed to load folders:', err))
+        .catch((err) =>
+          logger.error('Failed to load folders', {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        )
         .finally(() => setLoading(false));
     }
   }, [isOpen]);
@@ -66,7 +71,9 @@ export function MoveFolderModal({
       await onSelect(folderId);
       onClose();
     } catch (err) {
-      console.error('Failed to move project:', err);
+      logger.error('Failed to move project', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setSelecting(false);
     }

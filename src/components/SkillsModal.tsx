@@ -20,6 +20,7 @@ import {
 } from '../lib/skills';
 import { listAgentSkills } from '../lib/claude';
 import { trackEvent, trackSearch } from '../lib/analytics';
+import { logger } from '../lib/logger';
 
 type Tab = 'installed' | 'add';
 type ScopeFilter = 'all' | 'user' | 'project';
@@ -93,7 +94,9 @@ export function SkillsModal({
       const result = await listAgentSkills(projectPath, agentId);
       setSkills(result);
     } catch (err) {
-      console.error('Failed to load skills:', err);
+      logger.error('Failed to load skills', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setSkills([]);
     } finally {
       setIsLoadingSkills(false);
@@ -145,7 +148,9 @@ export function SkillsModal({
       const results = await searchSkills(searchQuery.trim());
       setSearchResults(results);
     } catch (err) {
-      console.error('Failed to search skills:', err);
+      logger.error('Failed to search skills', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setSearchError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setIsSearching(false);
@@ -166,7 +171,9 @@ export function SkillsModal({
       await fetchSkills();
       setActiveTab('installed');
     } catch (err) {
-      console.error('Failed to install skill:', err);
+      logger.error('Failed to install skill', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setSearchError(err instanceof Error ? err.message : 'Installation failed');
     } finally {
       setInstallingPackage(null);
@@ -188,7 +195,9 @@ export function SkillsModal({
       // Refresh installed skills
       await fetchSkills();
     } catch (err) {
-      console.error('Failed to remove skill:', err);
+      logger.error('Failed to remove skill', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setRemovingSkill(null);
     }

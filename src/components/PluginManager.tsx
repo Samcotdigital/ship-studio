@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { CloseIcon } from './icons';
 import { trackEvent, trackError } from '../lib/analytics';
+import { logger } from '../lib/logger';
 import {
   listPlugins,
   installPlugin,
@@ -85,7 +86,9 @@ export function PluginManager({
       setPlugins(result);
     } catch (err) {
       trackError('plugin_list_load', err, 'Plugin Manager');
-      console.error('Failed to load plugins:', err);
+      logger.error('Failed to load plugins', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setPlugins([]);
     } finally {
       setIsLoading(false);
@@ -105,7 +108,9 @@ export function PluginManager({
       setRegistry(result);
     } catch (err) {
       trackError('plugin_registry_load', err, 'Plugin Manager');
-      console.error('Failed to fetch plugin registry:', err);
+      logger.error('Failed to fetch plugin registry', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setRegistry([]);
     } finally {
       setIsLoadingRegistry(false);
@@ -131,7 +136,9 @@ export function PluginManager({
       onPluginsChanged();
     } catch (err) {
       trackError('plugin_uninstall', err, 'Plugin Manager');
-      console.error('Failed to uninstall plugin:', err);
+      logger.error('Failed to uninstall plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setRemovingId(null);
     }
@@ -152,7 +159,9 @@ export function PluginManager({
       onPluginsChanged();
     } catch (err) {
       trackError('plugin_toggle', err, 'Plugin Manager');
-      console.error('Failed to toggle plugin:', err);
+      logger.error('Failed to toggle plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setTogglingId(null);
     }
@@ -170,7 +179,9 @@ export function PluginManager({
       }));
     } catch (err) {
       trackError('plugin_update_check', err, 'Plugin Manager');
-      console.error('Failed to check for update:', err);
+      logger.error('Failed to check for update', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setUpdateStates((prev) => ({ ...prev, [pluginId]: 'idle' }));
     }
   };
@@ -187,7 +198,9 @@ export function PluginManager({
       setUpdateStates((prev) => ({ ...prev, [pluginId]: 'up_to_date' }));
     } catch (err) {
       trackError('plugin_update', err, 'Plugin Manager');
-      console.error('Failed to update plugin:', err);
+      logger.error('Failed to update plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setUpdateStates((prev) => ({ ...prev, [pluginId]: 'available' }));
     }
   };
@@ -211,7 +224,9 @@ export function PluginManager({
       setInstallingId(null);
     } catch (err) {
       trackError('plugin_install', err, 'Plugin Manager');
-      console.error('Failed to install plugin:', err);
+      logger.error('Failed to install plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setError(err instanceof Error ? err.message : String(err));
       setInstallingId(null);
     }
@@ -236,7 +251,9 @@ export function PluginManager({
       onPluginsChanged();
     } catch (err) {
       trackError('plugin_install_url', err, 'Plugin Manager');
-      console.error('Failed to install plugin:', err);
+      logger.error('Failed to install plugin from URL', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsInstallingUrl(false);
@@ -261,7 +278,9 @@ export function PluginManager({
       }
     } catch (err) {
       trackError('plugin_dev_link', err, 'Plugin Manager');
-      console.error('Failed to link dev plugin:', err);
+      logger.error('Failed to link dev plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLinkingDev(false);
@@ -293,7 +312,9 @@ export function PluginManager({
       onPluginsChanged();
     } catch (err) {
       trackError('plugin_dev_unlink', err, 'Plugin Manager');
-      console.error('Failed to unlink dev plugin:', err);
+      logger.error('Failed to unlink dev plugin', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setUnlinkingId(null);
     }

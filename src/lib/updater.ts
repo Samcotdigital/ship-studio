@@ -9,8 +9,10 @@
  * @module lib/updater
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { logger } from './logger';
 
 /** Information about an available update */
 export interface UpdateInfo {
@@ -50,7 +52,9 @@ export async function checkForUpdate(): Promise<{ update: Update; info: UpdateIn
     }
     return null;
   } catch (error) {
-    console.error('[Updater] Failed to check for updates:', error);
+    logger.error('[Updater] Failed to check for updates', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }
@@ -71,7 +75,7 @@ export async function downloadAndInstall(
     switch (event.event) {
       case 'Started':
         contentLength = event.data.contentLength ?? 0;
-        console.warn(`[Updater] Download started, size: ${contentLength}`);
+        logger.info(`[Updater] Download started, size: ${contentLength}`);
         break;
       case 'Progress': {
         downloaded += event.data.chunkLength;
@@ -80,11 +84,20 @@ export async function downloadAndInstall(
         break;
       }
       case 'Finished':
-        console.warn('[Updater] Download finished');
+        logger.info('[Updater] Download finished');
         onProgress?.(100);
         break;
     }
   });
+}
+
+/**
+ * Install a specific version of the application.
+ * Downloads and installs the specified version, emitting 'rewind-progress' events.
+ * @param version - Version string to install (e.g., "0.3.50")
+ */
+export async function installVersion(version: string): Promise<void> {
+  return invoke<void>('install_version', { version });
 }
 
 /**

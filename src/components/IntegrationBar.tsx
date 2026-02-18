@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react';
 import { CheckIcon, WarningIcon, ChevronIcon, ClaudeIcon, GitHubIcon, SpinnerIcon } from './icons';
 import { getFullSetupStatus, SetupItem, SETUP_ITEM_ORDER } from '../lib/setup';
+import { logger } from '../lib/logger';
 
 interface IntegrationBarProps {
   /** Callback to connect GitHub account */
@@ -38,7 +39,9 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
         });
         setSetupItems(sorted);
       } catch (error) {
-        console.error(error);
+        logger.error('Failed to load setup status', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       } finally {
         setIsLoading(false);
       }

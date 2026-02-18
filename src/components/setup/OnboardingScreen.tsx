@@ -19,6 +19,7 @@ import { HostingStep } from './steps/HostingStep';
 import { CelebrationScreen } from './CelebrationScreen';
 import { OnboardingTerminal } from './OnboardingTerminal';
 import { trackEvent } from '../../lib/analytics';
+import { logger } from '../../lib/logger';
 import {
   SetupItem,
   FullSetupStatus,
@@ -97,8 +98,8 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       setItems(status.items);
       setError(null);
       return status;
-    } catch (err) {
-      console.warn('Failed to fetch setup status:', err);
+    } catch {
+      logger.warn('Failed to fetch setup status');
       setError('Failed to check setup status. Please try again.');
       setState('wizard');
       return null;
@@ -130,7 +131,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       unlistenRef.current = await listen<{ itemId: string; message: string }>(
         'setup-progress',
         (event) => {
-          console.warn('Setup progress:', event.payload);
+          logger.info('Setup progress', {
+            itemId: event.payload.itemId,
+            message: event.payload.message,
+          });
         }
       );
     };
@@ -290,13 +294,13 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
           await installPackages(missingPackages);
         } else {
-          console.warn('Unknown item:', itemId);
+          logger.warn(`Unknown item: ${itemId}`);
         }
 
         await fetchStatus();
         setActiveItemId(null);
       } catch (err) {
-        console.warn(`Failed to process ${itemId}:`, err);
+        logger.warn(`Failed to process ${itemId}`);
         const errorMessage = err instanceof Error ? err.message : String(err);
         const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
 

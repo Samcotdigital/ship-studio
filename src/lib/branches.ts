@@ -269,6 +269,28 @@ export async function pullAndMerge(projectPath: string, mergeBranch?: string): P
 }
 
 /**
+ * Get the branch name prefix preference for a project.
+ * When enabled, new branches are prefixed with the GitHub username.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Whether branch name prefixing is enabled
+ */
+export async function getBranchPrefixPreference(projectPath: string): Promise<boolean> {
+  return invoke<boolean>('get_branch_prefix_preference', { projectPath });
+}
+
+/**
+ * Set the branch name prefix preference for a project.
+ * @param projectPath - Absolute path to the project directory
+ * @param prefix - Whether to prefix new branch names with the GitHub username
+ */
+export async function setBranchPrefixPreference(
+  projectPath: string,
+  prefix: boolean
+): Promise<void> {
+  return invoke<void>('set_branch_prefix_preference', { projectPath, prefix });
+}
+
+/**
  * Format a relative time string from a timestamp.
  * @param timestamp - Unix timestamp in milliseconds
  * @returns Human-readable relative time (e.g., "2 hours ago")

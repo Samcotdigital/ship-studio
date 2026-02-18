@@ -3,6 +3,8 @@
  * Supports both preset Web Audio API sounds and custom audio files.
  */
 
+import { logger } from './logger';
+
 /** Available preset sounds */
 export type PresetSound = 'ding' | 'chime' | 'pop' | 'bell' | 'subtle' | 'bruh';
 
@@ -144,8 +146,8 @@ export function playPresetSound(preset: PresetSound): void {
       oscillator.start(ctx.currentTime);
       oscillator.stop(ctx.currentTime + config.duration);
     }
-  } catch (err) {
-    console.warn('Failed to play preset sound:', err);
+  } catch {
+    logger.warn('Failed to play preset sound');
   }
 }
 
@@ -159,7 +161,7 @@ const customAudioCache = new Map<string, HTMLAudioElement>();
 export async function playCustomSound(dataUrl: string): Promise<boolean> {
   try {
     if (!dataUrl) {
-      console.warn('No custom sound data URL provided');
+      logger.warn('No custom sound data URL provided');
       return false;
     }
 
@@ -174,8 +176,8 @@ export async function playCustomSound(dataUrl: string): Promise<boolean> {
     audio.currentTime = 0;
     await audio.play();
     return true;
-  } catch (err) {
-    console.warn('Failed to play custom sound:', err);
+  } catch {
+    logger.warn('Failed to play custom sound');
     return false;
   }
 }
@@ -205,8 +207,8 @@ export function loadNotificationSettings(): NotificationSettings {
       const parsed = JSON.parse(stored) as Partial<NotificationSettings>;
       return { ...DEFAULT_NOTIFICATION_SETTINGS, ...parsed };
     }
-  } catch (err) {
-    console.warn('Failed to load notification settings:', err);
+  } catch {
+    logger.warn('Failed to load notification settings');
   }
   return DEFAULT_NOTIFICATION_SETTINGS;
 }
@@ -217,8 +219,8 @@ export function loadNotificationSettings(): NotificationSettings {
 export function saveNotificationSettings(settings: NotificationSettings): void {
   try {
     localStorage.setItem('notificationSettings', JSON.stringify(settings));
-  } catch (err) {
-    console.warn('Failed to save notification settings:', err);
+  } catch {
+    logger.warn('Failed to save notification settings');
   }
 }
 

@@ -22,9 +22,7 @@ import { initDefaultAgent } from '../lib/agent';
 import { getWindowLabel } from '../lib/window';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../lib/logger';
-
-/** Current application view/screen */
-type AppView = 'loading' | 'onboarding' | 'projects' | 'project-loading' | 'workspace';
+import type { AppView } from '../lib/types';
 
 export interface UseAppSetupParams {
   view: AppView;

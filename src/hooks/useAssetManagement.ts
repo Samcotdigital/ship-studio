@@ -17,6 +17,7 @@ import {
   type Asset,
 } from '../lib/assets';
 import { trackEvent, trackError, trackSearch } from '../lib/analytics';
+import { logger } from '../lib/logger';
 
 export interface UseAssetManagementParams {
   /** Absolute path to the project directory */
@@ -64,7 +65,7 @@ export function useAssetManagement({ projectPath, isOpen, onToast }: UseAssetMan
     } catch (e) {
       trackError('asset_load', e, 'Workspace');
       setError('Failed to load assets');
-      console.error(e);
+      logger.error('Failed to load assets', { error: e instanceof Error ? e.message : String(e) });
     } finally {
       setIsLoading(false);
     }
@@ -256,7 +257,7 @@ export function useAssetManagement({ projectPath, isOpen, onToast }: UseAssetMan
       setTimeout(() => setCopiedPath(null), 2000);
       onToast?.(`Copied ${webPath}`, 'success');
     } catch (e) {
-      console.error('Failed to copy:', e);
+      logger.error('Failed to copy path', { error: e instanceof Error ? e.message : String(e) });
     }
   };
 

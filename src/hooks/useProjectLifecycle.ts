@@ -28,11 +28,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../lib/logger';
 import { trackEvent } from '../lib/analytics';
 
+import type { AppView } from '../lib/types';
+
 /** Preferred port for Next.js dev server (will find available port if taken) */
 const PREFERRED_DEV_SERVER_PORT = 3000;
-
-/** Current application view/screen */
-type AppView = 'loading' | 'onboarding' | 'projects' | 'project-loading' | 'workspace';
 
 export interface UseProjectLifecycleParams {
   currentProject: Project | null;

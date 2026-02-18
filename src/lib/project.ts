@@ -80,6 +80,85 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
   return invoke<DashboardProject[]>('get_dashboard_projects');
 }
 
+/**
+ * List all projects in the ~/ShipStudio directory.
+ * Returns basic project info (name and path) for each project.
+ * @returns Array of project name/path objects
+ */
+export async function listProjects(): Promise<{ name: string; path: string }[]> {
+  return invoke<{ name: string; path: string }[]>('list_projects');
+}
+
+/**
+ * Ensure the ~/ShipStudio directory exists, creating it if necessary.
+ * @returns Absolute path to the ShipStudio directory
+ */
+export async function ensureShipStudioDir(): Promise<string> {
+  return invoke<string>('ensure_shipstudio_dir');
+}
+
+/**
+ * Spawn a pseudo-terminal process via the backend.
+ * Used for running commands like git clone and npm install with progress events.
+ * @param options - PTY options including cwd, command, args, and terminal size
+ * @param windowLabel - Window label for backend tracking
+ * @returns Unique PTY ID for tracking the process
+ */
+export async function spawnPty(
+  options: { cwd: string; command: string; args: string[]; rows: number; cols: number },
+  windowLabel: string
+): Promise<number> {
+  return invoke<number>('spawn_pty', { options, windowLabel });
+}
+
+/**
+ * Ensure .shipstudio is included in the project's .gitignore file.
+ * Creates .gitignore if it doesn't exist.
+ * @param projectPath - Absolute path to the project directory
+ */
+export async function ensureGitignoreHasShipstudio(projectPath: string): Promise<void> {
+  return invoke<void>('ensure_gitignore_has_shipstudio', { projectPath });
+}
+
+/**
+ * Get the base64-encoded thumbnail image for a project.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Base64-encoded image data, or null if no thumbnail
+ */
+export async function getProjectThumbnail(projectPath: string): Promise<string | null> {
+  return invoke<string | null>('get_project_thumbnail', { projectPath });
+}
+
+/**
+ * Delete a project from disk.
+ * @param path - Absolute path to the project directory to delete
+ */
+export async function deleteProject(path: string): Promise<void> {
+  return invoke<void>('delete_project', { path });
+}
+
+/**
+ * Export a project as a reusable template.
+ * Opens a save dialog and exports the project structure.
+ * @param projectPath - Absolute path to the project directory
+ * @returns Path where the template was saved, or null if cancelled
+ */
+export async function exportProjectAsTemplate(projectPath: string): Promise<string | null> {
+  return invoke<string | null>('export_project_as_template', { projectPath });
+}
+
+/**
+ * Open a project in a new application window.
+ * @param projectPath - Absolute path to the project directory
+ * @param projectName - Display name of the project
+ */
+export async function openProjectInNewWindow(
+  projectPath: string,
+  projectName: string
+): Promise<void> {
+  return invoke<void>('open_project_in_new_window', { projectPath, projectName });
+}
+
 /** Handle for controlling a running dev server */
 export interface DevServerHandle {
   /** The underlying PTY instance */

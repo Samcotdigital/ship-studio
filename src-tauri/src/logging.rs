@@ -3,8 +3,8 @@
 //! Structured logging using the `tracing` ecosystem.
 //! Logs are written to daily rotating files in the app's log directory.
 
-use once_cell::sync::OnceCell;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
@@ -14,7 +14,7 @@ use tracing_subscriber::{
 };
 
 // Hold the guard to keep the non-blocking writer alive
-static LOG_GUARD: OnceCell<WorkerGuard> = OnceCell::new();
+static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 /// Get the log directory path
 fn get_log_dir() -> PathBuf {
