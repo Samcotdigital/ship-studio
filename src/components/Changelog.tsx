@@ -24,6 +24,10 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.3',
+    items: ['Moved bug report button to the workspace toolbar'],
+  },
+  {
     version: '0.4.2',
     items: ['Hide activity calendar from dashboard via Settings or inline button'],
   },
