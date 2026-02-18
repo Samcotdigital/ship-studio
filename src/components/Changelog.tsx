@@ -24,6 +24,10 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.2',
+    items: ['Hide activity calendar from dashboard via Settings or inline button'],
+  },
+  {
     version: '0.4.1',
     items: [
       'MCP Server Manager for adding custom tool servers',
