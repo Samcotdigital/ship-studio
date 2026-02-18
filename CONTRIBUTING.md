@@ -236,6 +236,58 @@ The built app will be in `src-tauri/target/release/bundle/`.
 - **No Arbitrary Code Execution**: Don't pass user input directly to shell commands
 - **Secrets**: Never commit `.env` files or API keys
 
+## Error Handling
+
+### Frontend: Structured Logger
+
+Use the structured logger (`src/lib/logger.ts`) instead of `console.error`. Logs are flushed to the Rust backend and persisted to disk at `~/Library/Logs/ShipStudio/`.
+
+```typescript
+import { logger } from '../lib/logger';
+
+// For caught errors
+logger.error('Failed to fetch branches', { error: err instanceof Error ? err.message : String(err) });
+
+// For Error objects with stack traces
+logger.logError(error, { context: 'additional info' });
+
+// For warnings and debug info
+logger.warn('Unexpected state', { details });
+logger.debug('Polling tick', { interval });
+```
+
+### Rust Backend: Result Types
+
+All Tauri commands return `Result<T, String>` with descriptive error messages. Use the `?` operator to propagate errors and include context about what operation failed.
+
+```rust
+#[tauri::command]
+async fn my_command(path: String) -> Result<String, String> {
+    let validated = validate_project_path(&path)?;
+    do_work(&validated).map_err(|e| format!("Failed to process {}: {}", path, e))
+}
+```
+
+### ErrorBoundary
+
+`src/components/ErrorBoundary.tsx` catches React render errors, logs them via the structured logger, and shows a restart UI. Any unhandled render error in a component tree wrapped by `ErrorBoundary` will be captured automatically.
+
+### When to Swallow Errors
+
+Only swallow errors for non-critical fire-and-forget operations. Always add a comment explaining why:
+
+```typescript
+// Analytics failure shouldn't block the user
+void trackEvent('project_opened').catch(() => {});
+
+// Screenshot interval failure is non-critical
+void captureScreenshot().catch((err) => {
+  logger.debug('Screenshot capture failed', { error: String(err) });
+});
+```
+
+For anything that affects user-visible state or data integrity, propagate the error to the UI.
+
 ## Getting Help
 
 - Check existing issues for similar problems

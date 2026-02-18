@@ -36,7 +36,7 @@ export interface UseAppSetupParams {
   refreshAllCliStatuses: () => Promise<void>;
   setProjectGitHubStatus: (status: ProjectGitHubStatus | null) => void;
   fetchBranchInfo: (projectPath: string) => Promise<void>;
-  setShowHelpModal: (show: boolean) => void;
+  openHelpModal: () => void;
 }
 
 export function useAppSetup({
@@ -49,7 +49,7 @@ export function useAppSetup({
   refreshAllCliStatuses,
   setProjectGitHubStatus,
   fetchBranchInfo,
-  setShowHelpModal,
+  openHelpModal,
 }: UseAppSetupParams) {
   // Track if auto-open has been attempted this session (protects against StrictMode double-invoke)
   const autoOpenAttemptedRef = useRef(false);
@@ -252,13 +252,13 @@ export function useAppSetup({
       // Cmd+/ (Mac) or Ctrl+/ (Windows) or F1
       if (((e.metaKey || e.ctrlKey) && e.key === '/') || e.key === 'F1') {
         e.preventDefault();
-        setShowHelpModal(true);
+        openHelpModal();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setShowHelpModal]);
+  }, [openHelpModal]);
 
   return {
     projectsLoading,

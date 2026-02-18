@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { logger } from '../lib/logger';
 
 interface Props {
   children: ReactNode;
@@ -21,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    logger.logError(error, { componentStack: errorInfo.componentStack ?? undefined });
   }
 
   handleRestart = async () => {
@@ -29,7 +30,9 @@ export class ErrorBoundary extends Component<Props, State> {
       await relaunch();
     } catch (err) {
       // In dev mode, relaunch might not work - try window reload
-      console.error('Relaunch failed, trying reload:', err);
+      logger.error('Relaunch failed, trying reload', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       window.location.reload();
     }
   };
