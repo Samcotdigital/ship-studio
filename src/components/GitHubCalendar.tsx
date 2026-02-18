@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { GitHubCalendar as GitHubCalendarLib } from 'react-github-calendar';
 import { Tooltip } from 'react-tooltip';
 import 'react-tooltip/dist/react-tooltip.css';
+import { EyeOffIcon } from './icons';
 
 interface Activity {
   date: string;
@@ -26,6 +27,8 @@ interface GitHubCalendarProps {
   isAuthenticated?: boolean;
   /** Whether the auth check has completed */
   isAuthCheckDone?: boolean;
+  /** Called when the user clicks the hide button */
+  onHide?: () => void;
 }
 
 // Custom theme using app colors
@@ -66,6 +69,7 @@ export function GitHubCalendar({
   username,
   isAuthenticated,
   isAuthCheckDone,
+  onHide,
 }: GitHubCalendarProps) {
   const currentYear = new Date().getFullYear();
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -85,6 +89,16 @@ export function GitHubCalendar({
 
   return (
     <div className="github-calendar-wrapper">
+      {onHide && (
+        <button
+          className="github-calendar-hide-btn"
+          onClick={onHide}
+          title="Hide activity calendar"
+          aria-label="Hide activity calendar"
+        >
+          <EyeOffIcon size={14} />
+        </button>
+      )}
       {showSkeleton && <CalendarSkeleton />}
       {username && (
         <div style={{ display: dataLoaded ? 'block' : 'none' }}>

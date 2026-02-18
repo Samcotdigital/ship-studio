@@ -10,23 +10,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CloseIcon } from './icons';
 import { getAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../lib/analytics';
+import { getCalendarHidden, setCalendarHidden } from '../lib/settings';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onCalendarHiddenChange?: (hidden: boolean) => void;
 }
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onCalendarHiddenChange }: SettingsModalProps) {
   const [analyticsEnabled, setLocalAnalyticsEnabled] = useState(true);
+  const [calendarVisible, setLocalCalendarVisible] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     void (async () => {
-      const enabled = await getAnalyticsEnabled();
+      const [enabled, hidden] = await Promise.all([getAnalyticsEnabled(), getCalendarHidden()]);
       if (!cancelled) {
         setLocalAnalyticsEnabled(enabled);
+        setLocalCalendarVisible(!hidden);
         setLoading(false);
       }
     })();
@@ -45,6 +49,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }, [analyticsEnabled]);
 
+  const handleCalendarToggle = useCallback(() => {
+    const newVisible = !calendarVisible;
+    setLocalCalendarVisible(newVisible);
+    void setCalendarHidden(!newVisible);
+    onCalendarHiddenChange?.(!newVisible);
+  }, [calendarVisible, onCalendarHiddenChange]);
+
   if (!isOpen) return null;
 
   return (
@@ -59,6 +70,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         <div className="settings-modal-body">
           <div className="settings-section">
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <span className="settings-row-label">Activity calendar</span>
+                <span className="settings-row-description">
+                  Show your GitHub contribution graph on the dashboard.
+                </span>
+              </div>
+              <button
+                className={`settings-toggle ${calendarVisible ? 'on' : 'off'}`}
+                onClick={handleCalendarToggle}
+                disabled={loading}
+                role="switch"
+                aria-checked={calendarVisible}
+              >
+                <span className="settings-toggle-track">
+                  <span className="settings-toggle-thumb" />
+                </span>
+              </button>
+            </div>
             <div className="settings-row">
               <div className="settings-row-info">
                 <span className="settings-row-label">Usage analytics</span>

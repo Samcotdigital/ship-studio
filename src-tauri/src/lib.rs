@@ -224,6 +224,9 @@ pub fn run() {
             commands::analytics::get_analytics_enabled,
             commands::analytics::set_analytics_enabled,
             commands::analytics::get_device_id_command,
+            // Settings
+            commands::settings::get_calendar_hidden,
+            commands::settings::set_calendar_hidden,
             // AI generation
             commands::ai::generate_pr_description,
             // Claude integration

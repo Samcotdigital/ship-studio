@@ -653,6 +653,9 @@ pub struct AppState {
     /// Whether anonymous analytics are enabled (defaults to true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub analytics_enabled: Option<bool>,
+    /// Whether the GitHub contribution calendar is hidden on the dashboard
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calendar_hidden: Option<bool>,
 }
 
 // ============ Compact Mode ============

@@ -45,6 +45,7 @@ import { NewFolderModal } from './NewFolderModal';
 import { MoveFolderModal } from './MoveFolderModal';
 import { SettingsModal } from './SettingsModal';
 import { GitHubCalendar } from './GitHubCalendar';
+import { getCalendarHidden, setCalendarHidden as persistCalendarHidden } from '../lib/settings';
 import { ChevronIcon, CheckIcon, ArrowLeftIcon, SlackIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
@@ -121,6 +122,17 @@ export function ProjectList({
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
+  const [calendarHidden, setCalendarHidden] = useState(false);
+
+  // Load calendar visibility preference
+  useEffect(() => {
+    void getCalendarHidden().then(setCalendarHidden);
+  }, []);
+
+  const hideCalendar = useCallback(() => {
+    setCalendarHidden(true);
+    void persistCalendarHidden(true);
+  }, []);
 
   // Search and sort state
   const [searchQuery, setSearchQuery] = useState('');
@@ -428,11 +440,14 @@ export function ProjectList({
           </button>
         </div>
 
-        <GitHubCalendar
-          username={githubUsername}
-          isAuthenticated={isGitHubAuthenticated}
-          isAuthCheckDone={isAuthCheckDone}
-        />
+        {!calendarHidden && (
+          <GitHubCalendar
+            username={githubUsername}
+            isAuthenticated={isGitHubAuthenticated}
+            isAuthCheckDone={isAuthCheckDone}
+            onHide={hideCalendar}
+          />
+        )}
 
         <DashboardHeader
           searchQuery={searchQuery}
@@ -633,7 +648,11 @@ export function ProjectList({
         )}
 
         {/* Settings Modal */}
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          onCalendarHiddenChange={setCalendarHidden}
+        />
       </div>
     </div>
   );
