@@ -24,6 +24,10 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.4',
+    items: ['Fixed settings toggle color to use green', 'Improved terminal content layout'],
+  },
+  {
     version: '0.4.3',
     items: ['Moved bug report button to the workspace toolbar'],
   },
