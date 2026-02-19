@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.4
+
+- **Settings toggle fix** - Toggle now uses green instead of white
+- **Terminal layout** - Improved padding and border for terminal content
+
 ## What's New in v0.4.3
 
 - **Bug report button** - Moved from floating overlay to workspace toolbar
