@@ -28,12 +28,17 @@ export async function checkIdeAvailability(): Promise<IdeAvailability> {
 }
 
 /**
- * Open a project in the specified IDE.
+ * Open a project (or specific file) in the specified IDE.
  * @param projectPath - Absolute path to the project directory
  * @param ide - IDE to open ("vscode" or "cursor")
+ * @param filePath - Optional relative file path within the project to open
  */
-export async function openInIde(projectPath: string, ide: 'vscode' | 'cursor'): Promise<void> {
-  return invoke<void>('open_in_ide', { projectPath, ide });
+export async function openInIde(
+  projectPath: string,
+  ide: 'vscode' | 'cursor',
+  filePath?: string
+): Promise<void> {
+  return invoke<void>('open_in_ide', { projectPath, ide, filePath });
 }
 
 /**

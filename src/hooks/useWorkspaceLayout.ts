@@ -22,8 +22,10 @@ export function useWorkspaceLayout({ isGitHubConnected }: UseWorkspaceLayoutPara
   // Preview panel visibility
   const [isPreviewHidden, setIsPreviewHidden] = useState(false);
 
-  // Workspace tab state (preview/branches/prs)
-  const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'branches' | 'prs'>('preview');
+  // Workspace tab state (preview/code/branches/prs)
+  const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'code' | 'branches' | 'prs'>(
+    'preview'
+  );
 
   // Compact mode view state
   const [compactView, setCompactView] = useState<'terminal' | 'branches' | 'prs'>('terminal');
@@ -49,9 +51,10 @@ export function useWorkspaceLayout({ isGitHubConnected }: UseWorkspaceLayoutPara
   }, [isPinned]);
 
   // Reset to preview tab if on branches/prs and GitHub is not connected
+  // (keep 'code' tab accessible without GitHub)
   useEffect(() => {
     if (!isGitHubConnected) {
-      if (workspaceTab !== 'preview') {
+      if (workspaceTab !== 'preview' && workspaceTab !== 'code') {
         setWorkspaceTab('preview');
       }
       if (compactView !== 'terminal') {

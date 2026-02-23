@@ -136,9 +136,27 @@ pub async fn check_ide_availability() -> IdeAvailability {
 }
 
 #[tauri::command]
-pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String> {
+pub async fn open_in_ide(
+    project_path: String,
+    ide: String,
+    file_path: Option<String>,
+) -> Result<(), String> {
     let validated_path = validate_project_path(&project_path)?;
-    let path_str = validated_path.to_string_lossy();
+
+    // If a file path is provided, validate it's within the project
+    let target_path = if let Some(ref fp) = file_path {
+        if fp.contains("..") {
+            return Err("Invalid path: path traversal not allowed".to_string());
+        }
+        let full = validated_path.join(fp);
+        let canonical = dunce::canonicalize(&full).map_err(|e| format!("File not found: {e}"))?;
+        if !canonical.starts_with(&validated_path) {
+            return Err("Security error: path is outside project directory".to_string());
+        }
+        canonical.to_string_lossy().to_string()
+    } else {
+        validated_path.to_string_lossy().to_string()
+    };
 
     #[cfg(target_os = "macos")]
     {
@@ -150,7 +168,7 @@ pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String
 
         // Use 'open -a' on macOS which is more reliable
         create_command("open")
-            .args(["-a", app_name, path_str.as_ref()])
+            .args(["-a", app_name, &target_path])
             .spawn()
             .map_err(|e| format!("Failed to open in {ide}: {e}"))?;
     }
@@ -164,7 +182,7 @@ pub async fn open_in_ide(project_path: String, ide: String) -> Result<(), String
         };
 
         create_command(cmd)
-            .arg(path_str.as_ref())
+            .arg(&target_path)
             .spawn()
             .map_err(|e| format!("Failed to open in {}: {}", ide, e))?;
     }

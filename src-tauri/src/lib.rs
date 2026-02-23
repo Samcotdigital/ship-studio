@@ -324,6 +324,9 @@ pub fn run() {
             commands::setup::reset_setup_state,
             commands::setup::get_default_agent_id,
             commands::setup::set_default_agent_id,
+            // Code Browser
+            commands::code::list_project_files,
+            commands::code::read_project_file,
             // Assets
             commands::assets::list_assets,
             commands::assets::upload_asset,

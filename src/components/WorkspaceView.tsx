@@ -19,6 +19,7 @@ import { SplitPane } from './SplitPane';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { BranchIndicator } from './BranchIndicator';
 import { BranchesTab } from './BranchesTab';
+import { CodeTab } from './CodeTab';
 import { PullRequestsTab } from './PullRequestsTab';
 import { CompactActionsRow } from './CompactMode';
 import { MainBranchBanner } from './MainBranchBanner';
@@ -32,6 +33,7 @@ import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
 import {
   CameraIcon,
+  CodeIcon,
   CropIcon,
   FullPageIcon,
   BranchIcon,
@@ -140,8 +142,8 @@ interface LayoutProps {
   setShowHealthLogs: (show: boolean) => void;
   isPreviewHidden: boolean;
   setIsPreviewHidden: (hidden: boolean) => void;
-  workspaceTab: 'preview' | 'branches' | 'prs';
-  setWorkspaceTab: (tab: 'preview' | 'branches' | 'prs') => void;
+  workspaceTab: 'preview' | 'code' | 'branches' | 'prs';
+  setWorkspaceTab: (tab: 'preview' | 'code' | 'branches' | 'prs') => void;
   compactView: 'terminal' | 'branches' | 'prs';
   setCompactView: (view: 'terminal' | 'branches' | 'prs') => void;
   isPinned: boolean;
@@ -854,13 +856,13 @@ export function WorkspaceView({
                       projectPath={currentProject.path}
                       isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
                       isWebProject={isWebProject}
-                      onClick={() =>
-                        setWorkspaceTab(
-                          workspaceTab === 'branches' || workspaceTab === 'prs'
-                            ? 'preview'
-                            : 'branches'
-                        )
-                      }
+                      onClick={() => {
+                        if (workspaceTab === 'branches' || workspaceTab === 'prs') {
+                          setWorkspaceTab(isWebProject ? 'preview' : 'code');
+                        } else {
+                          setWorkspaceTab('branches');
+                        }
+                      }}
                       onDiscard={() => {
                         void checkGitStatus(currentProject.path);
                       }}
@@ -869,35 +871,44 @@ export function WorkspaceView({
                     />
                   )}
                   <div style={{ flex: 1 }} />
-                  {integrations.projectGithub?.status === 'connected' && (
-                    <div className="workspace-tabs">
-                      {isWebProject && (
+                  <div className="workspace-tabs">
+                    {isWebProject && (
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('preview')}
+                      >
+                        <EyeIcon size={14} />
+                        <span>Preview</span>
+                      </button>
+                    )}
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('code')}
+                    >
+                      <CodeIcon size={14} />
+                      <span>Code</span>
+                    </button>
+                    {integrations.projectGithub?.status === 'connected' && (
+                      <>
                         <button
-                          className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                          onClick={() => setWorkspaceTab('preview')}
+                          className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
+                          onClick={() => setWorkspaceTab('branches')}
+                          data-education-id="branches-tab"
                         >
-                          <EyeIcon size={14} />
-                          <span>Preview</span>
+                          <BranchIcon size={14} />
+                          <span>Branches</span>
                         </button>
-                      )}
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('branches')}
-                        data-education-id="branches-tab"
-                      >
-                        <BranchIcon size={14} />
-                        <span>Branches</span>
-                      </button>
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('prs')}
-                        data-education-id="prs-tab"
-                      >
-                        <PullRequestIcon size={14} />
-                        <span>PRs</span>
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
+                          onClick={() => setWorkspaceTab('prs')}
+                          data-education-id="prs-tab"
+                        >
+                          <PullRequestIcon size={14} />
+                          <span>PRs</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                   {isWebProject && (
                     <>
                       <div className="preview-tabs-divider" />
@@ -1004,6 +1015,11 @@ export function WorkspaceView({
                         </div>
                       }
                     />
+                  </div>
+                )}
+                {workspaceTab === 'code' && (
+                  <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+                    <CodeTab projectPath={currentProject.path} onToast={showToast} />
                   </div>
                 )}
                 {(workspaceTab === 'branches' || (!isWebProject && workspaceTab === 'preview')) &&
