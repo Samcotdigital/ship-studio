@@ -17,6 +17,7 @@ export interface PluginProjectData {
   currentBranch: string;
   hasUncommittedChanges: boolean;
   devServerUrl?: string;
+  gitRemoteUrl?: string;
 }
 
 /** App actions plugins can trigger */

@@ -361,9 +361,16 @@ function App({ initialProjectPath }: AppProps) {
             currentBranch: currentBranch || 'main',
             hasUncommittedChanges,
             devServerUrl: `http://localhost:${String(devServerPort)}`,
+            gitRemoteUrl: integrations.projectGithub?.github_url ?? undefined,
           }
         : null,
-    [currentProject, currentBranch, hasUncommittedChanges, devServerPort]
+    [
+      currentProject,
+      currentBranch,
+      hasUncommittedChanges,
+      devServerPort,
+      integrations.projectGithub?.github_url,
+    ]
   );
 
   const pluginActions = useMemo(

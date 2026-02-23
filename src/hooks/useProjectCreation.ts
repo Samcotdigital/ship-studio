@@ -31,29 +31,40 @@ export interface Template {
   repo: string;
 }
 
+const DEFAULT_TEMPLATE_KEY = 'defaultTemplateId';
+
+function getDefaultTemplate(): Template {
+  const stored = localStorage.getItem(DEFAULT_TEMPLATE_KEY);
+  if (stored) {
+    const found = TEMPLATES.find((t) => t.id === stored);
+    if (found) return found;
+  }
+  return TEMPLATES[0]; // Next.js
+}
+
 /** Available project templates */
 export const TEMPLATES: Template[] = [
   {
     id: 'nextjs-basic',
-    name: 'Next.js Basic',
+    name: 'Next.js',
     description: 'A minimal Next.js starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/static-marketing-site-starter',
   },
   {
     id: 'sveltekit-basic',
-    name: 'SvelteKit Basic',
+    name: 'SvelteKit',
     description: 'A minimal SvelteKit starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/sveltekit-static-marketing-site-starter',
   },
   {
     id: 'astro-basic',
-    name: 'Astro Basic',
+    name: 'Astro',
     description: 'A minimal Astro starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/astro-static-marketing-site-starter',
   },
   {
     id: 'nuxt-basic',
-    name: 'Nuxt Basic',
+    name: 'Nuxt',
     description: 'A minimal Nuxt starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/nuxt-static-marketing-site-starter',
   },
@@ -99,7 +110,7 @@ interface UseProjectCreationParams {
 export function useProjectCreation({ onComplete, onCancel }: UseProjectCreationParams) {
   // ---- State ----
   const [formStep, setFormStep] = useState<FormStep>('select-template');
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(TEMPLATES[0]);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(getDefaultTemplate());
   const [projectName, setProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('clone');
@@ -526,11 +537,17 @@ export function useProjectCreation({ onComplete, onCancel }: UseProjectCreationP
     setZipFile(null);
     setZipPath(null);
     setZipFileName(null);
-    setSelectedTemplate(TEMPLATES[0]); // Restore default template selection
+    setSelectedTemplate(getDefaultTemplate()); // Restore default template selection
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }, []);
+
+  const saveDefaultTemplate = useCallback((templateId: string) => {
+    localStorage.setItem(DEFAULT_TEMPLATE_KEY, templateId);
+  }, []);
+
+  const defaultTemplateId = getDefaultTemplate().id;
 
   // ---- Public API ----
 
@@ -570,6 +587,10 @@ export function useProjectCreation({ onComplete, onCancel }: UseProjectCreationP
     handleDrop,
     handleFileSelect,
     handleRemoveZip,
+
+    // Default template
+    saveDefaultTemplate,
+    defaultTemplateId,
 
     // Callbacks passed through
     onCancel,

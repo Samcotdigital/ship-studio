@@ -11,8 +11,10 @@
  * @module components/CreateProject
  */
 
+import { useState, useRef } from 'react';
 import { UploadIcon } from './icons';
 import { useProjectCreation, TEMPLATES, STEPS, STATUS_MESSAGES } from '../hooks/useProjectCreation';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 /** Props for the CreateProject component */
 interface CreateProjectProps {
@@ -40,7 +42,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     handleCreate,
     handleCreateFromZip,
     handleTemplateSelect,
-    handleContinue,
+    handleContinue: rawHandleContinue,
     handleBack,
     retryInstall,
     getStepStatus,
@@ -50,7 +52,21 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     handleDrop,
     handleFileSelect,
     handleRemoveZip,
+    saveDefaultTemplate,
+    defaultTemplateId,
   } = useProjectCreation({ onComplete, onCancel });
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [setAsDefaultChecked, setSetAsDefaultChecked] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useClickOutside(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
+
+  const handleContinue = () => {
+    if (setAsDefaultChecked && selectedTemplate) {
+      saveDefaultTemplate(selectedTemplate.id);
+    }
+    rawHandleContinue();
+  };
 
   const renderContent = () => {
     // Creating state - show progress
@@ -140,19 +156,72 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
             </button>
           </div>
 
-          <div className="template-grid">
-            {TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                className={`template-card ${selectedTemplate?.id === template.id && !hasZipTemplate ? 'selected' : ''}`}
-                onClick={() => handleTemplateSelect(template)}
+          <div className="template-select-wrapper" ref={dropdownRef}>
+            <button
+              type="button"
+              className={`template-select-trigger ${hasZipTemplate ? 'dimmed' : ''}`}
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+            >
+              <span>{selectedTemplate?.name ?? 'Select a template'}</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{
+                  transform: dropdownOpen ? 'rotate(180deg)' : undefined,
+                  transition: 'transform 0.15s',
+                }}
               >
-                <h3>{template.name}</h3>
-                <p>{template.description}</p>
-              </button>
-            ))}
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {dropdownOpen && (
+              <div className="template-select-menu">
+                {TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={`template-select-option ${selectedTemplate?.id === template.id && !hasZipTemplate ? 'selected' : ''}`}
+                    onClick={() => {
+                      handleTemplateSelect(template);
+                      setDropdownOpen(false);
+                      setSetAsDefaultChecked(false);
+                    }}
+                  >
+                    <div className="template-option-text">
+                      <span className="template-option-name">{template.name}</span>
+                      <span className="template-option-desc">{template.description}</span>
+                    </div>
+                    {selectedTemplate?.id === template.id && !hasZipTemplate && (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {selectedTemplate && selectedTemplate.id !== defaultTemplateId && !hasZipTemplate && (
+            <button
+              type="button"
+              className={`template-default-toggle ${setAsDefaultChecked ? 'active' : ''}`}
+              onClick={() => setSetAsDefaultChecked(!setAsDefaultChecked)}
+            >
+              {setAsDefaultChecked ? 'Will be your default' : 'Set as default?'}
+            </button>
+          )}
 
           <div className="template-divider">
             <span>or use a template</span>

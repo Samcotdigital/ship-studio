@@ -24,6 +24,16 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.5',
+    items: [
+      'Compact template dropdown with "Set as default" option',
+      'Search filtering in Plugin Manager',
+      'Custom dev commands for generic projects',
+      'Vercel plugin pre-installed for new projects',
+      'Plugins now react to GitHub repo changes without restart',
+    ],
+  },
+  {
     version: '0.4.4',
     items: ['Fixed settings toggle color to use green', 'Improved terminal content layout'],
   },
