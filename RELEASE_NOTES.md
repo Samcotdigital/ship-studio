@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.6
+
+- **Code browser** - Browse your project files with syntax highlighting and a collapsible file tree
+- **Copy to agent** - Select lines in the code viewer and send them directly to the active terminal with one click
+
 ## What's New in v0.4.5
 
 - **Compact template selector** - Replaced template card grid with a dropdown, plus a "Set as default" option

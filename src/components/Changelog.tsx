@@ -24,6 +24,13 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.6',
+    items: [
+      'Code browser with syntax highlighting and file tree',
+      '"Copy to agent" sends selected code directly to the terminal',
+    ],
+  },
+  {
     version: '0.4.5',
     items: [
       'Compact template dropdown with "Set as default" option',
