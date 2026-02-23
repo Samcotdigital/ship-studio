@@ -228,6 +228,58 @@ pub async fn get_auto_accept_mode(project_path: String) -> Result<bool, String> 
     Ok(metadata.auto_accept_mode.unwrap_or(false))
 }
 
+/// Gets the custom dev command for a project (for generic projects)
+#[tauri::command]
+pub async fn get_custom_dev_command(project_path: String) -> Result<Option<String>, String> {
+    let project = validate_project_path(&project_path)?;
+    let metadata_path = project.join(".shipstudio").join("project.json");
+
+    if !metadata_path.exists() {
+        return Ok(None);
+    }
+
+    let metadata = std::fs::read_to_string(&metadata_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+        .unwrap_or_default();
+
+    Ok(metadata.custom_dev_command)
+}
+
+/// Sets the custom dev command for a project (for generic projects)
+#[tauri::command]
+pub async fn set_custom_dev_command(
+    project_path: String,
+    command: Option<String>,
+) -> Result<(), String> {
+    let project = validate_project_path(&project_path)?;
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
+
+    let mut metadata = if metadata_path.exists() {
+        std::fs::read_to_string(&metadata_path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+            .unwrap_or_default()
+    } else {
+        ProjectMetadata::default()
+    };
+
+    metadata.custom_dev_command = command;
+
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
+    }
+
+    let contents = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize project metadata: {e}"))?;
+    std::fs::write(&metadata_path, contents)
+        .map_err(|e| format!("Failed to write project metadata: {e}"))?;
+
+    Ok(())
+}
+
 /// Sets the auto-accept mode preference for a project
 /// When enabled, Claude will run with --dangerously-skip-permissions flag
 #[tauri::command]

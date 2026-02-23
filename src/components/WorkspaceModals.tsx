@@ -20,6 +20,7 @@ import { HelpModal } from './HelpModal';
 import { SkillsModal } from './SkillsModal';
 import { McpModal } from './McpModal';
 import { PluginManager } from './PluginManager';
+import { DevCommandModal } from './DevCommandModal';
 import { GitErrorHandler } from './GitErrorHandler';
 import { SubmitReviewModal } from './SubmitReviewModal';
 import { ConflictResolutionModal } from './ConflictResolutionModal';
@@ -131,6 +132,12 @@ export interface WorkspaceModalsProps {
   onCloseAuthTerminal: () => void;
   onAuthTerminalExit: (exitCode: number | null) => void;
 
+  // Dev command modal
+  showDevCommandModal: boolean;
+  customDevCommand: string | null;
+  onSaveDevCommand: (command: string | null) => void;
+  onCloseDevCommandModal: () => void;
+
   // Plugin terminal
   pluginTerminal: { command: string; args: string[]; title: string } | null;
   pluginTerminalExited: boolean;
@@ -198,6 +205,10 @@ export function WorkspaceModals({
   authTerminalConfig,
   onCloseAuthTerminal,
   onAuthTerminalExit,
+  showDevCommandModal,
+  customDevCommand,
+  onSaveDevCommand,
+  onCloseDevCommandModal,
   pluginTerminal,
   pluginTerminalExited,
   onClosePluginTerminal,
@@ -431,6 +442,15 @@ export function WorkspaceModals({
             />
           </div>
         </div>
+      )}
+
+      {/* Dev Command Modal */}
+      {showDevCommandModal && (
+        <DevCommandModal
+          currentCommand={customDevCommand}
+          onSave={onSaveDevCommand}
+          onClose={onCloseDevCommandModal}
+        />
       )}
 
       {/* Plugin terminal modal — reuses OnboardingTerminal for interactive CLI commands */}

@@ -40,6 +40,8 @@ interface BranchIndicatorProps {
   onToast?: (message: string, type?: 'success' | 'error') => void;
   /** Callback when Save button is clicked - should open publish dropdown */
   onSave?: () => void;
+  /** Whether this is a web project with a preview (defaults to true) */
+  isWebProject?: boolean;
 }
 
 export function BranchIndicator({
@@ -52,6 +54,7 @@ export function BranchIndicator({
   onDiscard,
   onToast,
   onSave,
+  isWebProject = true,
 }: BranchIndicatorProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
@@ -151,6 +154,8 @@ export function BranchIndicator({
   };
 
   if (isOnBranchesTab) {
+    // Generic projects have no preview to go back to — hide the back button entirely
+    if (!isWebProject) return null;
     return (
       <div className="branch-indicator">
         <button className="branch-indicator-button branch-indicator-back" onClick={onClick}>

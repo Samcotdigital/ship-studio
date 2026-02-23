@@ -6,7 +6,12 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { startDevServer, DevServerHandle } from '../lib/project';
+import {
+  startDevServer,
+  DevServerHandle,
+  getCustomDevCommand,
+  setCustomDevCommand as setCustomDevCommandApi,
+} from '../lib/project';
 import {
   detectProjectType,
   startStaticServer,
@@ -24,6 +29,7 @@ export function useDevServer() {
   const [devServerPort, setDevServerPort] = useState(3000);
   const [projectType, setProjectType] = useState<ProjectType>('unknown');
   const [isRestartingDevServer, setIsRestartingDevServer] = useState(false);
+  const [customDevCommand, setCustomDevCommand] = useState<string | null>(null);
 
   // Dev server output buffering
   const devServerOutputRef = useRef<string>('');
@@ -79,7 +85,42 @@ export function useDevServer() {
       });
       logger.info(`[OpenProject] Detected project type: ${detectedType}`);
 
-      if (detectedType === 'statichtml') {
+      if (detectedType === 'generic') {
+        // Generic projects: check for a custom dev command
+        let cmd: string | null = null;
+        try {
+          cmd = await getCustomDevCommand(projectPath);
+        } catch {
+          // Ignore - no custom command configured
+        }
+        setCustomDevCommand(cmd);
+
+        if (cmd) {
+          try {
+            clearOutputBuffers();
+            void trackEvent('dev_server_started', {
+              project_type: 'generic',
+              port,
+              project_name: projectName,
+              $screen_name: 'Workspace',
+            });
+            devServerRef.current = await startDevServer(
+              projectPath,
+              port,
+              windowLabel,
+              createOutputHandler(),
+              cmd
+            );
+            logger.info('[OpenProject] Generic project dev server started with custom command', {
+              command: cmd,
+            });
+          } catch (error) {
+            logger.error('Failed to start custom dev server for generic project', { error });
+          }
+        } else {
+          logger.info('[OpenProject] Generic project detected, no custom dev command configured');
+        }
+      } else if (detectedType === 'statichtml') {
         try {
           const staticPort = await startStaticServer(windowLabel, projectPath);
           setDevServerPort(staticPort);
@@ -146,8 +187,38 @@ export function useDevServer() {
       };
       const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+      const stopAndRestart = async (customCmd?: string) => {
+        if (devServerRef.current) {
+          try {
+            await withTimeout(devServerRef.current.stop(), 5000, undefined);
+          } catch (e) {
+            logger.warn('Error stopping dev server, continuing with restart', { error: e });
+          }
+          devServerRef.current = null;
+        }
+        clearOutputBuffers();
+        await delay(500);
+        devServerRef.current = await withTimeout(
+          startDevServer(
+            projectPath,
+            devServerPort,
+            getWindowLabel(),
+            createOutputHandler(),
+            customCmd
+          ),
+          10000,
+          null as unknown as DevServerHandle
+        );
+        if (!devServerRef.current) {
+          logger.error('Failed to start dev server: spawn timed out');
+        }
+      };
+
       try {
-        if (projectType === 'statichtml') {
+        if (projectType === 'generic') {
+          if (!customDevCommand) return;
+          await stopAndRestart(customDevCommand);
+        } else if (projectType === 'statichtml') {
           const windowLabel = getWindowLabel();
           try {
             await stopStaticServer(windowLabel);
@@ -158,40 +229,17 @@ export function useDevServer() {
           const newPort = await startStaticServer(windowLabel, projectPath);
           setDevServerPort(newPort);
         } else {
-          if (devServerRef.current) {
-            try {
-              await withTimeout(devServerRef.current.stop(), 5000, undefined);
-            } catch (e) {
-              logger.warn('Error stopping dev server, continuing with restart', { error: e });
-            }
-            devServerRef.current = null;
-          }
-
-          clearOutputBuffers();
-          await delay(500);
-
           try {
             await withTimeout(invoke('kill_port', { port: devServerPort }), 5000, undefined);
           } catch {
             // Ignore if nothing to kill
           }
-          await delay(300);
-
           try {
             await withTimeout(invoke('clear_project_cache', { projectPath }), 10000, undefined);
           } catch {
             // Non-critical
           }
-
-          devServerRef.current = await withTimeout(
-            startDevServer(projectPath, devServerPort, getWindowLabel(), createOutputHandler()),
-            10000,
-            null as unknown as DevServerHandle
-          );
-
-          if (!devServerRef.current) {
-            logger.error('Failed to start dev server: spawn timed out');
-          }
+          await stopAndRestart();
         }
       } catch (error) {
         logger.error('Failed to restart dev server', { error });
@@ -199,7 +247,46 @@ export function useDevServer() {
         setIsRestartingDevServer(false);
       }
     },
-    [projectType, devServerPort, clearOutputBuffers, createOutputHandler]
+    [projectType, devServerPort, customDevCommand, clearOutputBuffers, createOutputHandler]
+  );
+
+  // Persist a custom dev command, stop old server, start new (or clear)
+  const saveCustomDevCommand = useCallback(
+    async (projectPath: string, command: string | null) => {
+      try {
+        await setCustomDevCommandApi(projectPath, command);
+      } catch (e) {
+        logger.error('Failed to save custom dev command', { error: e });
+      }
+      setCustomDevCommand(command);
+
+      // Stop current dev server if running
+      if (devServerRef.current) {
+        try {
+          await devServerRef.current.stop();
+        } catch {
+          // Ignore
+        }
+        devServerRef.current = null;
+      }
+
+      // Start new server if command is set
+      if (command) {
+        try {
+          clearOutputBuffers();
+          devServerRef.current = await startDevServer(
+            projectPath,
+            devServerPort,
+            getWindowLabel(),
+            createOutputHandler(),
+            command
+          );
+        } catch (e) {
+          logger.error('Failed to start custom dev server', { error: e });
+        }
+      }
+    },
+    [devServerPort, clearOutputBuffers, createOutputHandler]
   );
 
   return {
@@ -213,6 +300,8 @@ export function useDevServer() {
     projectType,
     setProjectType,
     isRestartingDevServer,
+    customDevCommand,
+    setCustomDevCommand,
     devServerOutputRef,
     devServerOutputVersion,
     healthOutputRef,
@@ -224,5 +313,6 @@ export function useDevServer() {
     startServerForProject,
     stopServer,
     clearOutputBuffers,
+    saveCustomDevCommand,
   };
 }

@@ -261,13 +261,15 @@ function parseDevScriptForNpx(script: string, desiredPort: number): string[] | n
  * @param port - Port number for the dev server (default: 3000)
  * @param windowLabel - Window label for backend PTY tracking (required for cleanup on window close)
  * @param onOutput - Optional callback for terminal output
+ * @param customCommand - Optional custom command string (bypasses package.json parsing)
  * @returns Handle with PTY and stop function
  */
 export async function startDevServer(
   projectPath: string,
   port: number = 3000,
   windowLabel: string = 'main',
-  onOutput?: (data: string) => void
+  onOutput?: (data: string) => void,
+  customCommand?: string
 ): Promise<DevServerHandle> {
   const decoder = new TextDecoder();
 
@@ -276,50 +278,64 @@ export async function startDevServer(
   const homeNormalized = home.endsWith('/') ? home : `${home}/`;
   const fullPath = await invoke<string>('get_shell_path');
 
-  // Try to read package.json to get the dev script and parse it to use correct port
-  // We use npx to run the command so that local node_modules/.bin executables are found
   let command = 'npm';
   let args: string[] = ['run', 'dev'];
 
-  try {
-    const packageJsonPath = `${projectPath}/package.json`;
-    logger.info('[DevServer] Reading package.json', { path: packageJsonPath, desiredPort: port });
-    const packageJson = await readTextFile(packageJsonPath);
-    const pkg = JSON.parse(packageJson) as { scripts?: { dev?: string } };
-    const devScript = pkg.scripts?.dev;
-
-    if (devScript) {
-      // Parse the dev script and replace any hardcoded port with our desired port
-      // Use npx to run the command so local binaries are found
-      // Returns null if the script contains shell syntax (&&, ||, |, ;, or env vars)
-      const npxArgs = parseDevScriptForNpx(devScript, port);
-      if (npxArgs) {
-        command = 'npx';
-        args = npxArgs;
-        logger.info('[DevServer] Parsed dev script successfully', {
-          original: devScript,
-          command,
-          args: args.join(' '),
-          port,
-        });
-      } else {
-        // Script has shell syntax - use npm run dev which respects the PORT env var
-        logger.info('[DevServer] Using npm run dev for shell script', {
-          original: devScript,
-          port,
-        });
-      }
-    } else {
-      logger.warn('[DevServer] No dev script found in package.json, using npm run dev');
+  if (customCommand) {
+    // Custom command provided — split into command + args, bypass package.json parsing
+    const parts = customCommand.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+    if (parts.length > 0) {
+      command = parts[0]!;
+      args = parts.slice(1);
+      logger.info('[DevServer] Using custom dev command', {
+        customCommand,
+        command,
+        args: args.join(' '),
+      });
     }
-  } catch (e) {
-    // Fall back to npm run dev if we can't parse package.json
-    trackError('devserver_package_json', e, 'Workspace');
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    logger.error('[DevServer] Failed to read/parse package.json, falling back to npm run dev', {
-      error: errorMessage,
-      projectPath,
-    });
+  } else {
+    // Try to read package.json to get the dev script and parse it to use correct port
+    // We use npx to run the command so that local node_modules/.bin executables are found
+    try {
+      const packageJsonPath = `${projectPath}/package.json`;
+      logger.info('[DevServer] Reading package.json', { path: packageJsonPath, desiredPort: port });
+      const packageJson = await readTextFile(packageJsonPath);
+      const pkg = JSON.parse(packageJson) as { scripts?: { dev?: string } };
+      const devScript = pkg.scripts?.dev;
+
+      if (devScript) {
+        // Parse the dev script and replace any hardcoded port with our desired port
+        // Use npx to run the command so local binaries are found
+        // Returns null if the script contains shell syntax (&&, ||, |, ;, or env vars)
+        const npxArgs = parseDevScriptForNpx(devScript, port);
+        if (npxArgs) {
+          command = 'npx';
+          args = npxArgs;
+          logger.info('[DevServer] Parsed dev script successfully', {
+            original: devScript,
+            command,
+            args: args.join(' '),
+            port,
+          });
+        } else {
+          // Script has shell syntax - use npm run dev which respects the PORT env var
+          logger.info('[DevServer] Using npm run dev for shell script', {
+            original: devScript,
+            port,
+          });
+        }
+      } else {
+        logger.warn('[DevServer] No dev script found in package.json, using npm run dev');
+      }
+    } catch (e) {
+      // Fall back to npm run dev if we can't parse package.json
+      trackError('devserver_package_json', e, 'Workspace');
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      logger.error('[DevServer] Failed to read/parse package.json, falling back to npm run dev', {
+        error: errorMessage,
+        projectPath,
+      });
+    }
   }
 
   // Log the actual command being executed
@@ -551,6 +567,27 @@ async function startDevServerWindows(
       }
     },
   };
+}
+
+/**
+ * Get the custom dev command for a project (for generic projects).
+ * @param projectPath - Absolute path to the project directory
+ * @returns The custom dev command, or null if not configured
+ */
+export async function getCustomDevCommand(projectPath: string): Promise<string | null> {
+  return invoke<string | null>('get_custom_dev_command', { projectPath });
+}
+
+/**
+ * Set the custom dev command for a project (for generic projects).
+ * @param projectPath - Absolute path to the project directory
+ * @param command - The command to set, or null to clear
+ */
+export async function setCustomDevCommand(
+  projectPath: string,
+  command: string | null
+): Promise<void> {
+  return invoke<void>('set_custom_dev_command', { projectPath, command });
 }
 
 /**

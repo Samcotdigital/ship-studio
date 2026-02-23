@@ -46,6 +46,7 @@ import {
   ExpandIcon,
   ArrowLeftIcon,
   ActivityIcon,
+  SettingsIcon,
 } from './icons';
 import { ToolbarDropdown } from './ToolbarDropdown';
 import { TerminalTabDropdown } from './TerminalTabDropdown';
@@ -89,6 +90,7 @@ interface DevServerProps {
   devServerPort: number;
   projectType: ProjectType;
   isRestartingDevServer: boolean;
+  customDevCommand: string | null;
   devServerOutput: string;
   devServerOutputVersion: number;
   healthOutput: string;
@@ -192,6 +194,9 @@ interface ModalProps {
   showPluginManager: boolean;
   openPluginManager: () => void;
   closePluginManager: () => void;
+  showDevCommandModal: boolean;
+  openDevCommandModal: () => void;
+  closeDevCommandModal: () => void;
 }
 
 interface ToastProps {
@@ -258,6 +263,7 @@ interface LifecycleProps {
   handleTerminalExit: (code: number | null) => void;
   handleToolbarAutoAcceptToggle: () => void;
   handleAutoAcceptWarningAccept: () => void;
+  handleSaveDevCommand: (command: string | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +355,7 @@ export function WorkspaceView({
     devServerPort,
     projectType,
     isRestartingDevServer,
+    customDevCommand,
     devServerOutput,
     devServerOutputVersion,
     healthOutput,
@@ -442,6 +449,9 @@ export function WorkspaceView({
     showPluginManager,
     openPluginManager,
     closePluginManager,
+    showDevCommandModal,
+    openDevCommandModal,
+    closeDevCommandModal,
   } = modals;
 
   const { toasts: toastList, showToast, dismissToast } = toasts;
@@ -488,7 +498,11 @@ export function WorkspaceView({
     handleTerminalExit,
     handleToolbarAutoAcceptToggle,
     handleAutoAcceptWarningAccept,
+    handleSaveDevCommand,
   } = lifecycle;
+
+  // Generic projects (Tauri apps, CLI tools, etc.) don't have a web preview
+  const isWebProject = projectType !== 'generic';
 
   return (
     <>
@@ -549,25 +563,47 @@ export function WorkspaceView({
                   onAskClaude={sendToClaude}
                   onHealthOutput={handleHealthOutput}
                   toolbarLeft={
-                    <button
-                      className="show-preview-btn"
-                      onClick={() => void handleRestartDevServer()}
-                      disabled={
-                        isRestartingDevServer || (!hasDevServer && projectType !== 'statichtml')
-                      }
-                      title="Restart dev server"
-                      data-education-id="restart-server"
-                    >
-                      {isRestartingDevServer ? (
-                        <div className="capture-spinner" />
-                      ) : (
-                        <ResetIcon size={14} />
-                      )}
-                      <span>Restart Server</span>
-                    </button>
+                    isWebProject || customDevCommand ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button
+                          className="show-preview-btn"
+                          onClick={() => void handleRestartDevServer()}
+                          disabled={
+                            isRestartingDevServer || (!hasDevServer && projectType !== 'statichtml')
+                          }
+                          title="Restart dev server"
+                          data-education-id="restart-server"
+                        >
+                          {isRestartingDevServer ? (
+                            <div className="capture-spinner" />
+                          ) : (
+                            <ResetIcon size={14} />
+                          )}
+                          <span>Restart Server</span>
+                        </button>
+                        {!isWebProject && (
+                          <button
+                            className="show-preview-btn icon-only"
+                            onClick={openDevCommandModal}
+                            title="Edit dev command"
+                          >
+                            <SettingsIcon size={12} />
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        className="show-preview-btn"
+                        onClick={openDevCommandModal}
+                        title="Configure a dev server command"
+                      >
+                        <SettingsIcon size={14} />
+                        <span>Dev Server...</span>
+                      </button>
+                    )
                   }
                   toolbarRight={
-                    isPreviewHidden ? (
+                    isPreviewHidden && isWebProject ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button
                           className="show-preview-btn icon-only"
@@ -632,28 +668,32 @@ export function WorkspaceView({
                       )}
                     </div>
                     <div className="terminal-logs-tabs">
-                      <button
-                        className={`workspace-tab icon-only ${showDevServerLogs && !showHealthLogs ? 'active' : ''}`}
-                        onClick={() => {
-                          setShowDevServerLogs(true);
-                          setShowHealthLogs(false);
-                        }}
-                        title="View dev server logs"
-                        data-education-id="server-logs"
-                      >
-                        <TerminalIcon size={12} />
-                      </button>
-                      <button
-                        className={`workspace-tab icon-only ${showHealthLogs ? 'active' : ''}`}
-                        onClick={() => {
-                          setShowDevServerLogs(true);
-                          setShowHealthLogs(true);
-                        }}
-                        title="View health check logs"
-                        data-education-id="health-logs"
-                      >
-                        <ActivityIcon size={12} />
-                      </button>
+                      {(isWebProject || hasDevServer) && (
+                        <>
+                          <button
+                            className={`workspace-tab icon-only ${showDevServerLogs && !showHealthLogs ? 'active' : ''}`}
+                            onClick={() => {
+                              setShowDevServerLogs(true);
+                              setShowHealthLogs(false);
+                            }}
+                            title="View dev server logs"
+                            data-education-id="server-logs"
+                          >
+                            <TerminalIcon size={12} />
+                          </button>
+                          <button
+                            className={`workspace-tab icon-only ${showHealthLogs ? 'active' : ''}`}
+                            onClick={() => {
+                              setShowDevServerLogs(true);
+                              setShowHealthLogs(true);
+                            }}
+                            title="View health check logs"
+                            data-education-id="health-logs"
+                          >
+                            <ActivityIcon size={12} />
+                          </button>
+                        </>
+                      )}
                       <ToolbarDropdown
                         agent={getActiveTabAgent()}
                         autoAcceptMode={autoAcceptMode}
@@ -813,6 +853,7 @@ export function WorkspaceView({
                       changedFiles={changedFiles}
                       projectPath={currentProject.path}
                       isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
+                      isWebProject={isWebProject}
                       onClick={() =>
                         setWorkspaceTab(
                           workspaceTab === 'branches' || workspaceTab === 'prs'
@@ -830,13 +871,15 @@ export function WorkspaceView({
                   <div style={{ flex: 1 }} />
                   {integrations.projectGithub?.status === 'connected' && (
                     <div className="workspace-tabs">
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('preview')}
-                      >
-                        <EyeIcon size={14} />
-                        <span>Preview</span>
-                      </button>
+                      {isWebProject && (
+                        <button
+                          className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                          onClick={() => setWorkspaceTab('preview')}
+                        >
+                          <EyeIcon size={14} />
+                          <span>Preview</span>
+                        </button>
+                      )}
                       <button
                         className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
                         onClick={() => setWorkspaceTab('branches')}
@@ -855,36 +898,40 @@ export function WorkspaceView({
                       </button>
                     </div>
                   )}
-                  <div className="preview-tabs-divider" />
-                  <div className="preview-actions">
-                    <button
-                      className="preview-action-btn-icon"
-                      onClick={() => void handleEnterCompactMode()}
-                      title="Compact Mode"
-                      data-education-id="compact-button"
-                    >
-                      <CompactIcon size={12} />
-                    </button>
-                    <span data-education-id="browser-button">
-                      <BrowserDropdown
-                        url={`http://localhost:${devServerPort}`}
-                        buttonClassName="preview-action-btn-icon"
-                        iconOnly
-                      />
-                    </span>
-                    <button
-                      className="preview-action-btn-icon"
-                      onClick={() => setIsPreviewHidden(true)}
-                      title="Hide Preview"
-                      data-education-id="hide-preview"
-                    >
-                      <PanelRightIcon size={12} />
-                    </button>
-                  </div>
+                  {isWebProject && (
+                    <>
+                      <div className="preview-tabs-divider" />
+                      <div className="preview-actions">
+                        <button
+                          className="preview-action-btn-icon"
+                          onClick={() => void handleEnterCompactMode()}
+                          title="Compact Mode"
+                          data-education-id="compact-button"
+                        >
+                          <CompactIcon size={12} />
+                        </button>
+                        <span data-education-id="browser-button">
+                          <BrowserDropdown
+                            url={`http://localhost:${devServerPort}`}
+                            buttonClassName="preview-action-btn-icon"
+                            iconOnly
+                          />
+                        </span>
+                        <button
+                          className="preview-action-btn-icon"
+                          onClick={() => setIsPreviewHidden(true)}
+                          title="Hide Preview"
+                          data-education-id="hide-preview"
+                        >
+                          <PanelRightIcon size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Tab content */}
-                {workspaceTab === 'preview' && (
+                {workspaceTab === 'preview' && isWebProject && (
                   <div style={{ flex: 1, display: 'flex' }}>
                     <Preview
                       key={`${currentProject.path}-${devServerPort}`}
@@ -959,7 +1006,7 @@ export function WorkspaceView({
                     />
                   </div>
                 )}
-                {workspaceTab === 'branches' &&
+                {(workspaceTab === 'branches' || (!isWebProject && workspaceTab === 'preview')) &&
                   (integrations.github.cliStatus.authenticated &&
                   integrations.projectGithub?.status === 'connected' ? (
                     <BranchesTab
@@ -1041,7 +1088,7 @@ export function WorkspaceView({
           </div>
           <CompactActionsRow
             serverHealth={
-              projectType === 'statichtml' || hasDevServer
+              projectType === 'statichtml' || projectType === 'generic' || hasDevServer
                 ? 'healthy'
                 : isRestartingDevServer
                   ? 'starting'
@@ -1154,6 +1201,10 @@ export function WorkspaceView({
           onAuthTerminalExit={(exitCode) =>
             void handleAuthTerminalExit(exitCode, currentProject.path)
           }
+          showDevCommandModal={showDevCommandModal}
+          customDevCommand={customDevCommand}
+          onSaveDevCommand={handleSaveDevCommand}
+          onCloseDevCommandModal={closeDevCommandModal}
           pluginTerminal={pluginTerminal}
           pluginTerminalExited={pluginTerminalExited}
           onClosePluginTerminal={closePluginTerminal}

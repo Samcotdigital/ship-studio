@@ -9,7 +9,14 @@
 import { invoke } from '@tauri-apps/api/core';
 
 /** Detected project type from the Rust backend */
-export type ProjectType = 'nextjs' | 'sveltekit' | 'astro' | 'nuxt' | 'statichtml' | 'unknown';
+export type ProjectType =
+  | 'nextjs'
+  | 'sveltekit'
+  | 'astro'
+  | 'nuxt'
+  | 'statichtml'
+  | 'generic'
+  | 'unknown';
 
 /** Detect the project type for a given project path */
 export async function detectProjectType(projectPath: string): Promise<ProjectType> {

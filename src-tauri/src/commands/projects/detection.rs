@@ -86,6 +86,29 @@ pub fn has_html_files(project_path: &std::path::Path) -> bool {
     false
 }
 
+/// Detect if this is a Next.js project
+pub(crate) fn is_nextjs_project(project_path: &std::path::Path) -> bool {
+    // Check for next.config.* files
+    if project_path.join("next.config.js").exists()
+        || project_path.join("next.config.ts").exists()
+        || project_path.join("next.config.mjs").exists()
+    {
+        return true;
+    }
+
+    // Check package.json for "next" in dependencies
+    let pkg_path = project_path.join("package.json");
+    if pkg_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if contents.contains("\"next\"") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Detect the project type from config files and directory structure
 pub fn detect_project_type(project_path: &std::path::Path) -> ProjectType {
     // Check framework-specific configs first
@@ -98,10 +121,13 @@ pub fn detect_project_type(project_path: &std::path::Path) -> ProjectType {
     if is_nuxt_project(project_path) {
         return ProjectType::Nuxt;
     }
-
-    // If package.json exists, default to Next.js (existing behavior)
-    if project_path.join("package.json").exists() {
+    if is_nextjs_project(project_path) {
         return ProjectType::Nextjs;
+    }
+
+    // Has package.json but no recognized web framework
+    if project_path.join("package.json").exists() {
+        return ProjectType::Generic;
     }
 
     // Check for HTML files in root (static HTML project)

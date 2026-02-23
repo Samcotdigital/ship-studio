@@ -16,6 +16,8 @@ pub enum ProjectType {
     Nuxt,
     /// Plain HTML/CSS/JS project (no framework, no package.json required)
     Statichtml,
+    /// Has package.json but isn't a recognized web framework (Tauri, CLI tools, etc.)
+    Generic,
     Unknown,
 }
 
@@ -152,6 +154,9 @@ pub struct ProjectMetadata {
     /// Whether to hide the main branch warning banner for this project
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_main_branch_warning: Option<bool>,
+    /// Custom dev command for generic projects (e.g., "cargo run", "npm run dev")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_dev_command: Option<String>,
 }
 
 fn default_schema_version() -> u32 {
@@ -170,6 +175,7 @@ impl Default for ProjectMetadata {
             health: None,
             auto_accept_mode: None,
             hide_main_branch_warning: None,
+            custom_dev_command: None,
         }
     }
 }

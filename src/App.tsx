@@ -110,6 +110,7 @@ function App({ initialProjectPath }: AppProps) {
     setDevServerPort,
     projectType,
     isRestartingDevServer,
+    customDevCommand,
     devServerOutputRef,
     devServerOutputVersion,
     healthOutputRef,
@@ -118,6 +119,7 @@ function App({ initialProjectPath }: AppProps) {
     handleRestartDevServer: restartDevServer,
     startServerForProject,
     stopServer,
+    saveCustomDevCommand,
   } = useDevServer();
 
   // Notification settings, attention tabs, agent status sound alerts
@@ -231,6 +233,9 @@ function App({ initialProjectPath }: AppProps) {
     showPluginManager,
     openPluginManager,
     closePluginManager,
+    showDevCommandModal,
+    openDevCommandModal,
+    closeDevCommandModal,
   } = useWorkspaceModals({ focusActiveTerminal });
 
   // Toast notifications
@@ -317,6 +322,7 @@ function App({ initialProjectPath }: AppProps) {
     startScreenshotInterval,
     onPreviewReady,
     setShowDevServerLogs,
+    setWorkspaceTab,
     resetLayout,
     setProjectGitHubStatus,
     clearProjectStatuses,
@@ -492,6 +498,7 @@ function App({ initialProjectPath }: AppProps) {
         devServerPort,
         projectType,
         isRestartingDevServer,
+        customDevCommand,
         devServerOutput: devServerOutputRef.current,
         devServerOutputVersion,
         healthOutput: healthOutputRef.current,
@@ -581,6 +588,9 @@ function App({ initialProjectPath }: AppProps) {
         showPluginManager,
         openPluginManager,
         closePluginManager,
+        showDevCommandModal,
+        openDevCommandModal,
+        closeDevCommandModal,
       }}
       toasts={{ toasts, showToast, dismissToast }}
       branchMgmt={{
@@ -623,6 +633,9 @@ function App({ initialProjectPath }: AppProps) {
         handleTerminalExit,
         handleToolbarAutoAcceptToggle,
         handleAutoAcceptWarningAccept,
+        handleSaveDevCommand: (cmd: string | null) => {
+          if (currentProject) void saveCustomDevCommand(currentProject.path, cmd);
+        },
       }}
       pluginProject={pluginProject}
       pluginActions={pluginActions}

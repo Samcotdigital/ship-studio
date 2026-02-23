@@ -62,6 +62,7 @@ export interface UseProjectLifecycleParams {
   onPreviewReady: (projectPath: string) => void;
   // Layout
   setShowDevServerLogs: (show: boolean) => void;
+  setWorkspaceTab: (tab: 'preview' | 'branches' | 'prs') => void;
   resetLayout: () => void;
   // Integrations
   setProjectGitHubStatus: (status: ProjectGitHubStatus | null) => void;
@@ -92,6 +93,7 @@ export function useProjectLifecycle({
   startScreenshotInterval,
   onPreviewReady,
   setShowDevServerLogs,
+  setWorkspaceTab,
   resetLayout,
   setProjectGitHubStatus,
   clearProjectStatuses,
@@ -330,10 +332,15 @@ export function useProjectLifecycle({
 
     // Detect project type and start appropriate server
     stepStart = performance.now();
-    await startServerForProject(project.path, project.name, port, windowLabel);
+    const detectedType = await startServerForProject(project.path, project.name, port, windowLabel);
     logger.info(
       `[OpenProject] Step 7: Start dev server - ${Math.round(performance.now() - stepStart)}ms`
     );
+
+    // Generic projects don't have a web preview — default to branches tab
+    if (detectedType === 'generic') {
+      setWorkspaceTab('branches');
+    }
 
     setView('workspace');
     logger.info(`[OpenProject] Complete - Total: ${Math.round(performance.now() - totalStart)}ms`);
