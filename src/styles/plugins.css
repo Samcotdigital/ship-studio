@@ -183,7 +183,6 @@
 .plugin-row {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px;
   border-radius: 8px;
@@ -191,9 +190,70 @@
   border: 1px solid var(--border);
 }
 
+/* Icon container: renders the toolbar component but only shows the SVG */
+.plugin-icon-container {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--text-secondary);
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-size: 0;
+  line-height: 0;
+}
+
+/* Reset all plugin-rendered elements inside the icon container */
+.plugin-icon-container * {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  gap: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  box-shadow: none !important;
+}
+
+.plugin-icon-container > * {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--text-secondary);
+}
+
+.plugin-icon-container svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0;
+}
+
+/* Hide any non-svg, non-container elements (modals, dropdowns, etc.) */
+.plugin-icon-container [class*='modal'],
+.plugin-icon-container [class*='dropdown'],
+.plugin-icon-container [class*='menu'],
+.plugin-icon-container [class*='tooltip'] {
+  display: none !important;
+}
+
 .plugin-info {
   flex: 1;
   min-width: 0;
+}
+
+.plugin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .plugin-name {
@@ -203,20 +263,10 @@
 }
 
 .plugin-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.plugin-version {
   font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.plugin-author {
-  font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .plugin-desc {
@@ -226,28 +276,48 @@
   line-height: 1.4;
 }
 
-.plugin-slots {
-  display: flex;
-  gap: 4px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
-.plugin-slot-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-
-/* Plugin Actions */
+/* Action links row below description */
 .plugin-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.plugin-action-link {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.plugin-action-link:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.plugin-action-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plugin-action-link.plugin-action-update {
+  color: #3b82f6;
+}
+
+.plugin-action-link.plugin-action-update:hover {
+  color: #60a5fa;
+}
+
+.plugin-action-link.plugin-action-danger:hover:not(:disabled) {
+  color: #ef4444;
+}
+
+.plugin-action-status {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .plugin-toggle-btn {
@@ -258,6 +328,7 @@
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
+  flex-shrink: 0;
   transition:
     background-color 0.15s,
     color 0.15s;
@@ -273,62 +344,6 @@
   opacity: 0.85;
 }
 
-.plugin-remove-btn {
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-
-.plugin-remove-btn:hover {
-  background: #ef444420;
-  color: #ef4444;
-  border-color: #ef444440;
-}
-
-.plugin-remove-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.plugin-update-btn {
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-
-.plugin-update-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-}
-
-.plugin-update-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.plugin-update-btn.plugin-update-available {
-  background: #3b82f620;
-  color: #3b82f6;
-  border-color: #3b82f640;
-}
-
-.plugin-update-btn.plugin-update-available:hover {
-  background: #3b82f630;
-}
-
 /* Library: Install / Installed badges */
 .plugin-library-install-btn {
   font-size: 11px;
@@ -339,6 +354,7 @@
   color: #10b981;
   cursor: pointer;
   font-weight: 500;
+  flex-shrink: 0;
   transition:
     background-color 0.15s,
     opacity 0.15s;
@@ -355,20 +371,18 @@
 
 .plugin-installed-badge {
   font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  cursor: default;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .plugin-category-badge {
+  display: inline-block;
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 2px 7px;
+  margin-top: 6px;
   border-radius: 4px;
   background: var(--bg-secondary);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   border: 1px solid var(--border);
   text-transform: capitalize;
 }

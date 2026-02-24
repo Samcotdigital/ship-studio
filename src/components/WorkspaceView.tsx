@@ -242,6 +242,7 @@ interface BranchProps {
 }
 
 interface PluginProps {
+  loadedPlugins: LoadedPlugin[];
   getSlotPlugins: (slotName: string) => LoadedPlugin[];
   reloadPlugins: () => Promise<void>;
 }
@@ -479,7 +480,7 @@ export function WorkspaceView({
     handleConflictsResolved,
   } = branchMgmt;
 
-  const { getSlotPlugins, reloadPlugins } = plugins;
+  const { loadedPlugins, getSlotPlugins, reloadPlugins } = plugins;
 
   const {
     autoAcceptMode,
@@ -1181,6 +1182,7 @@ export function WorkspaceView({
           showPluginManager={showPluginManager}
           onClosePluginManager={() => closePluginManager()}
           onPluginsChanged={() => void reloadPlugins()}
+          loadedPlugins={loadedPlugins}
           pluginSuggestion={pluginSuggestion}
           pluginSuggestionInstalling={pluginSuggestionInstalling}
           onDismissPluginSuggestion={() => setPluginSuggestion(null)}

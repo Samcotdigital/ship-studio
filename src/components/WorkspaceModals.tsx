@@ -31,6 +31,7 @@ import type { NotificationSettings } from '../lib/sounds';
 import type { AgentConfig } from '../lib/agent';
 import type { BranchInfo } from '../lib/branches';
 import type { AuthTerminalConfig, IntegrationState } from '../hooks/useIntegrationStatus';
+import type { LoadedPlugin } from '../hooks/usePlugins';
 
 export interface WorkspaceModalsProps {
   // Project context
@@ -92,6 +93,7 @@ export interface WorkspaceModalsProps {
   showPluginManager: boolean;
   onClosePluginManager: () => void;
   onPluginsChanged: () => void;
+  loadedPlugins?: LoadedPlugin[];
 
   // Plugin suggestion
   pluginSuggestion: { pluginName: string; projectPath: string; repoUrl: string } | null;
@@ -182,6 +184,7 @@ export function WorkspaceModals({
   showPluginManager,
   onClosePluginManager,
   onPluginsChanged,
+  loadedPlugins,
   pluginSuggestion,
   pluginSuggestionInstalling,
   onDismissPluginSuggestion,
@@ -314,6 +317,7 @@ export function WorkspaceModals({
         onClose={onClosePluginManager}
         onPluginsChanged={onPluginsChanged}
         projectPath={currentProjectPath ?? null}
+        loadedPlugins={loadedPlugins}
       />
 
       {/* Plugin Suggestion Popup */}

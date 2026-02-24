@@ -24,6 +24,7 @@ import {
   type PluginInfo,
   type PluginRegistryEntry,
 } from '../lib/plugins';
+import type { LoadedPlugin } from '../hooks/usePlugins';
 
 type Tab = 'installed' | 'library';
 
@@ -32,6 +33,8 @@ interface PluginManagerProps {
   onClose: () => void;
   onPluginsChanged: () => void;
   projectPath: string | null;
+  /** Loaded plugins from usePlugins hook, used to render toolbar icons */
+  loadedPlugins?: LoadedPlugin[];
 }
 
 export function PluginManager({
@@ -39,6 +42,7 @@ export function PluginManager({
   onClose,
   onPluginsChanged,
   projectPath,
+  loadedPlugins = [],
 }: PluginManagerProps) {
   const [activeTab, setActiveTab] = useState<Tab>('installed');
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
@@ -443,117 +447,118 @@ export function PluginManager({
               )}
 
               <div className="plugins-list">
-                {filteredPlugins.map((plugin) => (
-                  <div key={plugin.manifest.id} className="plugin-row">
-                    <div className="plugin-info">
-                      <div className="plugin-name">
-                        {plugin.manifest.name}
-                        {plugin.is_dev && <span className="plugin-dev-badge">DEV</span>}
+                {filteredPlugins.map((plugin) => {
+                  const loaded = loadedPlugins.find(
+                    (lp) => lp.info.manifest.id === plugin.manifest.id
+                  );
+                  const ToolbarIcon = loaded?.module.slots['toolbar'];
+
+                  return (
+                    <div key={plugin.manifest.id} className="plugin-row">
+                      <div className="plugin-icon-container">
+                        {ToolbarIcon ? <ToolbarIcon /> : null}
                       </div>
-                      <div className="plugin-meta">
-                        <span className="plugin-version">v{plugin.manifest.version}</span>
-                        {plugin.manifest.author && (
-                          <span className="plugin-author">{plugin.manifest.author}</span>
-                        )}
-                      </div>
-                      {plugin.is_dev && plugin.local_path && (
-                        <div className="plugin-local-path" title={plugin.local_path}>
-                          {plugin.local_path}
+                      <div className="plugin-info">
+                        <div className="plugin-header">
+                          <div>
+                            <span className="plugin-name">
+                              {plugin.manifest.name}
+                              {plugin.is_dev && <span className="plugin-dev-badge">DEV</span>}
+                            </span>
+                            <span className="plugin-meta">
+                              v{plugin.manifest.version}
+                              {plugin.manifest.author && <> · {plugin.manifest.author}</>}
+                            </span>
+                          </div>
+                          <button
+                            className={`plugin-toggle-btn ${plugin.enabled ? 'enabled' : ''}`}
+                            onClick={() => {
+                              void handleToggle(plugin.manifest.id, !plugin.enabled);
+                            }}
+                            disabled={togglingId === plugin.manifest.id}
+                            title={plugin.enabled ? 'Disable' : 'Enable'}
+                          >
+                            {plugin.enabled ? 'On' : 'Off'}
+                          </button>
                         </div>
-                      )}
-                      <div className="plugin-desc">{plugin.manifest.description}</div>
-                    </div>
-                    <div className="plugin-actions">
-                      {plugin.is_dev ? (
-                        <button
-                          className="plugin-reload-btn"
-                          onClick={() => handleReloadDevPlugin(plugin.manifest.id)}
-                          disabled={reloadingId === plugin.manifest.id}
-                        >
-                          {reloadingId === plugin.manifest.id ? 'Reloading...' : 'Reload'}
-                        </button>
-                      ) : (
-                        (() => {
-                          const state = updateStates[plugin.manifest.id] || 'idle';
-                          if (state === 'checking') {
-                            return (
-                              <button className="plugin-update-btn" disabled>
-                                Checking...
-                              </button>
-                            );
-                          }
-                          if (state === 'available') {
-                            return (
+                        {plugin.is_dev && plugin.local_path && (
+                          <div className="plugin-local-path" title={plugin.local_path}>
+                            {plugin.local_path}
+                          </div>
+                        )}
+                        <div className="plugin-desc">{plugin.manifest.description}</div>
+                        <div className="plugin-actions">
+                          {plugin.is_dev ? (
+                            <>
                               <button
-                                className="plugin-update-btn plugin-update-available"
-                                onClick={() => {
-                                  void handleUpdate(plugin.manifest.id);
-                                }}
+                                className="plugin-action-link"
+                                onClick={() => handleReloadDevPlugin(plugin.manifest.id)}
+                                disabled={reloadingId === plugin.manifest.id}
                               >
-                                Update
+                                {reloadingId === plugin.manifest.id ? 'Reloading...' : 'Reload'}
                               </button>
-                            );
-                          }
-                          if (state === 'updating') {
-                            return (
-                              <button className="plugin-update-btn" disabled>
-                                Updating...
+                              <button
+                                className="plugin-action-link plugin-action-danger"
+                                onClick={() => {
+                                  void handleUnlinkDevPlugin(plugin.manifest.id);
+                                }}
+                                disabled={unlinkingId === plugin.manifest.id}
+                              >
+                                {unlinkingId === plugin.manifest.id ? 'Unlinking...' : 'Unlink'}
                               </button>
-                            );
-                          }
-                          if (state === 'up_to_date') {
-                            return (
-                              <button className="plugin-update-btn" disabled>
-                                Up to date
+                            </>
+                          ) : (
+                            <>
+                              {(() => {
+                                const state = updateStates[plugin.manifest.id] || 'idle';
+                                if (state === 'checking') {
+                                  return <span className="plugin-action-status">Checking...</span>;
+                                }
+                                if (state === 'available') {
+                                  return (
+                                    <button
+                                      className="plugin-action-link plugin-action-update"
+                                      onClick={() => {
+                                        void handleUpdate(plugin.manifest.id);
+                                      }}
+                                    >
+                                      Update available
+                                    </button>
+                                  );
+                                }
+                                if (state === 'updating') {
+                                  return <span className="plugin-action-status">Updating...</span>;
+                                }
+                                if (state === 'up_to_date') {
+                                  return <span className="plugin-action-status">Up to date</span>;
+                                }
+                                return (
+                                  <button
+                                    className="plugin-action-link"
+                                    onClick={() => {
+                                      void handleCheckUpdate(plugin.manifest.id);
+                                    }}
+                                  >
+                                    Check for updates
+                                  </button>
+                                );
+                              })()}
+                              <button
+                                className="plugin-action-link plugin-action-danger"
+                                onClick={() => {
+                                  void handleUninstall(plugin.manifest.id);
+                                }}
+                                disabled={removingId === plugin.manifest.id}
+                              >
+                                {removingId === plugin.manifest.id ? 'Removing...' : 'Remove'}
                               </button>
-                            );
-                          }
-                          return (
-                            <button
-                              className="plugin-update-btn"
-                              onClick={() => {
-                                void handleCheckUpdate(plugin.manifest.id);
-                              }}
-                            >
-                              Check for updates
-                            </button>
-                          );
-                        })()
-                      )}
-                      <button
-                        className={`plugin-toggle-btn ${plugin.enabled ? 'enabled' : ''}`}
-                        onClick={() => {
-                          void handleToggle(plugin.manifest.id, !plugin.enabled);
-                        }}
-                        disabled={togglingId === plugin.manifest.id}
-                        title={plugin.enabled ? 'Disable' : 'Enable'}
-                      >
-                        {plugin.enabled ? 'On' : 'Off'}
-                      </button>
-                      {plugin.is_dev ? (
-                        <button
-                          className="plugin-remove-btn"
-                          onClick={() => {
-                            void handleUnlinkDevPlugin(plugin.manifest.id);
-                          }}
-                          disabled={unlinkingId === plugin.manifest.id}
-                        >
-                          {unlinkingId === plugin.manifest.id ? 'Unlinking...' : 'Unlink'}
-                        </button>
-                      ) : (
-                        <button
-                          className="plugin-remove-btn"
-                          onClick={() => {
-                            void handleUninstall(plugin.manifest.id);
-                          }}
-                          disabled={removingId === plugin.manifest.id}
-                        >
-                          {removingId === plugin.manifest.id ? 'Removing...' : 'Remove'}
-                        </button>
-                      )}
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {error && activeTab === 'installed' && <div className="plugins-error">{error}</div>}
@@ -602,28 +607,28 @@ export function PluginManager({
                   return (
                     <div key={entry.id} className="plugin-row">
                       <div className="plugin-info">
-                        <div className="plugin-name">{entry.name}</div>
-                        <div className="plugin-meta">
-                          <span className="plugin-author">{entry.author}</span>
-                          <span className="plugin-category-badge">{entry.category}</span>
+                        <div className="plugin-header">
+                          <div>
+                            <span className="plugin-name">{entry.name}</span>
+                            <span className="plugin-meta">{entry.author}</span>
+                          </div>
+                          {isInstalled ? (
+                            <span className="plugin-installed-badge">Installed</span>
+                          ) : (
+                            <button
+                              className="plugin-library-install-btn"
+                              onClick={() => {
+                                void handleLibraryInstall(entry);
+                              }}
+                              disabled={isThisInstalling || installingId !== null}
+                            >
+                              {isThisInstalling ? 'Installing...' : 'Install'}
+                            </button>
+                          )}
                         </div>
                         <div className="plugin-desc">{entry.description}</div>
-                      </div>
-                      <div className="plugin-actions">
-                        {isInstalled ? (
-                          <button className="plugin-installed-badge" disabled>
-                            Installed
-                          </button>
-                        ) : (
-                          <button
-                            className="plugin-library-install-btn"
-                            onClick={() => {
-                              void handleLibraryInstall(entry);
-                            }}
-                            disabled={isThisInstalling || installingId !== null}
-                          >
-                            {isThisInstalling ? 'Installing...' : 'Install'}
-                          </button>
+                        {entry.category && (
+                          <div className="plugin-category-badge">{entry.category}</div>
                         )}
                       </div>
                     </div>

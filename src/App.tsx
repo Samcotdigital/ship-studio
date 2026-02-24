@@ -270,7 +270,11 @@ function App({ initialProjectPath }: AppProps) {
   });
 
   // Plugin system
-  const { getSlotPlugins, reloadPlugins } = usePlugins(currentProject?.path ?? null);
+  const {
+    plugins: loadedPlugins,
+    getSlotPlugins,
+    reloadPlugins,
+  } = usePlugins(currentProject?.path ?? null);
 
   // Project lifecycle (selection, creation, import, publish, compact mode, etc.)
   const {
@@ -620,7 +624,7 @@ function App({ initialProjectPath }: AppProps) {
         handleResolveConflicts,
         handleConflictsResolved,
       }}
-      plugins={{ getSlotPlugins, reloadPlugins }}
+      plugins={{ loadedPlugins, getSlotPlugins, reloadPlugins }}
       lifecycle={{
         autoAcceptMode,
         setCurrentPreviewPage,
