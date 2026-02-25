@@ -24,6 +24,16 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.8',
+    items: [
+      'Pull & close actions for pull requests',
+      '"You are here" indicator on checked-out PR',
+      'Dev server auto-restarts after PR checkout',
+      'Fixed scrollbar crash on component unmount',
+      'Fixed toast bubbles stretching to widest sibling',
+    ],
+  },
+  {
     version: '0.4.7',
     items: [
       'Custom dark scrollbars with OverlayScrollbars',
