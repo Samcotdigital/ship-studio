@@ -833,6 +833,7 @@ export function WorkspaceView({
                           onToast={showToast}
                           onBranchSwitch={(branchName) => {
                             void handleBranchSwitch(branchName);
+                            // TODO: Chain off handleBranchSwitch promise instead of arbitrary timeout — branch switch may take longer or shorter than 1.5s
                             setTimeout(() => void handleRestartDevServer(), 1500);
                           }}
                           onNavigateToBranches={() => setCompactView('branches')}
@@ -1063,7 +1064,7 @@ export function WorkspaceView({
                       onToast={showToast}
                       onBranchSwitch={(branchName) => {
                         void handleBranchSwitch(branchName);
-                        // Restart dev server after PR checkout (pulled files may have changed deps/config)
+                        // TODO: Chain off handleBranchSwitch promise instead of arbitrary timeout — branch switch may take longer or shorter than 1.5s
                         setTimeout(() => void handleRestartDevServer(), 1500);
                       }}
                       onNavigateToBranches={() => setWorkspaceTab('branches')}

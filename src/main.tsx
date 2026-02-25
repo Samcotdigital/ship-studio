@@ -27,6 +27,7 @@ exposePluginContextRef();
 // When OS wraps a scrollable element, it moves children into a viewport wrapper.
 // If React then unmounts the parent, it tries to removeChild on the original nodes
 // which are no longer direct children — causing a crash. This patch handles that.
+// TODO: Consider scoping this patch to OverlayScrollbars containers instead of global Node.prototype — global patch may mask real DOM bugs elsewhere
 // eslint-disable-next-line @typescript-eslint/unbound-method
 const origRemoveChild = Node.prototype.removeChild;
 Node.prototype.removeChild = function <T extends Node>(child: T): T {
@@ -46,6 +47,7 @@ const OS_OPTS = { scrollbars: { theme: 'os-theme-shipstudio', autoHide: 'move' a
 
 function initScrollbars() {
   document.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    // TODO: Substring class matching is fragile — could false-positive on classes like "bimodal-chart". Use explicit class list or data attributes instead.
     if (el.closest('[class*="-modal"], [class*="-overlay"], [class*="-dropdown"]')) return;
     if (el.matches('.branches-tab, .prs-tab')) return;
     if (el.hasAttribute(OS_ATTR)) return;

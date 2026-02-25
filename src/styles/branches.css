@@ -1338,11 +1338,13 @@
   justify-content: center;
 }
 
+/* TODO: Replace hard-coded #3b82f6 with var(--accent) for theme consistency */
 .pr-card-checked-out {
   border-color: #3b82f6;
   background: rgba(59, 130, 246, 0.05);
 }
 
+/* TODO: Replace hard-coded #3b82f6 with var(--accent) for theme consistency */
 .pr-card-current-label {
   font-size: 11px;
   color: #3b82f6;
