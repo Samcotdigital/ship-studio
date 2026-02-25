@@ -1331,6 +1331,25 @@
   flex-shrink: 0;
 }
 
+.pr-card-icon-btn {
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pr-card-checked-out {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.pr-card-current-label {
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 /* Git Error Handler */
 .git-error-modal {
   position: fixed;

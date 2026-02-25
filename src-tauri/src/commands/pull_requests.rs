@@ -124,3 +124,51 @@ pub async fn merge_pull_request(project_path: String, pr_number: i32) -> Result<
 
     Ok(())
 }
+
+/// Checkout a pull request branch locally for review
+#[tauri::command]
+pub async fn checkout_pull_request(project_path: String, pr_number: i32) -> Result<String, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let output = get_gh_command()
+        .args(["pr", "checkout", &pr_number.to_string()])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to checkout PR: {stderr}"));
+    }
+
+    // Return the branch name that was checked out
+    let branch_output = create_command("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+    Ok(branch)
+}
+
+/// Close a pull request without merging
+#[tauri::command]
+pub async fn close_pull_request(project_path: String, pr_number: i32) -> Result<(), String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let output = get_gh_command()
+        .args(["pr", "close", &pr_number.to_string()])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to close PR: {stderr}"));
+    }
+
+    Ok(())
+}

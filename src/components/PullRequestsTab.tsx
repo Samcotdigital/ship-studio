@@ -6,16 +6,18 @@
  * @module components/PullRequestsTab
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   PullRequestInfo,
   listPullRequests,
   mergePullRequest,
+  checkoutPullRequest,
+  closePullRequest,
   deleteBranch,
   switchBranch,
 } from '../lib/branches';
-import { ExternalLinkIcon, WarningIcon, BranchIcon } from './icons';
+import { GitHubIcon, WarningIcon, BranchIcon } from './icons';
 import { trackError } from '../lib/analytics';
 
 interface PullRequestsTabProps {
@@ -23,6 +25,8 @@ interface PullRequestsTabProps {
   projectPath: string;
   /** GitHub username for highlighting own PRs */
   githubUsername: string | null;
+  /** Current checked-out branch name */
+  currentBranch?: string;
   /** Callback to refresh after merge */
   onRefresh: () => void;
   /** Callback for toast notifications */
@@ -38,6 +42,7 @@ interface PullRequestsTabProps {
 export function PullRequestsTab({
   projectPath,
   githubUsername,
+  currentBranch,
   onRefresh,
   onToast,
   onBranchSwitch,
@@ -47,12 +52,33 @@ export function PullRequestsTab({
   const [pullRequests, setPullRequests] = useState<PullRequestInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mergingPr, setMergingPr] = useState<number | null>(null);
+  const [checkingOutPr, setCheckingOutPr] = useState<number | null>(null);
+  const [checkedOutHead, setCheckedOutHead] = useState<string | null>(null);
+  const [closingPr, setClosingPr] = useState<number | null>(null);
+  const [confirmClosePr, setConfirmClosePr] = useState<PullRequestInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [postMergeInfo, setPostMergeInfo] = useState<{
     branchName: string;
     baseBranch: string;
   } | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+
+  // Clear local checkout tracking when currentBranch has settled on the checked-out branch.
+  // Use a ref to avoid clearing prematurely (currentBranch may briefly match then revert to
+  // stale cached data before settling).
+  const checkedOutHeadRef = useRef<string | null>(null);
+  checkedOutHeadRef.current = checkedOutHead;
+  useEffect(() => {
+    if (checkedOutHead && currentBranch === checkedOutHead) {
+      // Wait for currentBranch to stabilize before clearing
+      const timer = setTimeout(() => {
+        if (checkedOutHeadRef.current === checkedOutHead) {
+          setCheckedOutHead(null);
+        }
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentBranch, checkedOutHead]);
 
   // Fetch pull requests
   useEffect(() => {
@@ -118,6 +144,36 @@ export function PullRequestsTab({
     }
   };
 
+  const handleCheckout = async (prNumber: number, headRef: string) => {
+    setCheckingOutPr(prNumber);
+    try {
+      await checkoutPullRequest(projectPath, prNumber);
+      setCheckedOutHead(headRef);
+      onBranchSwitch?.(headRef);
+      onToast?.(`Checked out branch ${headRef}`, 'success');
+    } catch (e) {
+      trackError('pr_checkout', e, 'Workspace');
+      onToast?.(`Failed to checkout: ${String(e)}`, 'error');
+    } finally {
+      setCheckingOutPr(null);
+    }
+  };
+
+  const handleClose = async (prNumber: number) => {
+    setClosingPr(prNumber);
+    try {
+      await closePullRequest(projectPath, prNumber);
+      onToast?.('Pull request closed', 'success');
+      await fetchPullRequests();
+      onRefresh();
+    } catch (e) {
+      trackError('pr_close', e, 'Workspace');
+      onToast?.(`Failed to close PR: ${String(e)}`, 'error');
+    } finally {
+      setClosingPr(null);
+    }
+  };
+
   // Group PRs by state
   const openPrs = pullRequests.filter((pr) => pr.state === 'OPEN');
   const mergedPrs = pullRequests.filter((pr) => pr.state === 'MERGED').slice(0, 5);
@@ -171,8 +227,13 @@ export function PullRequestsTab({
               key={pr.number}
               pr={pr}
               isOwn={pr.author === githubUsername}
+              isCheckedOut={currentBranch === pr.headRef || checkedOutHead === pr.headRef}
               isMerging={mergingPr === pr.number}
+              isCheckingOut={checkingOutPr === pr.number}
+              isClosing={closingPr === pr.number}
               onMerge={() => void handleMerge(pr.number, pr.headRef, pr.baseRef)}
+              onCheckout={() => void handleCheckout(pr.number, pr.headRef)}
+              onClose={() => setConfirmClosePr(pr)}
               onResolveConflicts={onResolveConflicts}
             />
           ))
@@ -226,6 +287,41 @@ export function PullRequestsTab({
           </div>
         </div>
       )}
+
+      {/* Close PR confirmation modal */}
+      {confirmClosePr && (
+        <div className="post-merge-modal" onClick={() => !closingPr && setConfirmClosePr(null)}>
+          <div className="post-merge-content" onClick={(e) => e.stopPropagation()}>
+            <div className="post-merge-header">
+              <h3>Close Pull Request?</h3>
+            </div>
+            <div className="post-merge-body">
+              <p>
+                Are you sure you want to close <strong>#{confirmClosePr.number}</strong>{' '}
+                <strong>{confirmClosePr.title}</strong>? This will not delete the branch.
+              </p>
+            </div>
+            <div className="post-merge-footer">
+              <button
+                className="post-merge-btn secondary"
+                onClick={() => setConfirmClosePr(null)}
+                disabled={!!closingPr}
+              >
+                Cancel
+              </button>
+              <button
+                className="post-merge-btn danger"
+                onClick={() => {
+                  void handleClose(confirmClosePr.number).then(() => setConfirmClosePr(null));
+                }}
+                disabled={!!closingPr}
+              >
+                {closingPr ? 'Closing...' : 'Close PR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -233,12 +329,28 @@ export function PullRequestsTab({
 interface PrCardProps {
   pr: PullRequestInfo;
   isOwn: boolean;
+  isCheckedOut?: boolean;
   isMerging: boolean;
+  isCheckingOut?: boolean;
+  isClosing?: boolean;
   onMerge?: () => void;
+  onCheckout?: () => void;
+  onClose?: () => void;
   onResolveConflicts?: (headBranch: string, baseBranch: string) => void;
 }
 
-function PrCard({ pr, isOwn, isMerging, onMerge, onResolveConflicts }: PrCardProps) {
+function PrCard({
+  pr,
+  isOwn,
+  isCheckedOut,
+  isMerging,
+  isCheckingOut,
+  isClosing,
+  onMerge,
+  onCheckout,
+  onClose,
+  onResolveConflicts,
+}: PrCardProps) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -262,12 +374,13 @@ function PrCard({ pr, isOwn, isMerging, onMerge, onResolveConflicts }: PrCardPro
   const canMerge = pr.state === 'OPEN' && pr.mergeable !== false;
 
   return (
-    <div className="pr-card">
+    <div className={`pr-card${isCheckedOut ? ' pr-card-checked-out' : ''}`}>
       <div className="pr-card-info">
         <div className="pr-card-header">
           <div className={`pr-card-status ${pr.state.toLowerCase()}`} />
           <div className="pr-card-title">{pr.title}</div>
           <span className="pr-card-number">#{pr.number}</span>
+          {isCheckedOut && <span className="pr-card-current-label">you are here</span>}
         </div>
 
         <div className="pr-card-meta">
@@ -294,9 +407,18 @@ function PrCard({ pr, isOwn, isMerging, onMerge, onResolveConflicts }: PrCardPro
 
       {pr.state === 'OPEN' && (
         <div className="pr-card-actions">
-          <button className="branch-card-action" onClick={() => void openUrl(pr.url)}>
-            View on GitHub <ExternalLinkIcon size={10} />
+          <button
+            className="branch-card-action pr-card-icon-btn"
+            onClick={() => void openUrl(pr.url)}
+            title="View on GitHub"
+          >
+            <GitHubIcon size={16} />
           </button>
+          {onCheckout && !isCheckedOut && (
+            <button className="branch-card-action" onClick={onCheckout} disabled={isCheckingOut}>
+              {isCheckingOut ? 'Pulling...' : 'Pull'}
+            </button>
+          )}
           {hasConflicts && onResolveConflicts ? (
             <button
               className="branch-card-action primary"
@@ -314,6 +436,11 @@ function PrCard({ pr, isOwn, isMerging, onMerge, onResolveConflicts }: PrCardPro
                 {isMerging ? 'Merging...' : 'Merge'}
               </button>
             )
+          )}
+          {onClose && (
+            <button className="branch-card-action danger" onClick={onClose} disabled={isClosing}>
+              {isClosing ? 'Closing...' : 'Close'}
+            </button>
           )}
         </div>
       )}

@@ -258,6 +258,25 @@ export async function mergePullRequest(projectPath: string, prNumber: number): P
 }
 
 /**
+ * Checkout a pull request branch locally for review.
+ * @param projectPath - Absolute path to the project directory
+ * @param prNumber - PR number to checkout
+ * @returns The branch name that was checked out
+ */
+export async function checkoutPullRequest(projectPath: string, prNumber: number): Promise<string> {
+  return invoke('checkout_pull_request', { projectPath, prNumber });
+}
+
+/**
+ * Close a pull request without merging.
+ * @param projectPath - Absolute path to the project directory
+ * @param prNumber - PR number to close
+ */
+export async function closePullRequest(projectPath: string, prNumber: number): Promise<void> {
+  return invoke('close_pull_request', { projectPath, prNumber });
+}
+
+/**
  * Pull remote changes and merge.
  * This can result in merge conflicts if local and remote changes overlap.
  * @param projectPath - Absolute path to the project directory

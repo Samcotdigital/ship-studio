@@ -276,6 +276,8 @@ pub fn run() {
             commands::pull_requests::list_pull_requests,
             commands::pull_requests::create_pull_request,
             commands::pull_requests::merge_pull_request,
+            commands::pull_requests::checkout_pull_request,
+            commands::pull_requests::close_pull_request,
             // Merge conflict resolution
             commands::conflicts::get_conflict_info,
             commands::conflicts::resolve_conflict,

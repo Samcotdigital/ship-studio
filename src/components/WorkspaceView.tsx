@@ -828,11 +828,12 @@ export function WorkspaceView({
                         <PullRequestsTab
                           projectPath={currentProject.path}
                           githubUsername={integrations.github.username}
+                          currentBranch={currentBranch || undefined}
                           onRefresh={() => void fetchBranchInfo(currentProject.path)}
                           onToast={showToast}
                           onBranchSwitch={(branchName) => {
                             void handleBranchSwitch(branchName);
-                            setCompactView('terminal'); // Return to terminal after switching
+                            setTimeout(() => void handleRestartDevServer(), 1500);
                           }}
                           onNavigateToBranches={() => setCompactView('branches')}
                           onResolveConflicts={(headBranch, baseBranch) =>
@@ -1057,9 +1058,14 @@ export function WorkspaceView({
                     <PullRequestsTab
                       projectPath={currentProject.path}
                       githubUsername={integrations.github.username}
+                      currentBranch={currentBranch || undefined}
                       onRefresh={() => void fetchBranchInfo(currentProject.path)}
                       onToast={showToast}
-                      onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
+                      onBranchSwitch={(branchName) => {
+                        void handleBranchSwitch(branchName);
+                        // Restart dev server after PR checkout (pulled files may have changed deps/config)
+                        setTimeout(() => void handleRestartDevServer(), 1500);
+                      }}
                       onNavigateToBranches={() => setWorkspaceTab('branches')}
                       onResolveConflicts={(headBranch, baseBranch) =>
                         void handleResolveConflicts(headBranch, baseBranch)

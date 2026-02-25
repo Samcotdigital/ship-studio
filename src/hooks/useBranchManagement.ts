@@ -164,6 +164,8 @@ export function useBranchManagement({
       setHasUncommittedChanges(false);
       if (currentProject) {
         await fetchBranchInfo(currentProject.path);
+        // Re-assert: fetchBranchInfo may have set stale cached branch data
+        setCurrentBranch(branchName);
       }
       // Refresh preview after Next.js has time to detect file changes and rebuild
       setTimeout(() => previewRef.current?.refresh(), 300);

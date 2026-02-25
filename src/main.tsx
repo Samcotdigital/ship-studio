@@ -23,6 +23,21 @@ import 'overlayscrollbars/overlayscrollbars.css';
 exposeReactGlobals(React, ReactDOM);
 exposePluginContextRef();
 
+// Patch removeChild to handle nodes relocated by OverlayScrollbars.
+// When OS wraps a scrollable element, it moves children into a viewport wrapper.
+// If React then unmounts the parent, it tries to removeChild on the original nodes
+// which are no longer direct children — causing a crash. This patch handles that.
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const origRemoveChild = Node.prototype.removeChild;
+Node.prototype.removeChild = function <T extends Node>(child: T): T {
+  if (child.parentNode !== this) {
+    // Node was relocated (likely by OverlayScrollbars) — remove from actual parent
+    if (child.parentNode) return child.parentNode.removeChild(child);
+    return child;
+  }
+  return origRemoveChild.call(this, child) as T;
+};
+
 // Initialize OverlayScrollbars on scrollable elements.
 // Uses a debounced MutationObserver to catch dynamically added containers.
 // Skips elements with scrollbar-width: none (intentionally hidden scrollbars).
@@ -31,7 +46,8 @@ const OS_OPTS = { scrollbars: { theme: 'os-theme-shipstudio', autoHide: 'move' a
 
 function initScrollbars() {
   document.querySelectorAll<HTMLElement>('*').forEach((el) => {
-    if (el.closest('.modal-overlay, .create-modal-overlay, .health-modal-overlay')) return;
+    if (el.closest('[class*="-modal"], [class*="-overlay"], [class*="-dropdown"]')) return;
+    if (el.matches('.branches-tab, .prs-tab')) return;
     if (el.hasAttribute(OS_ATTR)) return;
     const style = getComputedStyle(el);
     if (style.scrollbarWidth === 'none') return;
