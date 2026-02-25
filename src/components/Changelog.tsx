@@ -24,6 +24,14 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.7',
+    items: [
+      'Custom dark scrollbars with OverlayScrollbars',
+      'Redesigned plugin manager cards with icon previews',
+      'Fixed skills search and installation errors',
+    ],
+  },
+  {
     version: '0.4.6',
     items: [
       'Code browser with syntax highlighting and file tree',
