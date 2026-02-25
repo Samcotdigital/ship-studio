@@ -6,6 +6,13 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.7
+
+- **Custom scrollbars** - Dark themed OverlayScrollbars replace native scrollbars throughout the app
+- **Plugin manager redesign** - Cards now show toolbar icon previews with cleaner layout
+- **Skills fixes** - Fixed search result parsing (install counts no longer duplicated) and installation error handling
+
+
 ## What's New in v0.4.6
 
 - **Code browser** - Browse project files with syntax highlighting and a collapsible file tree
