@@ -379,35 +379,100 @@ fn strip_ansi_codes(s: &str) -> String {
     result
 }
 
-/// Parse a skill entry line: owner/repo@skill-name
+/// Parse a skill entry line: owner/repo@skill-name [<count> installs]
 fn parse_skill_entry(line: &str) -> Option<SkillSearchResult> {
     let line = line.trim();
 
-    // Format: owner/repo@skill-name
-    let at_pos = line.find('@')?;
-    let repo_part = &line[..at_pos]; // owner/repo
-    let skill_name = &line[at_pos + 1..]; // skill-name
+    // The package identifier never contains spaces, so split on first space
+    // to separate "owner/repo@skill-name" from optional "98.5K installs"
+    let (package_str, rest) = match line.find(' ') {
+        Some(idx) => (&line[..idx], Some(line[idx..].trim())),
+        None => (line, None),
+    };
 
-    // Extract owner and repo
-    let slash_pos = repo_part.find('/')?;
-    let _owner = &repo_part[..slash_pos];
-    let _repo = &repo_part[slash_pos + 1..];
+    let at_pos = package_str.find('@')?;
+    let repo_part = &package_str[..at_pos];
+    let skill_name = &package_str[at_pos + 1..];
 
-    // The package identifier for installation is the full string
-    let package = line.to_string();
+    // Validate repo_part has owner/repo format
+    repo_part.find('/')?;
 
-    // Use the skill name as the display name, replacing hyphens with spaces for readability
+    let package = package_str.to_string();
     let name = skill_name.replace('-', " ").replace(':', " - ");
-
-    // Generate a description from the skill name
-    let description = format!("Skill: {skill_name}");
+    let installs = rest.and_then(parse_install_count);
 
     Some(SkillSearchResult {
         name,
         package,
-        description,
-        installs: None,
+        description: String::new(),
+        installs,
     })
+}
+
+/// Extract a clean error message from the skills CLI output.
+///
+/// The skills CLI writes errors to stdout with ANSI codes and box-drawing characters
+/// (■, │, └, ◇, ●, etc.). npm/npx may dump unrelated warnings into stderr.
+/// This function strips formatting and extracts only error-relevant lines.
+fn extract_skills_cli_error(stdout: &str, stderr: &str) -> String {
+    let clean = strip_ansi_codes(stdout);
+
+    // Replace all non-ASCII characters (box-drawing, spinners) with spaces,
+    // then normalize whitespace per line.
+    let error_lines: Vec<String> = clean
+        .lines()
+        .map(|l| {
+            l.chars()
+                .map(|c| if c.is_ascii() { c } else { ' ' })
+                .collect::<String>()
+        })
+        .map(|l| l.trim().to_string())
+        .filter(|l| {
+            !l.is_empty()
+                && (l.contains("Failed")
+                    || l.contains("failed")
+                    || l.contains("Authentication")
+                    || l.contains("Invalid")
+                    || l.contains("No matching")
+                    || l.contains("not found")
+                    || l.contains("Valid agents")
+                    || l.contains("Available skills"))
+        })
+        .collect();
+
+    if !error_lines.is_empty() {
+        return error_lines.join(". ");
+    }
+
+    // Fall back to stderr, filtering out npm warning lines
+    let filtered_stderr: Vec<&str> = stderr
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("npm warn") && !l.trim().is_empty())
+        .collect();
+
+    if !filtered_stderr.is_empty() {
+        return filtered_stderr.join("\n");
+    }
+
+    "Unknown error".to_string()
+}
+
+/// Parse install count strings like "98.5K installs", "1.2M installs", "1234 installs"
+fn parse_install_count(s: &str) -> Option<u64> {
+    let s = s.trim().trim_end_matches("installs").trim();
+    if s.is_empty() {
+        return None;
+    }
+
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('K') {
+        (n, 1_000.0)
+    } else if let Some(n) = s.strip_suffix('M') {
+        (n, 1_000_000.0)
+    } else {
+        (s, 1.0)
+    };
+
+    num_str.parse::<f64>().ok().map(|n| (n * multiplier) as u64)
 }
 
 /// Install a skill using the Skills CLI
@@ -461,13 +526,9 @@ pub async fn install_skill(
         .map_err(|e| format!("Failed to run skills CLI: {e}"))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let details = if stderr.trim().is_empty() {
-            stdout
-        } else {
-            stderr
-        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let details = extract_skills_cli_error(&stdout, &stderr);
         return Err(format!("Failed to install skill: {details}"));
     }
 
@@ -525,13 +586,9 @@ pub async fn remove_skill(
         .map_err(|e| format!("Failed to run skills CLI: {e}"))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let details = if stderr.trim().is_empty() {
-            stdout
-        } else {
-            stderr
-        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let details = extract_skills_cli_error(&stdout, &stderr);
         return Err(format!("Failed to remove skill: {details}"));
     }
 
@@ -553,6 +610,18 @@ mod tests {
             "vercel-labs/agent-skills@vercel-react-best-practices"
         );
         assert_eq!(skill.name, "vercel react best practices");
+        assert_eq!(skill.installs, None);
+    }
+
+    #[test]
+    fn test_parse_skill_entry_with_installs() {
+        let line = "anthropic/skills@frontend-design 98.5K installs";
+        let result = parse_skill_entry(line);
+        assert!(result.is_some());
+        let skill = result.unwrap();
+        assert_eq!(skill.package, "anthropic/skills@frontend-design");
+        assert_eq!(skill.name, "frontend design");
+        assert_eq!(skill.installs, Some(98500));
     }
 
     #[test]
@@ -566,6 +635,45 @@ mod tests {
             "google-labs-code/stitch-skills@react:components"
         );
         assert_eq!(skill.name, "react - components");
+    }
+
+    #[test]
+    fn test_parse_install_count() {
+        assert_eq!(parse_install_count("98.5K installs"), Some(98500));
+        assert_eq!(parse_install_count("1.2M installs"), Some(1200000));
+        assert_eq!(parse_install_count("1234 installs"), Some(1234));
+        assert_eq!(parse_install_count(""), None);
+        assert_eq!(parse_install_count("installs"), None);
+    }
+
+    #[test]
+    fn test_extract_skills_cli_error_from_stdout() {
+        let stdout = "\x1b[38;5;250m███████╗\x1b[0m\n│\n■  Failed to clone repository\n│\n│  Authentication failed for https://github.com/foo/bar.git.\n│\n└  Installation failed\n■  Canceled\n";
+        let stderr = "npm warn Unknown env config \"_jsr-registry\".\n";
+        let result = extract_skills_cli_error(stdout, stderr);
+        assert!(
+            result.contains("Failed to clone repository"),
+            "got: {result}"
+        );
+        assert!(result.contains("Authentication failed"), "got: {result}");
+        assert!(!result.contains("npm warn"), "got: {result}");
+    }
+
+    #[test]
+    fn test_extract_skills_cli_error_invalid_agent() {
+        let stdout = "■  Invalid agents: claude\n●  Valid agents: claude-code, codex\n";
+        let stderr = "";
+        let result = extract_skills_cli_error(stdout, stderr);
+        assert!(result.contains("Invalid agents: claude"), "got: {result}");
+        assert!(result.contains("Valid agents:"), "got: {result}");
+    }
+
+    #[test]
+    fn test_extract_skills_cli_error_filters_npm_warnings() {
+        let stdout = "";
+        let stderr = "npm warn Unknown env config \"_jsr-registry\".\nnpm warn config\n";
+        let result = extract_skills_cli_error(stdout, stderr);
+        assert_eq!(result, "Unknown error");
     }
 
     #[test]

@@ -22,6 +22,13 @@ import { listAgentSkills } from '../lib/claude';
 import { trackEvent, trackSearch } from '../lib/analytics';
 import { logger } from '../lib/logger';
 
+/** Format install count as compact string (e.g., 98500 → "98.5K") */
+function formatInstalls(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M installs`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K installs`;
+  return `${n} installs`;
+}
+
 type Tab = 'installed' | 'add';
 type ScopeFilter = 'all' | 'user' | 'project';
 type InstallScope = 'user' | 'project';
@@ -171,10 +178,9 @@ export function SkillsModal({
       await fetchSkills();
       setActiveTab('installed');
     } catch (err) {
-      logger.error('Failed to install skill', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      setSearchError(err instanceof Error ? err.message : 'Installation failed');
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to install skill', { error: msg });
+      setSearchError(msg);
     } finally {
       setInstallingPackage(null);
     }
@@ -403,7 +409,14 @@ export function SkillsModal({
                         <div className="skills-result-header">
                           <div className="skills-result-info">
                             <div className="skills-result-name">{result.name}</div>
-                            <div className="skills-result-package">{result.package}</div>
+                            <div className="skills-result-package">
+                              {result.package}
+                              {result.installs != null && (
+                                <span className="skills-result-installs">
+                                  {formatInstalls(result.installs)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <button
                             className={`skills-install-btn ${installingPackage === result.package ? 'installing' : ''}`}
@@ -413,11 +426,8 @@ export function SkillsModal({
                             {installingPackage === result.package ? 'Installing...' : 'Install'}
                           </button>
                         </div>
-                        <div className="skills-result-desc">{result.description}</div>
-                        {result.installs != null && (
-                          <div className="skills-result-installs">
-                            {result.installs.toLocaleString()} installs
-                          </div>
+                        {result.description && (
+                          <div className="skills-result-desc">{result.description}</div>
                         )}
                       </div>
                     ))}
