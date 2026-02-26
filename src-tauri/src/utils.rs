@@ -3,6 +3,8 @@
 //! This module contains shared utility functions used across the Ship Studio backend.
 
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 
 /// Creates a `Command` that won't spawn a visible console window on Windows.
 /// On non-Windows platforms, this is identical to `Command::new()`.
@@ -26,11 +28,39 @@ fn get_path_separator() -> &'static str {
     }
 }
 
+/// Cache for `get_extended_path()` — avoids scanning NVM/Claude directories on every call.
+/// TTL of 60 seconds; tools are rarely installed mid-session.
+static EXTENDED_PATH_CACHE: LazyLock<Mutex<Option<(String, Instant)>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+const EXTENDED_PATH_TTL_SECS: u64 = 60;
+
 /// Builds an extended PATH that includes common tool installation locations.
 /// macOS apps launched from Finder don't inherit the user's shell PATH,
 /// so we need to explicitly add Homebrew, npm global, and NVM paths.
 /// On Windows, adds common program installation paths.
+///
+/// Results are cached for 60 seconds to avoid repeated filesystem scanning.
 pub fn get_extended_path() -> String {
+    if let Ok(cache) = EXTENDED_PATH_CACHE.lock() {
+        if let Some((ref cached_path, ref created_at)) = *cache {
+            if created_at.elapsed().as_secs() < EXTENDED_PATH_TTL_SECS {
+                return cached_path.clone();
+            }
+        }
+    }
+
+    let result = build_extended_path();
+
+    if let Ok(mut cache) = EXTENDED_PATH_CACHE.lock() {
+        *cache = Some((result.clone(), Instant::now()));
+    }
+
+    result
+}
+
+/// Computes the extended PATH (uncached). Called by `get_extended_path()`.
+fn build_extended_path() -> String {
     let current_path = std::env::var("PATH").unwrap_or_default();
 
     #[cfg(windows)]
