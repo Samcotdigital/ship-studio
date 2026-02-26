@@ -115,12 +115,41 @@ export function usePreviewConnection({
     }
   }, [projectPath]);
 
-  // Load pages when server is ready and periodically refresh
+  // Load pages when server is ready and periodically refresh (pauses when window hidden)
   useEffect(() => {
     if (!serverReady) return;
-    void loadPages();
-    const interval = setInterval(() => void loadPages(), PAGE_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      void loadPages();
+      interval = setInterval(() => void loadPages(), PAGE_REFRESH_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [serverReady, projectPath, loadPages]);
 
   // Close dropdown when clicking outside
@@ -311,8 +340,37 @@ export function usePreviewConnection({
       }
     };
 
-    const interval = setInterval(() => void healthCheck(), 10000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      interval = setInterval(() => void healthCheck(), 10000);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        void healthCheck();
+        startPolling();
+      }
+    };
+
+    if (!document.hidden) {
+      startPolling();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [serverReady, devServerUrl]);
 
   // Handlers
