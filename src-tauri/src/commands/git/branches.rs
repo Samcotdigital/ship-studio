@@ -6,7 +6,7 @@ use crate::utils::{create_command, validate_project_path};
 use tracing::{debug, error, info, instrument, warn};
 
 use super::{
-    get_ahead_behind, get_current_branch_sync, git_has_any_changes, load_project_metadata,
+    get_ahead_behind_batch, get_current_branch_sync, git_has_any_changes, load_project_metadata,
     save_project_metadata,
 };
 
@@ -35,8 +35,17 @@ pub async fn list_branches(project_path: String) -> Result<Vec<BranchInfo>, Stri
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut branches: Vec<BranchInfo> = Vec::new();
     let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // First pass: collect branch metadata without ahead/behind
+    struct BranchData {
+        name: String,
+        is_current: bool,
+        is_remote: bool,
+        last_commit_date: u64,
+        last_commit_author: String,
+    }
+    let mut branch_data: Vec<BranchData> = Vec::new();
 
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split('|').collect();
@@ -70,24 +79,35 @@ pub async fn list_branches(project_path: String) -> Result<Vec<BranchInfo>, Stri
         }
         seen_names.insert(name.clone());
 
-        let is_current = parts[4].trim() == "*";
-        let commit_date = parts[2].parse::<u64>().unwrap_or(0) * 1000;
-        let author = parts[3].to_string();
-        let is_default = name == "main" || name == "master";
-
-        let (ahead, behind) = get_ahead_behind(&validated_path, &name, "origin/main");
-
-        branches.push(BranchInfo {
+        branch_data.push(BranchData {
             name,
-            is_current,
+            is_current: parts[4].trim() == "*",
             is_remote,
-            is_default,
-            last_commit_date: commit_date,
-            last_commit_author: author,
-            ahead_of_main: ahead,
-            behind_main: behind,
+            last_commit_date: parts[2].parse::<u64>().unwrap_or(0) * 1000,
+            last_commit_author: parts[3].to_string(),
         });
     }
+
+    // Batch ahead/behind in a single subprocess instead of one per branch
+    let branch_names: Vec<&str> = branch_data.iter().map(|b| b.name.as_str()).collect();
+    let ahead_behind = get_ahead_behind_batch(&validated_path, &branch_names, "origin/main");
+
+    let mut branches: Vec<BranchInfo> = branch_data
+        .into_iter()
+        .map(|b| {
+            let (ahead, behind) = ahead_behind.get(&b.name).copied().unwrap_or((0, 0));
+            BranchInfo {
+                is_default: b.name == "main" || b.name == "master",
+                name: b.name,
+                is_current: b.is_current,
+                is_remote: b.is_remote,
+                last_commit_date: b.last_commit_date,
+                last_commit_author: b.last_commit_author,
+                ahead_of_main: ahead,
+                behind_main: behind,
+            }
+        })
+        .collect();
 
     // Sort: current first, then default branches, then by last commit date (newest first)
     branches.sort_by(|a, b| {

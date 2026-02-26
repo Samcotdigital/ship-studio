@@ -127,6 +127,56 @@ pub fn get_ahead_behind(path: &std::path::Path, branch: &str, compare_to: &str) 
     }
 }
 
+/// Batch-calculates ahead/behind for multiple branches in a single subprocess.
+/// Returns a HashMap of branch_name -> (ahead, behind).
+pub fn get_ahead_behind_batch(
+    path: &std::path::Path,
+    branch_names: &[&str],
+    compare_to: &str,
+) -> std::collections::HashMap<String, (i32, i32)> {
+    let mut results = std::collections::HashMap::new();
+
+    if branch_names.is_empty() {
+        return results;
+    }
+
+    // Build a shell script that runs rev-list for each branch in one subprocess
+    let mut script = String::new();
+    for name in branch_names {
+        // Each line outputs: branch_name\tahead\tbehind
+        // If rev-list fails (e.g. branch doesn't exist on remote), output 0\t0
+        script.push_str(&format!(
+            "printf '%s\\t' '{}'; git rev-list --left-right --count '{}...{}' 2>/dev/null || printf '0\\t0'; printf '\\n'; ",
+            name, name, compare_to
+        ));
+    }
+
+    let output = create_command("sh")
+        .args(["-c", &script])
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let name = parts[0].to_string();
+                    let ahead = parts[1].parse().unwrap_or(0);
+                    let behind = parts[2].parse().unwrap_or(0);
+                    results.insert(name, (ahead, behind));
+                }
+            }
+        }
+        _ => {
+            // Fallback: all branches get (0, 0)
+        }
+    }
+
+    results
+}
+
 /// Helper to load project metadata with automatic schema migration
 pub(crate) fn load_project_metadata(
     project_path: &std::path::Path,
