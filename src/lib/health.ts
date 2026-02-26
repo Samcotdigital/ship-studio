@@ -115,14 +115,6 @@ export async function getHealthStatus(projectPath: string): Promise<HealthCheckS
 }
 
 /**
- * Clear all stored health check results for a project.
- * @param projectPath - Absolute path to the project directory
- */
-export async function clearHealthStatus(projectPath: string): Promise<void> {
-  return invoke('clear_health_status', { projectPath });
-}
-
-/**
  * Get the raw package.json contents for a project.
  * @param projectPath - Absolute path to the project directory
  * @returns The package.json file contents as a string

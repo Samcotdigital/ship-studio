@@ -28,9 +28,6 @@ import '@xterm/xterm/css/xterm.css';
 /** Agent status based on terminal title */
 export type AgentStatus = 'thinking' | 'waiting' | 'idle';
 
-/** @deprecated Use AgentStatus instead */
-export type ClaudeStatus = AgentStatus;
-
 /** Props for the Terminal component */
 interface TerminalProps {
   /** Agent configuration to use for this terminal */

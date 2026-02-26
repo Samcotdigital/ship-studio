@@ -17,22 +17,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-/** Window position coordinates */
-export interface WindowPosition {
-  x: number;
-  y: number;
-}
-
-/** Compact mode preferences persisted across sessions */
-export interface CompactModePreferences {
-  /** Last saved window position */
-  position: WindowPosition | null;
-  /** Whether compact mode window should stay on top */
-  alwaysOnTop: boolean;
-  /** Whether the output area is currently expanded */
-  isExpanded: boolean;
-}
-
 /**
  * Enter compact mode - transforms window to minimal floating bar.
  * Removes window decorations, resizes to compact dimensions,
@@ -60,58 +44,6 @@ export async function exitCompactMode(): Promise<void> {
  */
 export async function setAlwaysOnTop(enabled: boolean): Promise<void> {
   return invoke('set_always_on_top', { enabled });
-}
-
-/**
- * Save compact mode window position.
- * Position is automatically restored when entering compact mode.
- *
- * @param x - X coordinate
- * @param y - Y coordinate
- */
-export async function saveCompactPosition(x: number, y: number): Promise<void> {
-  return invoke('save_compact_position', { x, y });
-}
-
-/**
- * Get current compact mode preferences.
- * @returns Saved preferences including position, always-on-top, and expanded state
- */
-export async function getCompactPreferences(): Promise<CompactModePreferences> {
-  return invoke<CompactModePreferences>('get_compact_preferences');
-}
-
-/**
- * Set compact mode expanded state and optionally set height.
- * When expanded, window grows to show terminal output.
- * When collapsed, window shrinks to minimal input bar.
- *
- * @param expanded - Whether to expand the output area
- * @param height - Optional height in pixels (for resizable compact mode)
- */
-export async function setCompactExpanded(expanded: boolean, height?: number): Promise<void> {
-  return invoke('set_compact_expanded', { expanded, height });
-}
-
-/**
- * Get current window position.
- * Useful for tracking position during drag operations.
- *
- * @returns Current window position
- */
-export async function getWindowPosition(): Promise<WindowPosition> {
-  return invoke<WindowPosition>('get_window_position');
-}
-
-/**
- * Set window position.
- * Used for programmatic window positioning.
- *
- * @param x - X coordinate
- * @param y - Y coordinate
- */
-export async function setWindowPosition(x: number, y: number): Promise<void> {
-  return invoke('set_window_position', { x, y });
 }
 
 /**

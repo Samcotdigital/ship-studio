@@ -144,16 +144,6 @@ export async function readPluginBundle(projectPath: string, pluginId: string): P
 }
 
 /**
- * Read a plugin's manifest.
- */
-export async function readPluginManifest(
-  projectPath: string,
-  pluginId: string
-): Promise<PluginManifest> {
-  return invoke<PluginManifest>('read_plugin_manifest', { projectPath, pluginId });
-}
-
-/**
  * Toggle a plugin's enabled/disabled state.
  */
 export async function togglePlugin(

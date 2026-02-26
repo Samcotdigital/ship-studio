@@ -12,7 +12,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 // Re-export from claude.ts for convenience
-export { listClaudeSkills, type ClaudeSkill } from './claude';
+export { listAgentSkills, type AgentSkill } from './claude';
 
 /** Represents a skill search result from the Skills CLI */
 export interface SkillSearchResult {

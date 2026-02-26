@@ -74,17 +74,6 @@ export async function setAnalyticsEnabled(enabled: boolean): Promise<void> {
   }
 }
 
-/**
- * Get the anonymous device ID.
- */
-export async function getDeviceId(): Promise<string> {
-  try {
-    return await invoke<string>('get_device_id_command');
-  } catch {
-    return 'unknown';
-  }
-}
-
 // ============ Error Tracking ============
 
 /**

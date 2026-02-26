@@ -246,9 +246,9 @@ describe('useBranchManagement', () => {
 
       const callCount = vi.mocked(branches.getCurrentBranch).mock.calls.length;
 
-      // After 3 seconds, should poll again
+      // After 10 seconds, should poll again
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3000);
+        await vi.advanceTimersByTimeAsync(10000);
       });
 
       expect(vi.mocked(branches.getCurrentBranch).mock.calls.length).toBeGreaterThan(callCount);

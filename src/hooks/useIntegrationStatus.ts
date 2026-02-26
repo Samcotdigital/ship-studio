@@ -21,7 +21,7 @@ import {
   GitHubCliStatus,
   ProjectGitHubStatus,
 } from '../lib/github';
-import { checkClaudeCliStatus, ClaudeCliStatus } from '../lib/claude';
+import { checkAgentCliStatus, AgentCliStatus } from '../lib/claude';
 import { identifyUser } from '../lib/analytics';
 
 /** Global GitHub CLI and authentication state */
@@ -35,7 +35,7 @@ export interface GitHubState {
 /** Global Claude CLI state */
 export interface ClaudeState {
   /** CLI installation status and version */
-  cliStatus: ClaudeCliStatus;
+  cliStatus: AgentCliStatus;
 }
 
 /** Auth terminal configuration for login flows */
@@ -177,15 +177,12 @@ export function useIntegrationStatus(): UseIntegrationStatusReturn {
   }, []);
 
   const refreshClaudeStatus = useCallback(async () => {
-    const status = await checkClaudeCliStatus();
+    const status = await checkAgentCliStatus();
     dispatch({ type: 'SET_CLAUDE', payload: { cliStatus: status } });
   }, []);
 
   const refreshAllCliStatuses = useCallback(async () => {
-    const [ghStatus, clStatus] = await Promise.all([
-      checkGitHubCliStatus(),
-      checkClaudeCliStatus(),
-    ]);
+    const [ghStatus, clStatus] = await Promise.all([checkGitHubCliStatus(), checkAgentCliStatus()]);
 
     let ghUsername: string | null = null;
     if (ghStatus.authenticated) {

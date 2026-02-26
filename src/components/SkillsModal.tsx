@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { CloseIcon, SearchIcon } from './icons';
 import {
-  type ClaudeSkill,
+  type AgentSkill,
   checkSkillsCli,
   searchSkills,
   installSkill,
@@ -50,7 +50,7 @@ export function SkillsModal({
 }: SkillsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('installed');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
-  const [skills, setSkills] = useState<ClaudeSkill[]>([]);
+  const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [removingSkill, setRemovingSkill] = useState<string | null>(null);
 
@@ -187,7 +187,7 @@ export function SkillsModal({
   };
 
   // Handle remove
-  const handleRemove = async (skill: ClaudeSkill) => {
+  const handleRemove = async (skill: AgentSkill) => {
     const skillKey = `${skill.plugin}-${skill.name}`;
     setRemovingSkill(skillKey);
     try {

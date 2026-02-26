@@ -40,13 +40,30 @@ export function useDevServer() {
   const [healthOutputVersion, setHealthOutputVersion] = useState(0);
   const healthPanelRef = useRef<CodeHealthPanelRef>(null);
 
+  // Throttle refs for output version updates (limit re-renders to ~3/sec)
+  const devServerThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const devServerPendingRef = useRef(false);
+  const healthThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const healthPendingRef = useRef(false);
+
   // Handle health check output
   const handleHealthOutput = useCallback((output: string) => {
     healthOutputRef.current += output;
     if (healthOutputRef.current.length > 100000) {
       healthOutputRef.current = healthOutputRef.current.slice(-100000);
     }
-    setHealthOutputVersion((v) => v + 1);
+    if (!healthThrottleRef.current) {
+      setHealthOutputVersion((v) => v + 1);
+      healthThrottleRef.current = setTimeout(() => {
+        healthThrottleRef.current = null;
+        if (healthPendingRef.current) {
+          healthPendingRef.current = false;
+          setHealthOutputVersion((v) => v + 1);
+        }
+      }, 300);
+    } else {
+      healthPendingRef.current = true;
+    }
   }, []);
 
   // Create the output callback for dev server
@@ -56,7 +73,18 @@ export function useDevServer() {
       if (devServerOutputRef.current.length > 100000) {
         devServerOutputRef.current = devServerOutputRef.current.slice(-100000);
       }
-      setDevServerOutputVersion((v) => v + 1);
+      if (!devServerThrottleRef.current) {
+        setDevServerOutputVersion((v) => v + 1);
+        devServerThrottleRef.current = setTimeout(() => {
+          devServerThrottleRef.current = null;
+          if (devServerPendingRef.current) {
+            devServerPendingRef.current = false;
+            setDevServerOutputVersion((v) => v + 1);
+          }
+        }, 300);
+      } else {
+        devServerPendingRef.current = true;
+      }
     };
   }, []);
 

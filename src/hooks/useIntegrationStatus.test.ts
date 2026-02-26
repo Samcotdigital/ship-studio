@@ -12,7 +12,7 @@ vi.mock('../lib/github', () => ({
 }));
 
 vi.mock('../lib/claude', () => ({
-  checkClaudeCliStatus: vi.fn().mockResolvedValue({ installed: false, version: null }),
+  checkAgentCliStatus: vi.fn().mockResolvedValue({ installed: false, version: null }),
 }));
 
 vi.mock('../lib/analytics', () => ({
@@ -34,7 +34,7 @@ describe('useIntegrationStatus', () => {
       installed: false,
       authenticated: false,
     });
-    vi.mocked(claude.checkClaudeCliStatus).mockResolvedValue({ installed: false, version: null });
+    vi.mocked(claude.checkAgentCliStatus).mockResolvedValue({ installed: false, version: null });
     vi.mocked(github.getGitHubUsername).mockResolvedValue('');
     vi.mocked(github.getProjectGitHubStatus).mockResolvedValue(GITHUB_STATUS_FALLBACK);
     vi.mocked(analytics.identifyUser).mockResolvedValue(undefined);
@@ -111,7 +111,7 @@ describe('useIntegrationStatus', () => {
 
   describe('refreshClaudeStatus', () => {
     it('updates Claude state', async () => {
-      vi.mocked(claude.checkClaudeCliStatus).mockResolvedValue({
+      vi.mocked(claude.checkAgentCliStatus).mockResolvedValue({
         installed: true,
         version: '1.0.0',
       });
@@ -135,7 +135,7 @@ describe('useIntegrationStatus', () => {
         installed: true,
         authenticated: true,
       });
-      vi.mocked(claude.checkClaudeCliStatus).mockResolvedValue({
+      vi.mocked(claude.checkAgentCliStatus).mockResolvedValue({
         installed: true,
         version: '2.0.0',
       });
@@ -158,7 +158,7 @@ describe('useIntegrationStatus', () => {
         installed: true,
         authenticated: true,
       });
-      vi.mocked(claude.checkClaudeCliStatus).mockResolvedValue({ installed: false, version: null });
+      vi.mocked(claude.checkAgentCliStatus).mockResolvedValue({ installed: false, version: null });
       vi.mocked(github.getGitHubUsername).mockResolvedValue('myuser');
 
       const { result } = renderHook(() => useIntegrationStatus());

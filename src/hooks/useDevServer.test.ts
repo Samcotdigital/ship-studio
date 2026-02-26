@@ -54,6 +54,7 @@ describe('useDevServer', () => {
 
   describe('health output buffering', () => {
     it('accumulates health output', () => {
+      vi.useFakeTimers();
       const { result } = renderHook(() => useDevServer());
 
       act(() => {
@@ -66,7 +67,12 @@ describe('useDevServer', () => {
         result.current.handleHealthOutput('line 2\n');
       });
       expect(result.current.healthOutputRef.current).toBe('line 1\nline 2\n');
+      // Second call is throttled — version bumps after the throttle delay
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
       expect(result.current.healthOutputVersion).toBe(2);
+      vi.useRealTimers();
     });
 
     it('truncates health output at 100KB', () => {

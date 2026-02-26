@@ -115,12 +115,13 @@ export function usePreviewConnection({
     }
   }, [projectPath]);
 
-  // Load pages on mount and periodically
+  // Load pages when server is ready and periodically refresh
   useEffect(() => {
+    if (!serverReady) return;
     void loadPages();
     const interval = setInterval(() => void loadPages(), PAGE_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [projectPath, loadPages]);
+  }, [serverReady, projectPath, loadPages]);
 
   // Close dropdown when clicking outside
   const closePageDropdown = useCallback(() => {

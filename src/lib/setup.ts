@@ -37,8 +37,6 @@ const platform = (): string => {
 
 /** Platform detection helpers */
 export const isWindows = () => platform() === 'windows';
-export const isMacOS = () => platform() === 'macos';
-export const isLinux = () => platform() === 'linux';
 
 /** Status of a single setup item */
 export type SetupItemStatus =
@@ -66,7 +64,7 @@ export interface SetupItem {
 }
 
 /** Optional authentication status (GitHub can be skipped during onboarding) */
-export interface OptionalAuths {
+interface OptionalAuths {
   /** Whether GitHub is authenticated */
   githubAuthenticated: boolean;
 }
@@ -99,19 +97,11 @@ export const OPTIONAL_ITEMS = new Set([
 ]);
 
 /** Quick setup check result (fast Tier-1 check) */
-export interface QuickSetupCheck {
+interface QuickSetupCheck {
   /** Whether all binaries and auth files exist */
   allPresent: boolean;
   /** Whether we have a cached setup_complete state */
   setupCompleteCached: boolean;
-}
-
-/** Progress event emitted during installation */
-export interface SetupProgress {
-  /** Item being worked on */
-  itemId: string;
-  /** Human-friendly message */
-  message: string;
 }
 
 /** Dependency graph: which items must be ready before each item can be installed */
@@ -280,7 +270,7 @@ export function mergePluginSetupItems(
 
 export type WizardStepId = 'package-manager' | 'git-github' | 'agent' | 'hosting';
 
-export interface WizardStepDef {
+interface WizardStepDef {
   id: WizardStepId;
   title: string;
   subtitle: string;
@@ -375,34 +365,6 @@ export async function getFullSetupStatus(): Promise<FullSetupStatus> {
 }
 
 /**
- * Install Homebrew.
- */
-export async function installHomebrew(): Promise<void> {
-  return invoke('install_homebrew');
-}
-
-/**
- * Install Node.js via Homebrew.
- */
-export async function installNode(): Promise<void> {
-  return invoke('install_node_via_brew');
-}
-
-/**
- * Install Git via Homebrew.
- */
-export async function installGit(): Promise<void> {
-  return invoke('install_git_via_brew');
-}
-
-/**
- * Install GitHub CLI via Homebrew.
- */
-export async function installGh(): Promise<void> {
-  return invoke('install_gh_via_brew');
-}
-
-/**
  * Start GitHub authentication flow (opens browser).
  * Returns a message to display to the user.
  */
@@ -451,13 +413,6 @@ export async function markSetupComplete(): Promise<void> {
 }
 
 /**
- * Reset setup state (for testing/debugging).
- */
-export async function resetSetupState(): Promise<void> {
-  return invoke('reset_setup_state');
-}
-
-/**
  * Get the default agent ID from persisted AppState.
  * Returns null if not set (falls back to Claude Code).
  */
@@ -479,7 +434,7 @@ export async function setDefaultAgentId(agentId: string): Promise<void> {
  *
  * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh'])
  */
-export async function installBrewPackages(packages: string[]): Promise<void> {
+async function installBrewPackages(packages: string[]): Promise<void> {
   return invoke('install_brew_packages', { packages });
 }
 
@@ -489,7 +444,7 @@ export async function installBrewPackages(packages: string[]): Promise<void> {
  *
  * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh'])
  */
-export async function installWingetPackages(packages: string[]): Promise<void> {
+async function installWingetPackages(packages: string[]): Promise<void> {
   return invoke('install_winget_packages', { packages });
 }
 

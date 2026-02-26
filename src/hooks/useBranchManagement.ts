@@ -8,7 +8,7 @@
  * @module hooks/useBranchManagement
  */
 
-import { useState, useEffect, useCallback, type RefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, type RefObject } from 'react';
 import {
   BranchInfo,
   PullRequestInfo,
@@ -82,6 +82,11 @@ export function useBranchManagement({
     }
   }, []);
 
+  // Use a ref for currentBranch in the polling callback to avoid recreating the
+  // interval every time the branch changes (which tears down and restarts polling).
+  const currentBranchRef = useRef(currentBranch);
+  currentBranchRef.current = currentBranch;
+
   // Check git status (called periodically to sync with CLI changes)
   const checkGitStatus = useCallback(
     async (projectPath: string) => {
@@ -93,7 +98,7 @@ export function useBranchManagement({
         ]);
 
         // Update branch if changed (e.g., user switched via CLI)
-        if (branch && branch !== currentBranch) {
+        if (branch && branch !== currentBranchRef.current) {
           setCurrentBranch(branch);
           // Refresh full branch list when branch changes
           void listBranches(projectPath)
@@ -108,7 +113,7 @@ export function useBranchManagement({
         logger.warn('Error checking git status', { error: e });
       }
     },
-    [currentBranch]
+    [] // stable — reads currentBranch from ref
   );
 
   // Periodically check git status when a project is open and window is focused
@@ -120,10 +125,10 @@ export function useBranchManagement({
     const startPolling = () => {
       // Check immediately when starting/resuming
       void checkGitStatus(currentProject.path);
-      // Then check every 3 seconds
+      // Then check every 10 seconds (reduced from 3s to lower CPU usage)
       interval = setInterval(() => {
         void checkGitStatus(currentProject.path);
-      }, 3000);
+      }, 10000);
     };
 
     const stopPolling = () => {

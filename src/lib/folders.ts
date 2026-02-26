@@ -74,27 +74,6 @@ export async function deleteFolder(folderId: string): Promise<void> {
 }
 
 /**
- * Add a project to a folder.
- * @param folderId - ID of the folder
- * @param projectPath - Absolute path to the project
- */
-export async function addProjectToFolder(folderId: string, projectPath: string): Promise<void> {
-  return invoke('add_project_to_folder', { folderId, projectPath });
-}
-
-/**
- * Remove a project from a folder.
- * @param folderId - ID of the folder
- * @param projectPath - Absolute path to the project
- */
-export async function removeProjectFromFolder(
-  folderId: string,
-  projectPath: string
-): Promise<void> {
-  return invoke('remove_project_from_folder', { folderId, projectPath });
-}
-
-/**
  * Move a project to a folder, or remove from all folders.
  * @param projectPath - Absolute path to the project
  * @param folderId - ID of the target folder, or null to unfile
@@ -104,15 +83,6 @@ export async function moveProjectToFolder(
   folderId: string | null
 ): Promise<void> {
   return invoke('move_project_to_folder', { projectPath, folderId });
-}
-
-/**
- * Get the folder ID for a project.
- * @param projectPath - Absolute path to the project
- * @returns Folder ID if the project is in a folder, null otherwise
- */
-export async function getProjectFolder(projectPath: string): Promise<string | null> {
-  return invoke<string | null>('get_project_folder', { projectPath });
 }
 
 /**

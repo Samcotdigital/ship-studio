@@ -20,9 +20,6 @@ export interface AgentCliStatus {
   version: string | null;
 }
 
-/** @deprecated Use AgentCliStatus instead */
-export type ClaudeCliStatus = AgentCliStatus;
-
 /**
  * Check agent CLI installation status.
  * @returns CLI status with installed flag and version
@@ -30,19 +27,6 @@ export type ClaudeCliStatus = AgentCliStatus;
 export async function checkAgentCliStatus(): Promise<AgentCliStatus> {
   return invoke<AgentCliStatus>('check_claude_cli_status');
 }
-
-/** @deprecated Use checkAgentCliStatus instead */
-export const checkClaudeCliStatus = checkAgentCliStatus;
-
-/**
- * Install the agent CLI globally.
- */
-export async function installAgentCli(): Promise<void> {
-  return invoke('install_claude_cli');
-}
-
-/** @deprecated Use installAgentCli instead */
-export const installClaudeCli = installAgentCli;
 
 /** Represents an agent skill (custom command) */
 export interface AgentSkill {
@@ -56,9 +40,6 @@ export interface AgentSkill {
   scope: string;
 }
 
-/** @deprecated Use AgentSkill instead */
-export type ClaudeSkill = AgentSkill;
-
 /**
  * List available agent skills from installed plugins.
  * @param projectPath - Optional project path to include project-level skills
@@ -71,6 +52,3 @@ export async function listAgentSkills(
 ): Promise<AgentSkill[]> {
   return invoke<AgentSkill[]>('list_claude_skills', { projectPath, agentId });
 }
-
-/** @deprecated Use listAgentSkills instead */
-export const listClaudeSkills = listAgentSkills;

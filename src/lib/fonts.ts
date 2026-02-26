@@ -88,10 +88,3 @@ export async function loadNerdFonts(): Promise<void> {
 
   return fontLoadPromise;
 }
-
-/**
- * Check if Nerd Fonts are available
- */
-export function areFontsLoaded(): boolean {
-  return fontsLoaded || document.fonts.check('12px "JetBrainsMono NF"');
-}

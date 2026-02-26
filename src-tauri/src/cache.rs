@@ -71,6 +71,7 @@ impl GitCache {
     pub fn set_current_branch(&self, project_path: &str, branch: String) {
         if let Ok(mut cache) = self.current_branch.lock() {
             debug!(project = project_path, branch = %branch, "Caching current branch");
+            cache.retain(|_, entry| !entry.is_expired());
             cache.insert(
                 project_path.to_string(),
                 CacheEntry::new(branch, self.branch_ttl),
@@ -98,6 +99,7 @@ impl GitCache {
                 project = project_path,
                 has_changes, "Caching has-changes status"
             );
+            cache.retain(|_, entry| !entry.is_expired());
             cache.insert(
                 project_path.to_string(),
                 CacheEntry::new(has_changes, self.status_ttl),
@@ -126,6 +128,7 @@ impl GitCache {
                 file_count = files.len(),
                 "Caching changed files"
             );
+            cache.retain(|_, entry| !entry.is_expired());
             cache.insert(
                 project_path.to_string(),
                 CacheEntry::new(files, self.status_ttl),

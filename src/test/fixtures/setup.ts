@@ -142,21 +142,6 @@ export const AUTH_ONLY_ITEMS: SetupItem[] = [
   VERCEL_AUTH_MISSING,
 ];
 
-/** Everything except homebrew */
-export const HOMEBREW_MISSING_ITEMS: SetupItem[] = [
-  HOMEBREW_MISSING,
-  NODE_READY,
-  GIT_READY,
-  GH_READY,
-  GH_AUTH_READY,
-  CLAUDE_READY,
-  CLAUDE_AUTH_READY,
-  CODEX_READY,
-  CODEX_AUTH_READY,
-  VERCEL_READY,
-  VERCEL_AUTH_READY,
-];
-
 // ============ FullSetupStatus builders ============
 
 /** Create a FullSetupStatus with sensible defaults and optional overrides */
@@ -195,14 +180,6 @@ export const CODEX_ONLY_STATUS: FullSetupStatus = makeSetupStatus({
   items: ALL_READY_CODEX_ONLY,
   optionalAuths: { githubAuthenticated: true },
   detectedAgents: ['codex'],
-});
-
-/** Convenience: base tools ready but no agents */
-export const NO_AGENTS_STATUS: FullSetupStatus = makeSetupStatus({
-  allReady: false,
-  items: BASE_READY_NO_AGENTS,
-  optionalAuths: { githubAuthenticated: true },
-  detectedAgents: [],
 });
 
 // ============ Wizard-specific fixtures ============

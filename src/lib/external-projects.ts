@@ -24,12 +24,3 @@ export async function registerExternalProject(): Promise<string | null> {
 export async function unregisterExternalProject(path: string): Promise<void> {
   return invoke<void>('unregister_external_project', { path });
 }
-
-/**
- * Check if a project path is an external project.
- * @param path - Absolute path to the project
- * @returns Whether the project is external
- */
-export async function isProjectExternal(path: string): Promise<boolean> {
-  return invoke<boolean>('is_project_external', { path });
-}

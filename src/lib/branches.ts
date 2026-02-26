@@ -141,14 +141,6 @@ export async function createBranch(
 }
 
 /**
- * Fetch all branches from all remotes.
- * @param projectPath - Absolute path to the project directory
- */
-export async function fetchAllBranches(projectPath: string): Promise<void> {
-  return invoke('fetch_all_branches', { projectPath });
-}
-
-/**
  * Publish (push) the current branch to origin.
  * Commits any uncommitted changes before pushing.
  * @param projectPath - Absolute path to the project directory

@@ -53,24 +53,6 @@ export interface DashboardProject {
   is_external: boolean;
 }
 
-/** System prerequisite check result */
-export interface Prerequisite {
-  /** Tool name (e.g., "node", "git", "claude") */
-  name: string;
-  /** Whether the tool is available in PATH */
-  available: boolean;
-  /** Path to the tool executable (or null if not found) */
-  path: string | null;
-}
-
-/**
- * Check if required system tools are installed.
- * @returns Array of prerequisite check results
- */
-export async function checkPrerequisites(): Promise<Prerequisite[]> {
-  return invoke<Prerequisite[]>('check_prerequisites');
-}
-
 /**
  * Get all projects with dashboard metadata.
  * Scans ~/ShipStudio for project folders and enriches with git/deployment info.
