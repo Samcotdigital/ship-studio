@@ -6,6 +6,16 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.9
+
+- **PR confirmation modals** - Pull, merge, and close actions now show confirmation dialogs explaining what will happen
+- **Performance improvements** - Reduced CPU usage with smarter polling, cached PATH resolution, and batched git operations
+- **Background pausing** - Preview health checks and page list polling pause when the window is hidden
+- **Faster branch list** - Branch ahead/behind counts now load in a single operation instead of one per branch
+- **Fixed AI generate button** - "Generating..." state no longer shows the previous button behind it
+- **Removed ~460 lines of dead code** - Cleaned up unused functions and imports
+
+
 ## What's New in v0.4.8
 
 - **PR checkout & close** - Pull and close pull requests directly from the app

@@ -24,6 +24,16 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.9',
+    items: [
+      'Confirmation modals for PR pull, merge, and close actions',
+      'Reduced CPU usage with smarter polling and caching',
+      'Preview polling pauses when window is hidden',
+      'Faster branch list loading (batched git operations)',
+      'Fixed AI generate button overlap during generation',
+    ],
+  },
+  {
     version: '0.4.8',
     items: [
       'Pull & close actions for pull requests',
