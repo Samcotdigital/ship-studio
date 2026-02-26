@@ -70,6 +70,8 @@ export function useCodeHealth({
   const [isAutoRunEnabled, setIsAutoRunEnabled] = useState(false);
   const [autoRunSecondsRemaining, setAutoRunSecondsRemaining] = useState(AUTO_RUN_INTERVAL_SECONDS);
   const autoRunIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoRunTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRunStartRef = useRef<number>(0);
 
   // Helper to emit output to logs
   const emitOutput = useCallback(
@@ -258,19 +260,36 @@ export function useCodeHealth({
     setIsRunningAll(false);
   }, [checkStates, runCheck, emitOutput]);
 
-  // Auto-run timer effect
+  // Auto-run timer effect: uses a setTimeout for the actual trigger
+  // and a 30-second interval to update the countdown display (instead of every 1s)
   useEffect(() => {
     if (isAutoRunEnabled) {
+      autoRunStartRef.current = Date.now();
+      setAutoRunSecondsRemaining(AUTO_RUN_INTERVAL_SECONDS);
+
+      // Schedule the actual check execution
+      const scheduleRun = () => {
+        autoRunTimeoutRef.current = setTimeout(() => {
+          void runAllChecks();
+          // Reset for next cycle
+          autoRunStartRef.current = Date.now();
+          setAutoRunSecondsRemaining(AUTO_RUN_INTERVAL_SECONDS);
+          scheduleRun();
+        }, AUTO_RUN_INTERVAL_SECONDS * 1000);
+      };
+      scheduleRun();
+
+      // Update countdown display every 30 seconds
       autoRunIntervalRef.current = setInterval(() => {
-        setAutoRunSecondsRemaining((prev) => {
-          if (prev <= 1) {
-            void runAllChecks();
-            return AUTO_RUN_INTERVAL_SECONDS;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+        const elapsed = Math.floor((Date.now() - autoRunStartRef.current) / 1000);
+        const remaining = Math.max(0, AUTO_RUN_INTERVAL_SECONDS - elapsed);
+        setAutoRunSecondsRemaining(remaining);
+      }, 30000);
     } else {
+      if (autoRunTimeoutRef.current) {
+        clearTimeout(autoRunTimeoutRef.current);
+        autoRunTimeoutRef.current = null;
+      }
       if (autoRunIntervalRef.current) {
         clearInterval(autoRunIntervalRef.current);
         autoRunIntervalRef.current = null;
@@ -279,6 +298,10 @@ export function useCodeHealth({
     }
 
     return () => {
+      if (autoRunTimeoutRef.current) {
+        clearTimeout(autoRunTimeoutRef.current);
+        autoRunTimeoutRef.current = null;
+      }
       if (autoRunIntervalRef.current) {
         clearInterval(autoRunIntervalRef.current);
         autoRunIntervalRef.current = null;
