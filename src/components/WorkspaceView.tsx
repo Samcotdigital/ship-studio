@@ -603,14 +603,25 @@ export function WorkspaceView({
                         </button>
                       </div>
                     ) : (
-                      <button
-                        className="show-preview-btn"
-                        onClick={openDevCommandModal}
-                        title="Configure a dev server command"
-                      >
-                        <SettingsIcon size={14} />
-                        <span>Dev Server...</span>
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button
+                          className="show-preview-btn"
+                          onClick={openDevCommandModal}
+                          title="Configure a dev server command"
+                        >
+                          <SettingsIcon size={14} />
+                          <span>Dev Server...</span>
+                        </button>
+                        <button
+                          className="show-preview-btn icon-only"
+                          onClick={() => {
+                            /* Phase 2 will wire to settings modal */
+                          }}
+                          title="Project settings"
+                        >
+                          <SettingsIcon size={12} />
+                        </button>
+                      </div>
                     )
                   }
                   toolbarRight={
