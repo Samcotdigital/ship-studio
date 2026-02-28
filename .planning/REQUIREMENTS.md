@@ -7,8 +7,8 @@
 
 ### Toolbar
 
-- [ ] **TOOL-01**: Restart Server button displays only a refresh icon with no text label
-- [ ] **TOOL-02**: Settings cog icon button appears next to the restart button in the toolbar
+- [x] **TOOL-01**: Restart Server button displays only a refresh icon with no text label
+- [x] **TOOL-02**: Settings cog icon button appears next to the restart button in the toolbar
 
 ### Project Settings
 
@@ -36,8 +36,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOOL-01 | Phase 1 | Pending |
-| TOOL-02 | Phase 1 | Pending |
+| TOOL-01 | Phase 1 | Complete |
+| TOOL-02 | Phase 1 | Complete |
 | SETS-01 | Phase 2 | Pending |
 | SETS-02 | Phase 2 | Pending |
 | SETS-03 | Phase 2 | Pending |
