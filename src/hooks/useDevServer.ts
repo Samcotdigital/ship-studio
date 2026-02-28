@@ -204,8 +204,10 @@ export function useDevServer() {
 
   // Restart dev server
   const handleRestartDevServer = useCallback(
-    async (projectPath: string) => {
+    async (projectPath: string, portOverride?: number) => {
       setIsRestartingDevServer(true);
+
+      const effectivePort = portOverride ?? devServerPort;
 
       const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
         return Promise.race([
@@ -229,7 +231,7 @@ export function useDevServer() {
         devServerRef.current = await withTimeout(
           startDevServer(
             projectPath,
-            devServerPort,
+            effectivePort,
             getWindowLabel(),
             createOutputHandler(),
             customCmd
@@ -258,7 +260,7 @@ export function useDevServer() {
           setDevServerPort(newPort);
         } else {
           try {
-            await withTimeout(invoke('kill_port', { port: devServerPort }), 5000, undefined);
+            await withTimeout(invoke('kill_port', { port: effectivePort }), 5000, undefined);
           } catch {
             // Ignore if nothing to kill
           }

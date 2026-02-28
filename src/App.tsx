@@ -24,6 +24,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
 import { usePlugins } from './hooks/usePlugins';
@@ -236,6 +237,9 @@ function App({ initialProjectPath }: AppProps) {
     showDevCommandModal,
     openDevCommandModal,
     closeDevCommandModal,
+    showProjectSettings,
+    openProjectSettings,
+    closeProjectSettings,
   } = useWorkspaceModals({ focusActiveTerminal });
 
   // Toast notifications
@@ -334,6 +338,20 @@ function App({ initialProjectPath }: AppProps) {
     clearBranchState,
     checkPluginSuggestion,
   });
+
+  // Save port handler: persist, update state, close modal, restart dev server
+  const handleSavePort = async (newPort: number) => {
+    if (!currentProject) return;
+    try {
+      await invoke('set_dev_server_port', { projectPath: currentProject.path, port: newPort });
+      setDevServerPort(newPort);
+      closeProjectSettings();
+      await restartDevServer(currentProject.path, newPort);
+      showToast('Port updated and server restarted', 'success');
+    } catch {
+      showToast('Failed to save port setting', 'error');
+    }
+  };
 
   // Wrapper for compact mode that also clears education mode (UI state stays in App)
   const handleEnterCompactMode = async () => {
@@ -602,6 +620,9 @@ function App({ initialProjectPath }: AppProps) {
         showDevCommandModal,
         openDevCommandModal,
         closeDevCommandModal,
+        showProjectSettings,
+        openProjectSettings,
+        closeProjectSettings,
       }}
       toasts={{ toasts, showToast, dismissToast }}
       branchMgmt={{
@@ -647,6 +668,7 @@ function App({ initialProjectPath }: AppProps) {
         handleSaveDevCommand: (cmd: string | null) => {
           if (currentProject) void saveCustomDevCommand(currentProject.path, cmd);
         },
+        handleSavePort: (port: number) => void handleSavePort(port),
       }}
       pluginProject={pluginProject}
       pluginActions={pluginActions}

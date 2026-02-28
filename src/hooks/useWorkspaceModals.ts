@@ -14,6 +14,7 @@ export function useWorkspaceModals({ focusActiveTerminal }: UseWorkspaceModalsPa
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showDevCommandModal, setShowDevCommandModal] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
 
   // Open handlers
   const openEnvEditor = useCallback(() => setShowEnvEditor(true), []);
@@ -24,6 +25,7 @@ export function useWorkspaceModals({ focusActiveTerminal }: UseWorkspaceModalsPa
   const openMcpModal = useCallback(() => setShowMcpModal(true), []);
   const openPluginManager = useCallback(() => setShowPluginManager(true), []);
   const openDevCommandModal = useCallback(() => setShowDevCommandModal(true), []);
+  const openProjectSettings = useCallback(() => setShowProjectSettings(true), []);
 
   // Close handlers — some refocus the terminal, matching existing App.tsx behavior
   const closeEnvEditor = useCallback(() => {
@@ -48,6 +50,10 @@ export function useWorkspaceModals({ focusActiveTerminal }: UseWorkspaceModalsPa
   const closePluginManager = useCallback(() => setShowPluginManager(false), []);
   const closeDevCommandModal = useCallback(() => {
     setShowDevCommandModal(false);
+    focusActiveTerminal();
+  }, [focusActiveTerminal]);
+  const closeProjectSettings = useCallback(() => {
+    setShowProjectSettings(false);
     focusActiveTerminal();
   }, [focusActiveTerminal]);
 
@@ -79,5 +85,8 @@ export function useWorkspaceModals({ focusActiveTerminal }: UseWorkspaceModalsPa
     showDevCommandModal,
     openDevCommandModal,
     closeDevCommandModal,
+    showProjectSettings,
+    openProjectSettings,
+    closeProjectSettings,
   };
 }

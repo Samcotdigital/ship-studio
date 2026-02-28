@@ -199,6 +199,9 @@ interface ModalProps {
   showDevCommandModal: boolean;
   openDevCommandModal: () => void;
   closeDevCommandModal: () => void;
+  showProjectSettings: boolean;
+  openProjectSettings: () => void;
+  closeProjectSettings: () => void;
 }
 
 interface ToastProps {
@@ -267,6 +270,7 @@ interface LifecycleProps {
   handleToolbarAutoAcceptToggle: () => void;
   handleAutoAcceptWarningAccept: () => void;
   handleSaveDevCommand: (command: string | null) => void;
+  handleSavePort: (port: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -580,7 +584,7 @@ export function WorkspaceView({
                           {isRestartingDevServer ? (
                             <div className="capture-spinner" />
                           ) : (
-                            <ResetIcon size={14} />
+                            <ResetIcon size={12} />
                           )}
                         </button>
                         {!isWebProject && (
@@ -594,9 +598,7 @@ export function WorkspaceView({
                         )}
                         <button
                           className="show-preview-btn icon-only"
-                          onClick={() => {
-                            /* Phase 2 will wire to settings modal */
-                          }}
+                          onClick={() => modals.openProjectSettings()}
                           title="Project settings"
                         >
                           <SettingsIcon size={12} />
@@ -614,9 +616,7 @@ export function WorkspaceView({
                         </button>
                         <button
                           className="show-preview-btn icon-only"
-                          onClick={() => {
-                            /* Phase 2 will wire to settings modal */
-                          }}
+                          onClick={() => modals.openProjectSettings()}
                           title="Project settings"
                         >
                           <SettingsIcon size={12} />
@@ -1253,6 +1253,10 @@ export function WorkspaceView({
           customDevCommand={customDevCommand}
           onSaveDevCommand={handleSaveDevCommand}
           onCloseDevCommandModal={closeDevCommandModal}
+          showProjectSettings={modals.showProjectSettings}
+          devServerPort={devServerPort}
+          onSavePort={lifecycle.handleSavePort}
+          onCloseProjectSettings={modals.closeProjectSettings}
           pluginTerminal={pluginTerminal}
           pluginTerminalExited={pluginTerminalExited}
           onClosePluginTerminal={closePluginTerminal}

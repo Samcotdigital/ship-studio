@@ -49,7 +49,7 @@ export interface UseProjectLifecycleParams {
     windowLabel: string
   ) => Promise<ProjectType>;
   stopServer: () => Promise<void>;
-  restartDevServer: (projectPath: string) => Promise<void>;
+  restartDevServer: (projectPath: string, portOverride?: number) => Promise<void>;
   enterCompact: (port: number) => Promise<void>;
   // Terminal
   resetTerminals: () => void;
@@ -255,13 +255,30 @@ export function useProjectLifecycle({
       `[OpenProject] Step 3: Kill PTY and cleanup orphaned processes - ${Math.round(performance.now() - stepStart)}ms`
     );
 
+    // Load saved dev server port preference
+    stepStart = performance.now();
+    let preferredPort = PREFERRED_DEV_SERVER_PORT;
+    try {
+      const savedPort = await invoke<number | null>('get_dev_server_port', {
+        projectPath: project.path,
+      });
+      if (savedPort && savedPort >= 1 && savedPort <= 65535) {
+        preferredPort = savedPort;
+      }
+    } catch {
+      // Fall back to default — metadata might not exist yet
+    }
+    logger.info(
+      `[OpenProject] Step 4a: Load saved port preference (${preferredPort}) - ${Math.round(performance.now() - stepStart)}ms`
+    );
+
     // Find and reserve an available port for this window (prevents race conditions in multi-window)
     stepStart = performance.now();
-    let port = PREFERRED_DEV_SERVER_PORT;
+    let port = preferredPort;
     try {
       // Release any previously reserved port for this window before getting a new one
       await releaseReservedPort().catch(() => {});
-      port = await findAndReservePort(PREFERRED_DEV_SERVER_PORT);
+      port = await findAndReservePort(preferredPort);
     } catch (error) {
       logger.error('Failed to find and reserve port, using default', { error });
     }

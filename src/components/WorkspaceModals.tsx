@@ -21,6 +21,7 @@ import { SkillsModal } from './SkillsModal';
 import { McpModal } from './McpModal';
 import { PluginManager } from './PluginManager';
 import { DevCommandModal } from './DevCommandModal';
+import { ProjectSettingsModal } from './ProjectSettingsModal';
 import { GitErrorHandler } from './GitErrorHandler';
 import { SubmitReviewModal } from './SubmitReviewModal';
 import { ConflictResolutionModal } from './ConflictResolutionModal';
@@ -140,6 +141,12 @@ export interface WorkspaceModalsProps {
   onSaveDevCommand: (command: string | null) => void;
   onCloseDevCommandModal: () => void;
 
+  // Project settings
+  showProjectSettings: boolean;
+  devServerPort: number;
+  onSavePort: (port: number) => void;
+  onCloseProjectSettings: () => void;
+
   // Plugin terminal
   pluginTerminal: { command: string; args: string[]; title: string } | null;
   pluginTerminalExited: boolean;
@@ -212,6 +219,10 @@ export function WorkspaceModals({
   customDevCommand,
   onSaveDevCommand,
   onCloseDevCommandModal,
+  showProjectSettings,
+  devServerPort,
+  onSavePort,
+  onCloseProjectSettings,
   pluginTerminal,
   pluginTerminalExited,
   onClosePluginTerminal,
@@ -454,6 +465,15 @@ export function WorkspaceModals({
           currentCommand={customDevCommand}
           onSave={onSaveDevCommand}
           onClose={onCloseDevCommandModal}
+        />
+      )}
+
+      {/* Project Settings Modal */}
+      {showProjectSettings && (
+        <ProjectSettingsModal
+          currentPort={devServerPort}
+          onSave={onSavePort}
+          onClose={onCloseProjectSettings}
         />
       )}
 
