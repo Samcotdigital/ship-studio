@@ -25,7 +25,8 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. The Restart Server button shows only the refresh icon with no text label visible
   2. A settings cog icon button appears next to the restart button in the toolbar
   3. The settings cog button follows the existing `.toolbar-icon-btn` visual style
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 01-01-PLAN.md — Icon-only restart button and settings cog in terminal toolbar
 
 ### Phase 2: Project Settings
 **Goal**: Users can open a settings modal and configure their dev server port per-project
@@ -46,5 +47,5 @@ Phases execute in numeric order: 1 → 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Toolbar Cleanup | 0/TBD | Not started | - |
+| 1. Toolbar Cleanup | 0/1 | Not started | - |
 | 2. Project Settings | 0/TBD | Not started | - |
