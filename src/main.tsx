@@ -45,13 +45,19 @@ Node.prototype.removeChild = function <T extends Node>(child: T): T {
 const OS_ATTR = 'data-os-init';
 const OS_OPTS = { scrollbars: { theme: 'os-theme-shipstudio', autoHide: 'move' as const } };
 
-// Elements that should never get OverlayScrollbars (use CSS class matching)
+// Elements that should never get OverlayScrollbars (use CSS class matching).
+// Includes containers that hide native scrollbars via scrollbar-width: none /
+// ::-webkit-scrollbar { display: none } — the getComputedStyle check for
+// scrollbarWidth can fail in WKWebView, so we explicitly list them here.
 const OS_SKIP_SELECTOR = [
   '[class*="-modal"]',
   '[class*="-overlay"]',
   '[class*="-dropdown"]',
   '.branches-tab',
   '.prs-tab',
+  '.dashboard-with-changelog',
+  '.dashboard-scroll-container',
+  '.changelog-list',
 ].join(', ');
 
 function initScrollbars() {
