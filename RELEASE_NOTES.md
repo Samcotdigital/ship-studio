@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.11
+
+- **Performance** - Major reduction in CPU and energy usage via React memoization, background git fetch, and polling optimizations
+- **Instant feedback** - Branch changes from Claude Code now reflected in UI within seconds
+- **Resource leaks** - Fixed leaked timers, event listeners, and file watcher threads in long-running sessions
+- **UI** - Prevent Create Repo button text wrapping
+
+
 ## What's New in v0.4.10
 
 - **Project Settings modal** - New settings modal accessible via the cog icon in the toolbar for configuring dev server port and command
