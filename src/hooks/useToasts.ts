@@ -11,7 +11,7 @@
  * @module hooks/useToasts
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 /** Toast notification type */
 export type ToastType = 'success' | 'error' | 'info';
@@ -60,6 +60,16 @@ const TOAST_DURATION_MS = 4000;
 export function useToasts(): UseToastsReturn {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
+  const timerMap = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+
+  // Clear all toast timers on unmount
+  useEffect(() => {
+    const map = timerMap.current;
+    return () => {
+      map.forEach(clearTimeout);
+      map.clear();
+    };
+  }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     const id = ++toastIdRef.current;
@@ -69,12 +79,19 @@ export function useToasts(): UseToastsReturn {
       return updated.slice(-MAX_TOASTS);
     });
     // Auto-dismiss after timeout
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timerMap.current.delete(id);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, TOAST_DURATION_MS);
+    timerMap.current.set(id, timer);
   }, []);
 
   const dismissToast = useCallback((id: number) => {
+    const timer = timerMap.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timerMap.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 

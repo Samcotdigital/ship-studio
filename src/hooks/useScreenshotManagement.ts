@@ -5,7 +5,7 @@
  * screenshot preview, periodic thumbnail capture, and retry logic.
  */
 
-import { useState, useRef, useCallback, type RefObject } from 'react';
+import { useState, useRef, useCallback, useEffect, type RefObject } from 'react';
 import type { PreviewHandle } from '../components/Preview';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../lib/logger';
@@ -201,6 +201,37 @@ export function useScreenshotManagement({
     }
     captureSessionIdRef.current++;
   }, []);
+
+  // Pause screenshot interval when window is backgrounded, resume when visible
+  const pausedProjectPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Pause: remember which project was being captured, then clear
+        if (screenshotIntervalRef.current) {
+          pausedProjectPathRef.current = currentProjectPathRef.current;
+          clearInterval(screenshotIntervalRef.current);
+          screenshotIntervalRef.current = null;
+        }
+      } else {
+        // Resume: restart interval if we had one paused
+        const projectPath = pausedProjectPathRef.current;
+        if (projectPath && currentProjectPathRef.current === projectPath) {
+          pausedProjectPathRef.current = null;
+          screenshotIntervalRef.current = setInterval(() => {
+            if (currentProjectPathRef.current === projectPath) {
+              void captureScreenshot(projectPath, captureSessionIdRef.current);
+            }
+          }, SCREENSHOT_INTERVAL_MS);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [captureScreenshot, currentProjectPathRef]);
 
   return {
     // State

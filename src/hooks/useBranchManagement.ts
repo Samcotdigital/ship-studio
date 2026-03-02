@@ -87,6 +87,9 @@ export function useBranchManagement({
   const currentBranchRef = useRef(currentBranch);
   currentBranchRef.current = currentBranch;
 
+  // Track branch-switch timeouts so they can be cancelled on unmount or re-switch
+  const branchSwitchTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   // Check git status (called periodically to sync with CLI changes)
   const checkGitStatus = useCallback(
     async (projectPath: string) => {
@@ -160,6 +163,13 @@ export function useBranchManagement({
     };
   }, [currentProject?.path, checkGitStatus]);
 
+  // Clear branch-switch timers on unmount
+  useEffect(() => {
+    return () => {
+      branchSwitchTimers.current.forEach(clearTimeout);
+    };
+  }, []);
+
   // Handle branch switch
   const handleBranchSwitch = useCallback(
     async (branchName: string) => {
@@ -172,17 +182,21 @@ export function useBranchManagement({
         // Re-assert: fetchBranchInfo may have set stale cached branch data
         setCurrentBranch(branchName);
       }
+      // Clear any pending timers from a previous branch switch
+      branchSwitchTimers.current.forEach(clearTimeout);
       // Refresh preview after Next.js has time to detect file changes and rebuild
-      setTimeout(() => previewRef.current?.refresh(), 300);
-      setTimeout(() => {
-        previewRef.current?.refresh();
-        setIsBranchSwitching(false);
-      }, 2500);
-      // Run health checks after branch switch (give files time to settle)
-      setTimeout(() => {
-        void healthPanelRef.current?.refreshScripts();
-        void healthPanelRef.current?.runAllChecks();
-      }, 1000);
+      branchSwitchTimers.current = [
+        setTimeout(() => previewRef.current?.refresh(), 300),
+        setTimeout(() => {
+          previewRef.current?.refresh();
+          setIsBranchSwitching(false);
+        }, 2500),
+        // Run health checks after branch switch (give files time to settle)
+        setTimeout(() => {
+          void healthPanelRef.current?.refreshScripts();
+          void healthPanelRef.current?.runAllChecks();
+        }, 1000),
+      ];
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- previewRef and healthPanelRef are stable refs
     [currentProject, fetchBranchInfo]

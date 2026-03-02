@@ -23,6 +23,7 @@ class Logger {
   private maxBuffer = 50;
   private flushInterval: ReturnType<typeof setInterval> | null = null;
   private isInitialized = false;
+  private beforeUnloadHandler: (() => void) | null = null;
 
   /**
    * Initialize the logger and start periodic flushing
@@ -40,9 +41,10 @@ class Logger {
     }, 10000);
 
     // Flush on page unload
-    window.addEventListener('beforeunload', () => {
+    this.beforeUnloadHandler = () => {
       void this.flush();
-    });
+    };
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
 
     this.info('Frontend logger initialized');
   }
@@ -51,6 +53,10 @@ class Logger {
    * Clean up the logger
    */
   destroy() {
+    if (this.beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+      this.beforeUnloadHandler = null;
+    }
     if (this.flushInterval) {
       clearInterval(this.flushInterval);
       this.flushInterval = null;

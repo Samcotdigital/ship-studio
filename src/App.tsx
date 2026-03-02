@@ -23,7 +23,7 @@
  * @module App
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
@@ -340,18 +340,21 @@ function App({ initialProjectPath }: AppProps) {
   });
 
   // Save port handler: persist, update state, close modal, restart dev server
-  const handleSavePort = async (newPort: number) => {
-    if (!currentProject) return;
-    try {
-      await invoke('set_dev_server_port', { projectPath: currentProject.path, port: newPort });
-      setDevServerPort(newPort);
-      closeProjectSettings();
-      await restartDevServer(currentProject.path, newPort);
-      showToast('Port updated and server restarted', 'success');
-    } catch {
-      showToast('Failed to save port setting', 'error');
-    }
-  };
+  const handleSavePort = useCallback(
+    async (newPort: number) => {
+      if (!currentProject) return;
+      try {
+        await invoke('set_dev_server_port', { projectPath: currentProject.path, port: newPort });
+        setDevServerPort(newPort);
+        closeProjectSettings();
+        await restartDevServer(currentProject.path, newPort);
+        showToast('Port updated and server restarted', 'success');
+      } catch {
+        showToast('Failed to save port setting', 'error');
+      }
+    },
+    [currentProject, restartDevServer, showToast, closeProjectSettings, setDevServerPort]
+  );
 
   // Wrapper for compact mode that also clears education mode (UI state stays in App)
   const handleEnterCompactMode = async () => {
@@ -433,6 +436,387 @@ function App({ initialProjectPath }: AppProps) {
     []
   );
 
+  // Memoized prop groups for WorkspaceView to prevent cascade re-renders
+  // (Must be before early returns to maintain consistent hook call order)
+  const terminalProps = useMemo(
+    () => ({
+      terminalTabs,
+      activeTerminalTab,
+      terminalSessionId,
+      terminalRefsMap,
+      maxTerminalTabs,
+      setActiveTerminalTab,
+      addTerminalTab,
+      closeTerminalTab,
+      focusActiveTerminal,
+      switchTabAgent,
+      getActiveTabAgent,
+    }),
+    [
+      terminalTabs,
+      activeTerminalTab,
+      terminalSessionId,
+      terminalRefsMap,
+      maxTerminalTabs,
+      setActiveTerminalTab,
+      addTerminalTab,
+      closeTerminalTab,
+      focusActiveTerminal,
+      switchTabAgent,
+      getActiveTabAgent,
+    ]
+  );
+
+  const devServerProps = useMemo(
+    () => ({
+      hasDevServer: !!devServerRef.current,
+      healthPanelRef,
+      devServerPort,
+      projectType,
+      isRestartingDevServer,
+      customDevCommand,
+      devServerOutput: devServerOutputRef.current,
+      devServerOutputVersion,
+      healthOutput: healthOutputRef.current,
+      healthOutputVersion,
+      handleHealthOutput,
+    }),
+    [
+      devServerPort,
+      projectType,
+      isRestartingDevServer,
+      customDevCommand,
+      devServerOutputVersion,
+      healthOutputVersion,
+      handleHealthOutput,
+      healthPanelRef,
+    ]
+  );
+
+  const notificationsProps = useMemo(
+    () => ({
+      notificationSettings,
+      showNotificationSettings,
+      setShowNotificationSettings,
+      attentionTabs,
+      setAttentionTabs,
+      createTabStatusHandler,
+      handleSaveNotificationSettings,
+    }),
+    [
+      notificationSettings,
+      showNotificationSettings,
+      setShowNotificationSettings,
+      attentionTabs,
+      setAttentionTabs,
+      createTabStatusHandler,
+      handleSaveNotificationSettings,
+    ]
+  );
+
+  const memoizedHandleAuthTerminalExit = useCallback(
+    (exitCode: number | null, projectPath?: string) =>
+      void handleAuthTerminalExit(exitCode, projectPath),
+    [handleAuthTerminalExit]
+  );
+
+  const integrationStatusProps = useMemo(
+    () => ({
+      integrations,
+      handleGitHubConnect: handleGitHubConnectFromOverlay,
+      authTerminalConfig,
+      closeAuthTerminal,
+      handleAuthTerminalExit: memoizedHandleAuthTerminalExit,
+    }),
+    [
+      integrations,
+      handleGitHubConnectFromOverlay,
+      authTerminalConfig,
+      closeAuthTerminal,
+      memoizedHandleAuthTerminalExit,
+    ]
+  );
+
+  const screenshotsProps = useMemo(
+    () => ({
+      isCapturing,
+      isCropMode,
+      setIsCropMode,
+      isCropCapturing,
+      isFullPageCapturing,
+      screenshotPreviewPath,
+      setScreenshotPreviewPath,
+      showScreenshotModal,
+      setShowScreenshotModal,
+      handleCaptureScreenshot,
+      handleCaptureFullPage,
+      handleCropStart,
+      handleCropComplete,
+      handleCropCancel,
+    }),
+    [
+      isCapturing,
+      isCropMode,
+      setIsCropMode,
+      isCropCapturing,
+      isFullPageCapturing,
+      screenshotPreviewPath,
+      setScreenshotPreviewPath,
+      showScreenshotModal,
+      setShowScreenshotModal,
+      handleCaptureScreenshot,
+      handleCaptureFullPage,
+      handleCropStart,
+      handleCropComplete,
+      handleCropCancel,
+    ]
+  );
+
+  const layoutProps = useMemo(
+    () => ({
+      showDevServerLogs,
+      setShowDevServerLogs,
+      showHealthLogs,
+      setShowHealthLogs,
+      isPreviewHidden,
+      setIsPreviewHidden,
+      workspaceTab,
+      setWorkspaceTab,
+      compactView,
+      setCompactView,
+      isPinned,
+      handlePinToggle,
+      handleExpandToFull,
+    }),
+    [
+      showDevServerLogs,
+      setShowDevServerLogs,
+      showHealthLogs,
+      setShowHealthLogs,
+      isPreviewHidden,
+      setIsPreviewHidden,
+      workspaceTab,
+      setWorkspaceTab,
+      compactView,
+      setCompactView,
+      isPinned,
+      handlePinToggle,
+      handleExpandToFull,
+    ]
+  );
+
+  const pluginStateProps = useMemo(
+    () => ({
+      pluginTerminal,
+      pluginTerminalExited,
+      closePluginTerminal,
+      handlePluginTerminalExit,
+      pluginSuggestion,
+      setPluginSuggestion,
+      pluginSuggestionInstalling,
+      installSuggestedPlugin,
+    }),
+    [
+      pluginTerminal,
+      pluginTerminalExited,
+      closePluginTerminal,
+      handlePluginTerminalExit,
+      pluginSuggestion,
+      setPluginSuggestion,
+      pluginSuggestionInstalling,
+      installSuggestedPlugin,
+    ]
+  );
+
+  const modalsProps = useMemo(
+    () => ({
+      showEnvEditor,
+      openEnvEditor,
+      closeEnvEditor,
+      showBackupsModal,
+      openBackupsModal,
+      closeBackupsModal,
+      showAssetsPanel,
+      openAssetsPanel,
+      closeAssetsPanel,
+      isEducationMode,
+      setIsEducationMode,
+      closeEducation,
+      showHelpModal,
+      openHelpModal,
+      closeHelpModal,
+      showSkillsModal,
+      openSkillsModal,
+      closeSkillsModal,
+      showMcpModal,
+      openMcpModal,
+      closeMcpModal,
+      showPluginManager,
+      openPluginManager,
+      closePluginManager,
+      showDevCommandModal,
+      openDevCommandModal,
+      closeDevCommandModal,
+      showProjectSettings,
+      openProjectSettings,
+      closeProjectSettings,
+    }),
+    [
+      showEnvEditor,
+      openEnvEditor,
+      closeEnvEditor,
+      showBackupsModal,
+      openBackupsModal,
+      closeBackupsModal,
+      showAssetsPanel,
+      openAssetsPanel,
+      closeAssetsPanel,
+      isEducationMode,
+      setIsEducationMode,
+      closeEducation,
+      showHelpModal,
+      openHelpModal,
+      closeHelpModal,
+      showSkillsModal,
+      openSkillsModal,
+      closeSkillsModal,
+      showMcpModal,
+      openMcpModal,
+      closeMcpModal,
+      showPluginManager,
+      openPluginManager,
+      closePluginManager,
+      showDevCommandModal,
+      openDevCommandModal,
+      closeDevCommandModal,
+      showProjectSettings,
+      openProjectSettings,
+      closeProjectSettings,
+    ]
+  );
+
+  const toastsProps = useMemo(
+    () => ({
+      toasts,
+      showToast,
+      dismissToast,
+    }),
+    [toasts, showToast, dismissToast]
+  );
+
+  const branchMgmtProps = useMemo(
+    () => ({
+      currentBranch,
+      branches,
+      openPRs,
+      hasUncommittedChanges,
+      changedFiles,
+      showSubmitReview,
+      setShowSubmitReview,
+      isBranchSwitching,
+      gitError,
+      setGitError,
+      showConflictResolution,
+      setShowConflictResolution,
+      fetchBranchInfo,
+      checkGitStatus,
+      handleBranchSwitch,
+      handlePublishError,
+      handleResolveConflicts,
+      handleConflictsResolved,
+    }),
+    [
+      currentBranch,
+      branches,
+      openPRs,
+      hasUncommittedChanges,
+      changedFiles,
+      showSubmitReview,
+      setShowSubmitReview,
+      isBranchSwitching,
+      gitError,
+      setGitError,
+      showConflictResolution,
+      setShowConflictResolution,
+      fetchBranchInfo,
+      checkGitStatus,
+      handleBranchSwitch,
+      handlePublishError,
+      handleResolveConflicts,
+      handleConflictsResolved,
+    ]
+  );
+
+  const pluginsProps = useMemo(
+    () => ({
+      loadedPlugins,
+      getSlotPlugins,
+      reloadPlugins,
+    }),
+    [loadedPlugins, getSlotPlugins, reloadPlugins]
+  );
+
+  const handleSaveDevCommand = useCallback(
+    (cmd: string | null) => {
+      if (currentProject) void saveCustomDevCommand(currentProject.path, cmd);
+    },
+    [currentProject, saveCustomDevCommand]
+  );
+
+  const handleSavePortCallback = useCallback(
+    (port: number) => {
+      void handleSavePort(port);
+    },
+    [handleSavePort]
+  );
+
+  const lifecycleProps = useMemo(
+    () => ({
+      autoAcceptMode,
+      setCurrentPreviewPage,
+      isPublishing,
+      setIsPublishing,
+      forcePublishOpen,
+      setForcePublishOpen,
+      isCompactPublishOpen,
+      setIsCompactPublishOpen,
+      showAutoAcceptWarning,
+      setShowAutoAcceptWarning,
+      handleBackToProjects,
+      handleRestartDevServer,
+      handleGitHubStatusChange,
+      handlePreviewReady,
+      sendToClaude,
+      handleTerminalExit,
+      handleToolbarAutoAcceptToggle,
+      handleAutoAcceptWarningAccept,
+      handleSaveDevCommand,
+      handleSavePort: handleSavePortCallback,
+    }),
+    [
+      autoAcceptMode,
+      setCurrentPreviewPage,
+      isPublishing,
+      setIsPublishing,
+      forcePublishOpen,
+      setForcePublishOpen,
+      isCompactPublishOpen,
+      setIsCompactPublishOpen,
+      showAutoAcceptWarning,
+      setShowAutoAcceptWarning,
+      handleBackToProjects,
+      handleRestartDevServer,
+      handleGitHubStatusChange,
+      handlePreviewReady,
+      sendToClaude,
+      handleTerminalExit,
+      handleToolbarAutoAcceptToggle,
+      handleAutoAcceptWarningAccept,
+      handleSaveDevCommand,
+      handleSavePortCallback,
+    ]
+  );
+
   if (view === 'loading') {
     return (
       <div className="app loading">
@@ -508,168 +892,18 @@ function App({ initialProjectPath }: AppProps) {
     <WorkspaceView
       currentProject={currentProject!}
       previewRef={previewRef}
-      terminal={{
-        terminalTabs,
-        activeTerminalTab,
-        terminalSessionId,
-        terminalRefsMap,
-        maxTerminalTabs,
-        setActiveTerminalTab,
-        addTerminalTab,
-        closeTerminalTab,
-        focusActiveTerminal,
-        switchTabAgent,
-        getActiveTabAgent,
-      }}
-      devServer={{
-        hasDevServer: !!devServerRef.current,
-        healthPanelRef,
-        devServerPort,
-        projectType,
-        isRestartingDevServer,
-        customDevCommand,
-        devServerOutput: devServerOutputRef.current,
-        devServerOutputVersion,
-        healthOutput: healthOutputRef.current,
-        healthOutputVersion,
-        handleHealthOutput,
-      }}
-      notifications={{
-        notificationSettings,
-        showNotificationSettings,
-        setShowNotificationSettings,
-        attentionTabs,
-        setAttentionTabs,
-        createTabStatusHandler,
-        handleSaveNotificationSettings,
-      }}
-      integrationStatus={{
-        integrations,
-        handleGitHubConnect: handleGitHubConnectFromOverlay,
-        authTerminalConfig,
-        closeAuthTerminal,
-        handleAuthTerminalExit: (exitCode: number | null, projectPath?: string) =>
-          void handleAuthTerminalExit(exitCode, projectPath),
-      }}
-      screenshots={{
-        isCapturing,
-        isCropMode,
-        setIsCropMode,
-        isCropCapturing,
-        isFullPageCapturing,
-        screenshotPreviewPath,
-        setScreenshotPreviewPath,
-        showScreenshotModal,
-        setShowScreenshotModal,
-        handleCaptureScreenshot,
-        handleCaptureFullPage,
-        handleCropStart,
-        handleCropComplete,
-        handleCropCancel,
-      }}
-      layout={{
-        showDevServerLogs,
-        setShowDevServerLogs,
-        showHealthLogs,
-        setShowHealthLogs,
-        isPreviewHidden,
-        setIsPreviewHidden,
-        workspaceTab,
-        setWorkspaceTab,
-        compactView,
-        setCompactView,
-        isPinned,
-        handlePinToggle,
-        handleExpandToFull,
-      }}
-      pluginState={{
-        pluginTerminal,
-        pluginTerminalExited,
-        closePluginTerminal,
-        handlePluginTerminalExit,
-        pluginSuggestion,
-        setPluginSuggestion,
-        pluginSuggestionInstalling,
-        installSuggestedPlugin,
-      }}
-      modals={{
-        showEnvEditor,
-        openEnvEditor,
-        closeEnvEditor,
-        showBackupsModal,
-        openBackupsModal,
-        closeBackupsModal,
-        showAssetsPanel,
-        openAssetsPanel,
-        closeAssetsPanel,
-        isEducationMode,
-        setIsEducationMode,
-        closeEducation,
-        showHelpModal,
-        openHelpModal,
-        closeHelpModal,
-        showSkillsModal,
-        openSkillsModal,
-        closeSkillsModal,
-        showMcpModal,
-        openMcpModal,
-        closeMcpModal,
-        showPluginManager,
-        openPluginManager,
-        closePluginManager,
-        showDevCommandModal,
-        openDevCommandModal,
-        closeDevCommandModal,
-        showProjectSettings,
-        openProjectSettings,
-        closeProjectSettings,
-      }}
-      toasts={{ toasts, showToast, dismissToast }}
-      branchMgmt={{
-        currentBranch,
-        branches,
-        openPRs,
-        hasUncommittedChanges,
-        changedFiles,
-        showSubmitReview,
-        setShowSubmitReview,
-        isBranchSwitching,
-        gitError,
-        setGitError,
-        showConflictResolution,
-        setShowConflictResolution,
-        fetchBranchInfo,
-        checkGitStatus,
-        handleBranchSwitch,
-        handlePublishError,
-        handleResolveConflicts,
-        handleConflictsResolved,
-      }}
-      plugins={{ loadedPlugins, getSlotPlugins, reloadPlugins }}
-      lifecycle={{
-        autoAcceptMode,
-        setCurrentPreviewPage,
-        isPublishing,
-        setIsPublishing,
-        forcePublishOpen,
-        setForcePublishOpen,
-        isCompactPublishOpen,
-        setIsCompactPublishOpen,
-        showAutoAcceptWarning,
-        setShowAutoAcceptWarning,
-        handleBackToProjects,
-        handleRestartDevServer,
-        handleGitHubStatusChange,
-        handlePreviewReady,
-        sendToClaude,
-        handleTerminalExit,
-        handleToolbarAutoAcceptToggle,
-        handleAutoAcceptWarningAccept,
-        handleSaveDevCommand: (cmd: string | null) => {
-          if (currentProject) void saveCustomDevCommand(currentProject.path, cmd);
-        },
-        handleSavePort: (port: number) => void handleSavePort(port),
-      }}
+      terminal={terminalProps}
+      devServer={devServerProps}
+      notifications={notificationsProps}
+      integrationStatus={integrationStatusProps}
+      screenshots={screenshotsProps}
+      layout={layoutProps}
+      pluginState={pluginStateProps}
+      modals={modalsProps}
+      toasts={toastsProps}
+      branchMgmt={branchMgmtProps}
+      plugins={pluginsProps}
+      lifecycle={lifecycleProps}
       pluginProject={pluginProject}
       pluginActions={pluginActions}
       pluginTheme={pluginTheme}

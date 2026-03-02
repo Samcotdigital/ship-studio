@@ -226,9 +226,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Track terminal focus state for dimming overlay
     // xterm.js doesn't have onBlur/onFocus - use the underlying textarea
     const textarea = container.querySelector('textarea');
+    const onTextareaFocus = () => setIsFocused(true);
+    const onTextareaBlur = () => setIsFocused(false);
     if (textarea) {
-      textarea.addEventListener('focus', () => setIsFocused(true));
-      textarea.addEventListener('blur', () => setIsFocused(false));
+      textarea.addEventListener('focus', onTextareaFocus);
+      textarea.addEventListener('blur', onTextareaBlur);
     }
 
     // Listen for terminal title changes to detect agent's status
@@ -454,6 +456,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     return () => {
       mounted = false;
       resizeObserver.disconnect();
+      if (textarea) {
+        textarea.removeEventListener('focus', onTextareaFocus);
+        textarea.removeEventListener('blur', onTextareaBlur);
+      }
       cleanup();
     };
   }, [isReady, projectPath, cleanup, autoAcceptMode, agent]);

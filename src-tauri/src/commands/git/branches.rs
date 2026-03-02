@@ -3,7 +3,18 @@
 use crate::cache::GIT_CACHE;
 use crate::types::{BranchInfo, SwitchResult};
 use crate::utils::{create_command, validate_project_path};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, instrument, warn};
+
+/// Tracks the last time `git fetch` was run per project path.
+/// Prevents redundant network I/O when the frontend polls `list_branches` frequently.
+static LAST_FETCH: LazyLock<Mutex<HashMap<String, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Minimum interval between git fetch calls for the same project.
+const FETCH_THROTTLE: Duration = Duration::from_secs(30);
 
 use super::{
     get_ahead_behind_batch, get_current_branch_sync, git_has_any_changes, load_project_metadata,
@@ -17,11 +28,26 @@ pub async fn list_branches(project_path: String) -> Result<Vec<BranchInfo>, Stri
     let validated_path = validate_project_path(&project_path)?;
     debug!("Listing branches");
 
-    // Fetch all remotes first
-    let _ = create_command("git")
-        .args(["fetch", "--all", "--prune"])
-        .current_dir(&validated_path)
-        .output();
+    // Fetch all remotes in background (throttled to avoid redundant network I/O).
+    // Non-blocking: branch listing proceeds immediately with local data.
+    // Fetched remote data is available on the next list_branches call.
+    let should_fetch = LAST_FETCH.lock().map_or(true, |map| {
+        map.get(&project_path)
+            .map_or(true, |t| t.elapsed() > FETCH_THROTTLE)
+    });
+    if should_fetch {
+        // Mark as fetched immediately to prevent duplicate spawns
+        if let Ok(mut map) = LAST_FETCH.lock() {
+            map.insert(project_path.clone(), Instant::now());
+        }
+        let fetch_path = validated_path.clone();
+        std::thread::spawn(move || {
+            let _ = create_command("git")
+                .args(["fetch", "--all", "--prune"])
+                .current_dir(&fetch_path)
+                .output();
+        });
+    }
 
     // Get all branches (local and remote)
     let output = create_command("git")
@@ -308,6 +334,9 @@ pub async fn switch_branch(
 
     // Invalidate all caches after branch switch
     GIT_CACHE.invalidate(&project_path);
+    if let Ok(mut map) = LAST_FETCH.lock() {
+        map.remove(&project_path);
+    }
 
     info!(
         stashed_changes = stashed,
@@ -396,6 +425,9 @@ pub async fn create_branch(
 
     // Invalidate branch cache after creating a new branch
     GIT_CACHE.invalidate(&project_path);
+    if let Ok(mut map) = LAST_FETCH.lock() {
+        map.remove(&project_path);
+    }
 
     info!("Branch created successfully");
     Ok(())
@@ -461,6 +493,12 @@ pub async fn delete_branch(
                 return Err(format!("Failed to delete remote branch: {stderr}"));
             }
         }
+    }
+
+    // Invalidate caches so next list_branches gets fresh data
+    GIT_CACHE.invalidate(&project_path);
+    if let Ok(mut map) = LAST_FETCH.lock() {
+        map.remove(&project_path);
     }
 
     info!("Branch deleted successfully");

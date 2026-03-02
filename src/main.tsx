@@ -64,11 +64,21 @@ function initScrollbars() {
 requestAnimationFrame(() => {
   initScrollbars();
 
+  // Disconnect previous observer if HMR reload
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+  const prevObserver = (window as any).__scrollbarObserver;
+  if (prevObserver instanceof MutationObserver) {
+    prevObserver.disconnect();
+  }
+
   let timer: number;
-  new MutationObserver(() => {
+  const observer = new MutationObserver(() => {
     clearTimeout(timer);
     timer = window.setTimeout(initScrollbars, 150);
-  }).observe(document.body, { childList: true, subtree: true });
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+  (window as any).__scrollbarObserver = observer;
+  observer.observe(document.body, { childList: true, subtree: true });
 });
 
 // Parse project path from URL if present (for project windows)

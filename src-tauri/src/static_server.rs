@@ -18,7 +18,8 @@ use notify::{EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tokio::net::TcpListener;
@@ -254,6 +255,10 @@ fn start_file_watcher(
     // Use an mpsc channel to bridge notify's sync callback to our async context
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<()>(16);
 
+    // Shared flag to signal the watcher thread to stop
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let stop_flag = should_stop.clone();
+
     // Create the watcher on a std thread (notify uses sync callbacks)
     let watch_path = project_path.clone();
     std::thread::spawn(move || {
@@ -293,16 +298,18 @@ fn start_file_watcher(
             watch_path.display()
         );
 
-        // Keep the watcher alive until shutdown signal
-        // We use a simple loop with park since the watcher thread needs to stay alive
+        // Keep the watcher alive until shutdown flag is set
         loop {
             std::thread::park_timeout(Duration::from_secs(1));
-            // Check if the shutdown channel has been dropped (sender side dropped = we should stop)
-            // We can't directly check a oneshot from a std thread, so we rely on the
-            // tokio task below to drop the watcher by letting this thread end.
-            // For now, the thread lives until the process exits or the watcher is dropped.
-            // The actual shutdown is handled by dropping the watcher when the mpsc sender is dropped.
+            if stop_flag.load(Ordering::Relaxed) {
+                tracing::info!(
+                    "[FileWatcher] Watcher thread exiting for {}",
+                    watch_path.display()
+                );
+                break;
+            }
         }
+        // watcher is dropped here, cleaning up OS resources
     });
 
     // Spawn a tokio task to receive events and emit Tauri events with debouncing
@@ -334,6 +341,7 @@ fn start_file_watcher(
                 }
                 _ = &mut shutdown_rx => {
                     tracing::info!("[FileWatcher] Shutting down for '{}'", label_clone);
+                    should_stop.store(true, Ordering::Relaxed);
                     break;
                 }
             }

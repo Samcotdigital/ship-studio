@@ -10,7 +10,7 @@
  * @module components/WorkspaceView
  */
 
-import type { RefObject } from 'react';
+import { memo, type RefObject } from 'react';
 import { Terminal } from './Terminal';
 import { DevServerLogs } from './DevServerLogs';
 import { Preview } from './Preview';
@@ -321,7 +321,7 @@ export interface WorkspaceViewProps {
   handleEnterCompactMode: () => Promise<void>;
 }
 
-export function WorkspaceView({
+export const WorkspaceView = memo(function WorkspaceView({
   currentProject,
   previewRef,
   terminal,
@@ -1256,4 +1256,4 @@ export function WorkspaceView({
       </div>
     </>
   );
-}
+});

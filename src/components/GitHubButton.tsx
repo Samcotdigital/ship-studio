@@ -161,7 +161,7 @@ export function GitHubButton({
         title="Create GitHub repository"
       >
         <GitHubIcon />
-        Create Repo
+        <span style={{ whiteSpace: 'nowrap' }}>Create Repo</span>
       </button>
 
       {/* Create Repo Modal */}

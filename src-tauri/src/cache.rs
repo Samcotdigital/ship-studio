@@ -49,7 +49,7 @@ impl GitCache {
             current_branch: Mutex::new(HashMap::new()),
             has_changes: Mutex::new(HashMap::new()),
             changed_files: Mutex::new(HashMap::new()),
-            branch_ttl: Duration::from_secs(30),
+            branch_ttl: Duration::from_secs(5),
             status_ttl: Duration::from_secs(5),
         }
     }
