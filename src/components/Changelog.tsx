@@ -24,6 +24,13 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.13',
+    items: [
+      'Fixed 100% CPU spike when navigating back from workspace',
+      'Replaced broad CSS transitions with specific properties for better performance',
+    ],
+  },
+  {
     version: '0.4.12',
     items: [
       'Fixed scrollbar engine causing 100% CPU on the dashboard',
