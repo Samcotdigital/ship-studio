@@ -14,6 +14,8 @@ pub enum ProjectType {
     Sveltekit,
     Astro,
     Nuxt,
+    /// Vite-based project (React, Vue, etc. without a meta-framework)
+    Vite,
     /// Plain HTML/CSS/JS project (no framework, no package.json required)
     Statichtml,
     /// Has package.json but isn't a recognized web framework (Tauri, CLI tools, etc.)

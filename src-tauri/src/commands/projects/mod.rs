@@ -346,6 +346,7 @@ pub async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
             detection::sort_pages(&mut pages);
             Ok(pages)
         }
+        ProjectType::Vite => Ok(Vec::new()),
         _ => {
             // Default to Next.js app router
             let app_dir = project.join("app");

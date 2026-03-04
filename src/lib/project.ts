@@ -261,7 +261,7 @@ export async function startDevServer(
   const fullPath = await invoke<string>('get_shell_path');
 
   let command = 'npm';
-  let args: string[] = ['run', 'dev'];
+  let args: string[] = ['run', 'dev', '--', '--port', port.toString()];
 
   if (customCommand) {
     // Custom command provided — split into command + args, bypass package.json parsing
@@ -310,7 +310,8 @@ export async function startDevServer(
         logger.warn('[DevServer] No dev script found in package.json, using npm run dev');
       }
     } catch (e) {
-      // Fall back to npm run dev if we can't parse package.json
+      // Fall back to npm run dev with port forwarded via -- --port
+      // This handles external projects where readTextFile is blocked by Tauri scope
       trackError('devserver_package_json', e, 'Workspace');
       const errorMessage = e instanceof Error ? e.message : String(e);
       logger.error('[DevServer] Failed to read/parse package.json, falling back to npm run dev', {

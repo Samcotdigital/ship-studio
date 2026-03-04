@@ -72,6 +72,29 @@ pub(crate) fn is_nuxt_project(project_path: &std::path::Path) -> bool {
     false
 }
 
+/// Detect if this is a Vite project (plain Vite, not a meta-framework that uses Vite)
+pub(crate) fn is_vite_project(project_path: &std::path::Path) -> bool {
+    // Check for vite.config.{ts,js,mjs}
+    if project_path.join("vite.config.ts").exists()
+        || project_path.join("vite.config.js").exists()
+        || project_path.join("vite.config.mjs").exists()
+    {
+        return true;
+    }
+
+    // Check package.json for "vite" in dependencies or devDependencies
+    let pkg_path = project_path.join("package.json");
+    if pkg_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if contents.contains("\"vite\"") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Check if a directory contains HTML files in its root
 pub fn has_html_files(project_path: &std::path::Path) -> bool {
     if let Ok(entries) = std::fs::read_dir(project_path) {
@@ -123,6 +146,11 @@ pub fn detect_project_type(project_path: &std::path::Path) -> ProjectType {
     }
     if is_nextjs_project(project_path) {
         return ProjectType::Nextjs;
+    }
+
+    // Check for Vite (after frameworks, since Next/Svelte/Astro/Nuxt may use Vite internally)
+    if is_vite_project(project_path) {
+        return ProjectType::Vite;
     }
 
     // Has package.json but no recognized web framework
