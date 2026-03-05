@@ -379,7 +379,8 @@ export function ProjectList({
     void trackEvent('project_moved_to_folder', { $screen_name: 'Dashboard' });
     setMoveProject(null);
     setMoveProjectFolderId(null);
-    await loadAll();
+    // Refresh data without showing the full loading spinner
+    await Promise.all([loadProjects(), loadFolders()]);
   };
 
   const handleOpenMoveModal = async (project: DashboardProject) => {

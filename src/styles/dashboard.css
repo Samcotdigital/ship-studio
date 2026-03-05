@@ -952,6 +952,68 @@
   font-size: 13px;
 }
 
+.move-folder-new-btn {
+  border-style: dashed !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+.move-folder-new-btn:hover:not(:disabled) {
+  color: var(--text-primary) !important;
+  border-color: var(--text-secondary) !important;
+}
+
+.move-folder-create-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+
+.move-folder-create-input svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.move-folder-create-input input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 0;
+}
+
+.move-folder-create-input input::placeholder {
+  color: var(--text-muted);
+}
+
+.move-folder-create-confirm {
+  padding: 4px 12px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.move-folder-create-confirm:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.move-folder-create-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ============ Form Styles for Folder Modal ============ */
 
 .form-group {
