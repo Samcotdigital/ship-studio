@@ -474,23 +474,33 @@ pub async fn cleanup_orphaned_processes() -> Result<(), String> {
 pub async fn kill_port(port: u32) -> Result<(), String> {
     #[cfg(unix)]
     {
-        // Use lsof to find the PID listening on the port, then kill it
-        let output = create_command("lsof")
-            .args(["-ti", &format!(":{port}")])
-            .output()
-            .map_err(|e| e.to_string())?;
+        // Use lsof to find the PID listening on the port, then kill it.
+        // -n: skip DNS lookups, -P: skip port name lookups (both speed up macOS significantly)
+        // Wrap in a timeout to prevent hanging when processes are in transitional states.
+        let lsof_result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(3),
+            tokio::task::spawn_blocking(move || {
+                std::process::Command::new("lsof")
+                    .args(["-nPti", &format!(":{port}")])
+                    .output()
+            }),
+        )
+        .await;
 
-        if output.status.success() {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid in pids.lines() {
-                if let Ok(pid_num) = pid.trim().parse::<i32>() {
-                    // Kill the process and its children
-                    let _ = create_command("kill")
-                        .args(["-9", &pid_num.to_string()])
-                        .output();
+        if let Ok(Ok(Ok(output))) = lsof_result {
+            if output.status.success() {
+                let pids = String::from_utf8_lossy(&output.stdout);
+                for pid in pids.lines() {
+                    if let Ok(pid_num) = pid.trim().parse::<i32>() {
+                        // Kill the process and its children
+                        let _ = create_command("kill")
+                            .args(["-9", &pid_num.to_string()])
+                            .output();
+                    }
                 }
             }
         }
+        // If lsof timed out or failed, proceed anyway — port may already be free
     }
 
     #[cfg(not(unix))]
