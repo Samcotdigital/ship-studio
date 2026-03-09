@@ -24,6 +24,10 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.14',
+    items: ['Fixed rapid project switching causing app to hang', 'Faster port cleanup on macOS'],
+  },
+  {
     version: '0.4.13',
     items: [
       'Fixed 100% CPU spike when navigating back from workspace',
