@@ -7,7 +7,7 @@
  * @module components/PluginSlot
  */
 
-import { Component, type ReactNode, useState } from 'react';
+import { Component, type ReactNode, useState, useRef, useEffect, type ComponentType } from 'react';
 import {
   PluginContext,
   exposePluginContext,
@@ -196,6 +196,74 @@ function buildContext(
   };
 }
 
+/**
+ * Safely renders a plugin component inside a container div.
+ *
+ * Some plugins bundle their own React, causing hook errors that escape
+ * React error boundaries entirely. This wrapper catches those by:
+ * 1. Rendering the plugin component inside an isolated container
+ * 2. Listening for error events that originate from plugin blob: URLs
+ * 3. Replacing crashed plugin content with an inline error indicator
+ */
+function SafePluginWrapper({
+  Component: PluginComponent,
+  pluginId,
+  pluginName,
+  compact,
+}: {
+  Component: ComponentType;
+  pluginId: string;
+  pluginName: string;
+  compact: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [caughtError, setCaughtError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    function handleError(event: ErrorEvent) {
+      // Only intercept errors from plugin blob: URLs
+      if (!event.filename?.startsWith('blob:')) return;
+
+      // Check if this error is within our plugin's container
+      // (blob URLs don't include plugin IDs, so catch all blob errors
+      // and rely on the error boundary for per-plugin attribution)
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      console.error(`Plugin "${pluginId}" error caught by safety wrapper:`, event.error);
+      setCaughtError(event.error instanceof Error ? event.error : new Error(event.message));
+    }
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, [pluginId]);
+
+  if (caughtError) {
+    if (compact) {
+      return (
+        <span
+          className="plugin-error-indicator"
+          title={`${pluginName} crashed: ${caughtError.message}`}
+        >
+          !
+        </span>
+      );
+    }
+    return (
+      <PluginErrorFallback
+        pluginName={pluginName}
+        error={caughtError}
+        onRetry={() => setCaughtError(null)}
+      />
+    );
+  }
+
+  return (
+    <div ref={containerRef} style={{ display: 'contents' }}>
+      <PluginComponent />
+    </div>
+  );
+}
+
 export function PluginSlot({ name, plugins, project, actions, theme }: PluginSlotProps) {
   if (plugins.length === 0) return null;
 
@@ -220,14 +288,21 @@ export function PluginSlot({ name, plugins, project, actions, theme }: PluginSlo
         // Legacy single-global write for v0 compat (last-writer-wins)
         exposePluginContext(ctx);
 
+        const compact = name === 'toolbar' || name === 'preview';
+
         return (
           <PluginContext.Provider key={plugin.info.manifest.id} value={ctx}>
             <PluginErrorBoundary
               pluginId={plugin.info.manifest.id}
               pluginName={plugin.info.manifest.name}
-              compact={name === 'toolbar' || name === 'preview'}
+              compact={compact}
             >
-              <SlotComponent />
+              <SafePluginWrapper
+                Component={SlotComponent}
+                pluginId={plugin.info.manifest.id}
+                pluginName={plugin.info.manifest.name}
+                compact={compact}
+              />
             </PluginErrorBoundary>
           </PluginContext.Provider>
         );

@@ -23,6 +23,27 @@ import 'overlayscrollbars/overlayscrollbars.css';
 exposeReactGlobals(React, ReactDOM);
 exposePluginContextRef();
 
+// Global safety net: catch unhandled errors from plugin blob: URLs.
+// Plugins that bundle their own React can throw errors that escape React error
+// boundaries entirely. This prevents those from crashing the whole app.
+window.addEventListener('error', (event) => {
+  if (event.filename?.startsWith('blob:')) {
+    event.preventDefault();
+    console.error(
+      '[Ship Studio] Plugin error caught by global handler:',
+      event.error || event.message
+    );
+  }
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason: unknown = event.reason;
+  const stack = reason instanceof Error ? reason.stack || '' : String(reason);
+  if (stack.includes('blob:')) {
+    event.preventDefault();
+    console.error('[Ship Studio] Plugin unhandled rejection caught by global handler:', reason);
+  }
+});
+
 // Patch removeChild to handle nodes relocated by OverlayScrollbars.
 // When OS wraps a scrollable element, it moves children into a viewport wrapper.
 // If React then unmounts the parent, it tries to removeChild on the original nodes
