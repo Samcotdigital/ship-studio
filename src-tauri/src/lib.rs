@@ -187,6 +187,8 @@ pub fn run() {
             commands::projects::set_custom_dev_command,
             commands::projects::get_dev_server_port,
             commands::projects::set_dev_server_port,
+            commands::projects::get_terminal_state,
+            commands::projects::set_terminal_state,
             commands::projects::extract_template_zip,
             commands::projects::export_project_as_template,
             commands::projects::open_project_in_new_window,
@@ -347,6 +349,7 @@ pub fn run() {
             commands::external_projects::register_external_project,
             commands::external_projects::unregister_external_project,
             commands::external_projects::is_project_external,
+            commands::external_projects::ensure_external_project_registered,
             // Folders
             commands::folders::list_folders,
             commands::folders::create_folder,
