@@ -38,6 +38,8 @@ import type { IntegrationState } from '../hooks/useIntegrationStatus';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 import type { PluginThemeData } from '../contexts/PluginContext';
 
+const HOSTING_PLUGIN_IDS = ['vercel', 'cloudflare', 'netlify'];
+
 export interface WorkspaceHeaderProps {
   // Project
   projectPath: string;
@@ -147,7 +149,6 @@ export function WorkspaceHeader({
   }, []);
 
   // Split toolbar plugins: hosting plugins (vercel, etc.) go on the right side
-  const HOSTING_PLUGIN_IDS = ['vercel', 'cloudflare', 'netlify'];
   const toolbarPlugins = useMemo(() => {
     const all = getSlotPlugins('toolbar');
     return {
