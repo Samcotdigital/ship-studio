@@ -20,10 +20,12 @@ pub mod static_server;
 pub mod types;
 pub mod utils;
 
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 #[cfg(target_os = "macos")]
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 
 #[cfg(unix)]
 use std::process::Command;
@@ -101,11 +103,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(|_app| {
             // Build a custom menu on macOS that replaces Cmd+W (Close Window)
             // with a custom "Close Tab" action that emits an event to the frontend
             #[cfg(target_os = "macos")]
             {
+                let app = _app;
                 let close_tab = MenuItemBuilder::with_id("close_tab", "Close Tab")
                     .accelerator("CmdOrCtrl+W")
                     .build(app)?;

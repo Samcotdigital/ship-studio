@@ -53,14 +53,21 @@ pub async fn open_project_in_new_window(
     );
 
     // Create the window
-    WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App(url.into()))
+    let mut builder = WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App(url.into()))
         .title(format!("{project_name} - Ship Studio"))
         .inner_size(1400.0, 900.0)
         .min_inner_size(400.0, 300.0)
         .resizable(true)
-        .transparent(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
+        .transparent(true);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    builder
         .build()
         .map_err(|e| format!("Failed to create window: {e}"))?;
 
