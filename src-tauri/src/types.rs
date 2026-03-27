@@ -691,6 +691,9 @@ pub struct AppState {
     /// Whether the GitHub contribution calendar is hidden on the dashboard
     #[serde(skip_serializing_if = "Option::is_none")]
     pub calendar_hidden: Option<bool>,
+    /// Whether the Slack community CTA banner is hidden on the dashboard
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slack_cta_hidden: Option<bool>,
 }
 
 // ============ Compact Mode ============

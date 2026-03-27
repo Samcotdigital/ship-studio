@@ -14,7 +14,8 @@
  * @module components/WorkspaceHeader
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GitHubButton } from './GitHubButton';
 import { checkIdeAvailability, openInIde as launchIde, openInFinder } from '../lib/ide';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
@@ -129,6 +130,32 @@ export function WorkspaceHeader({
   pluginActions,
   pluginTheme,
 }: WorkspaceHeaderProps) {
+  // Window dragging — start native drag on mousedown in empty header space
+  const handleDrag = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) return;
+    e.preventDefault();
+    void getCurrentWindow().startDragging();
+  }, []);
+
+  // Double-click to toggle maximize (native title bar behavior)
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) return;
+    const win = getCurrentWindow();
+    void win.isMaximized().then((maximized) => {
+      void (maximized ? win.unmaximize() : win.maximize());
+    });
+  }, []);
+
+  // Split toolbar plugins: hosting plugins (vercel, etc.) go on the right side
+  const HOSTING_PLUGIN_IDS = ['vercel', 'cloudflare', 'netlify'];
+  const toolbarPlugins = useMemo(() => {
+    const all = getSlotPlugins('toolbar');
+    return {
+      regular: all.filter((p) => !HOSTING_PLUGIN_IDS.includes(p.info.manifest.id)),
+      hosting: all.filter((p) => HOSTING_PLUGIN_IDS.includes(p.info.manifest.id)),
+    };
+  }, [getSlotPlugins]);
+
   // Bug report modal state
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
 
@@ -165,145 +192,168 @@ export function WorkspaceHeader({
   };
 
   return (
-    <header className="workspace-header">
-      <button className="back-button" onClick={onBackToProjects}>
-        ← Projects
-      </button>
-      <h1>{projectName}</h1>
-      <button
-        className="project-path"
-        onClick={() => projectPath && void openInFinder(projectPath)}
-        title="Open in Finder"
+    <>
+      <div
+        className="workspace-titlebar"
+        onMouseDown={handleDrag}
+        onDoubleClick={handleDoubleClick}
       >
-        {projectPath}
-      </button>
-
-      <div className="workspace-header-actions">
-        <PluginSlot
-          name="toolbar"
-          plugins={getSlotPlugins('toolbar')}
-          project={pluginProject}
-          actions={pluginActions}
-          theme={pluginTheme}
-        />
-        <button
-          className={`toolbar-icon-btn ${isEducationMode ? 'active' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleEducationMode();
-          }}
-          title="Education Mode"
-          data-education-id="education-button"
-        >
-          <GraduationCapIcon size={14} />
+        <button className="back-link" onClick={onBackToProjects}>
+          ← Projects
         </button>
+        <h1>{projectName}</h1>
         <button
-          className="toolbar-icon-btn"
-          onClick={onOpenPluginManager}
-          title="Manage Plugins"
-          data-education-id="plugin-manager"
+          className="project-path"
+          onClick={() => projectPath && void openInFinder(projectPath)}
+          title="Open in Finder"
         >
-          <PuzzleIcon size={14} />
+          {projectPath}
         </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={onOpenAssetsPanel}
-          title="Assets"
-          data-education-id="assets-button"
-        >
-          <ImageIcon size={14} />
-        </button>
-        <div
-          className="ide-dropdown-container"
-          onMouseEnter={() => setShowIdeDropdown(true)}
-          onMouseLeave={() => setShowIdeDropdown(false)}
-          data-education-id="ide-button"
-        >
-          <button className="toolbar-icon-btn" title="Open in IDE">
-            <CodeIcon size={14} />
+      </div>
+      <header
+        className="workspace-header"
+        onMouseDown={handleDrag}
+        onDoubleClick={handleDoubleClick}
+      >
+        {/* Left side — utility buttons + plugin toolbar slots */}
+        <div className="workspace-header-left">
+          <button
+            className="toolbar-icon-btn"
+            onClick={onOpenBackupsModal}
+            title="Backups"
+            data-education-id="backups-button"
+          >
+            <HistoryIcon size={14} />
           </button>
-          {showIdeDropdown && (
-            <div className="ide-dropdown">
-              <div className="ide-dropdown-inner">
-                {ideAvailability.vscode && (
-                  <button onClick={() => void openInIde('vscode')} disabled={openingIde !== null}>
-                    <VSCodeIcon size={14} />
-                    {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
-                  </button>
-                )}
-                {ideAvailability.cursor && (
-                  <button onClick={() => void openInIde('cursor')} disabled={openingIde !== null}>
-                    <CursorIcon size={14} />
-                    {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
-                  </button>
-                )}
-                {!ideAvailability.vscode && !ideAvailability.cursor && (
-                  <div className="ide-dropdown-empty">No IDEs found</div>
-                )}
+          <button
+            className="toolbar-icon-btn"
+            onClick={onOpenEnvEditor}
+            title="Environment Variables"
+            data-education-id="env-button"
+          >
+            <DollarIcon size={14} />
+          </button>
+          <button
+            className="toolbar-icon-btn"
+            onClick={() => setIsBugReportOpen(true)}
+            title="Report a Bug"
+            data-education-id="bug-report-button"
+          >
+            <BugIcon size={14} />
+          </button>
+          <button
+            className="toolbar-icon-btn"
+            onClick={onOpenAssetsPanel}
+            title="Assets"
+            data-education-id="assets-button"
+          >
+            <ImageIcon size={14} />
+          </button>
+          <button
+            className={`toolbar-icon-btn ${isEducationMode ? 'active' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleEducationMode();
+            }}
+            title="Education Mode"
+            data-education-id="education-button"
+          >
+            <GraduationCapIcon size={14} />
+          </button>
+          <button
+            className="toolbar-icon-btn"
+            onClick={onOpenPluginManager}
+            title="Manage Plugins"
+            data-education-id="plugin-manager"
+          >
+            <PuzzleIcon size={14} />
+          </button>
+          <div
+            className="ide-dropdown-container"
+            onMouseEnter={() => setShowIdeDropdown(true)}
+            onMouseLeave={() => setShowIdeDropdown(false)}
+            data-education-id="ide-button"
+          >
+            <button className="toolbar-icon-btn" title="Open in IDE">
+              <CodeIcon size={14} />
+            </button>
+            {showIdeDropdown && (
+              <div className="ide-dropdown">
+                <div className="ide-dropdown-inner">
+                  {ideAvailability.vscode && (
+                    <button onClick={() => void openInIde('vscode')} disabled={openingIde !== null}>
+                      <VSCodeIcon size={14} />
+                      {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
+                    </button>
+                  )}
+                  {ideAvailability.cursor && (
+                    <button onClick={() => void openInIde('cursor')} disabled={openingIde !== null}>
+                      <CursorIcon size={14} />
+                      {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
+                    </button>
+                  )}
+                  {!ideAvailability.vscode && !ideAvailability.cursor && (
+                    <div className="ide-dropdown-empty">No IDEs found</div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          <PluginSlot
+            name="toolbar"
+            plugins={toolbarPlugins.regular}
+            project={pluginProject}
+            actions={pluginActions}
+            theme={pluginTheme}
+          />
         </div>
-        <button
-          className="toolbar-icon-btn"
-          onClick={onOpenEnvEditor}
-          title="Environment Variables"
-          data-education-id="env-button"
-        >
-          <DollarIcon size={14} />
-        </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={onOpenBackupsModal}
-          title="Backups"
-          data-education-id="backups-button"
-        >
-          <HistoryIcon size={14} />
-        </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={() => setIsBugReportOpen(true)}
-          title="Report a Bug"
-          data-education-id="bug-report-button"
-        >
-          <BugIcon size={14} />
-        </button>
-        <span data-education-id="github-button">
-          <GitHubButton
-            githubState={integrations.github}
-            projectStatus={integrations.projectGithub}
+
+        {/* Right side — hosting plugin, GitHub, Publish */}
+        <div className="workspace-header-right">
+          <PluginSlot
+            name="toolbar"
+            plugins={toolbarPlugins.hosting}
+            project={pluginProject}
+            actions={pluginActions}
+            theme={pluginTheme}
+          />
+          <PluginSlot
+            name="publish"
+            plugins={getSlotPlugins('publish')}
+            project={pluginProject}
+            actions={pluginActions}
+            theme={pluginTheme}
+          />
+          <span data-education-id="github-button">
+            <GitHubButton
+              githubState={integrations.github}
+              projectStatus={integrations.projectGithub}
+              projectPath={projectPath}
+              projectName={projectName}
+              onStatusChange={onGitHubStatusChange}
+              onGitHubConnect={onGitHubConnect}
+              onModalClose={focusActiveTerminal}
+              onToast={onToast}
+            />
+          </span>
+          <PublishBranchDropdown
+            currentBranch={currentBranch || 'main'}
+            projectGithubStatus={integrations.projectGithub}
             projectPath={projectPath}
-            projectName={projectName}
-            onStatusChange={onGitHubStatusChange}
-            onGitHubConnect={onGitHubConnect}
+            hasChangesToSync={hasUncommittedChanges}
+            onStatusChange={onPublishStatusChange}
             onModalClose={focusActiveTerminal}
             onToast={onToast}
+            isPublishing={isPublishing}
+            setIsPublishing={setIsPublishing}
+            onPublishError={onPublishError}
+            onCreatePR={onCreatePR}
+            forceOpen={forcePublishOpen}
+            onForceOpenHandled={onForcePublishOpenHandled}
           />
-        </span>
-        <PublishBranchDropdown
-          currentBranch={currentBranch || 'main'}
-          projectGithubStatus={integrations.projectGithub}
-          projectPath={projectPath}
-          hasChangesToSync={hasUncommittedChanges}
-          onStatusChange={onPublishStatusChange}
-          onModalClose={focusActiveTerminal}
-          onToast={onToast}
-          isPublishing={isPublishing}
-          setIsPublishing={setIsPublishing}
-          onPublishError={onPublishError}
-          onCreatePR={onCreatePR}
-          forceOpen={forcePublishOpen}
-          onForceOpenHandled={onForcePublishOpenHandled}
-        />
-        <PluginSlot
-          name="publish"
-          plugins={getSlotPlugins('publish')}
-          project={pluginProject}
-          actions={pluginActions}
-          theme={pluginTheme}
-        />
-      </div>
-      <BugReportModal isOpen={isBugReportOpen} onClose={() => setIsBugReportOpen(false)} />
-    </header>
+        </div>
+        <BugReportModal isOpen={isBugReportOpen} onClose={() => setIsBugReportOpen(false)} />
+      </header>
+    </>
   );
 }

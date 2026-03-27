@@ -662,7 +662,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                   onHealthOutput={handleHealthOutput}
                   toolbarLeft={
                     isWebProject || customDevCommand ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button
                           className="show-preview-btn icon-only"
                           onClick={() => void handleRestartDevServer()}

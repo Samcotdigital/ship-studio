@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   DashboardProject,
@@ -46,7 +47,12 @@ import { NewFolderModal } from './NewFolderModal';
 import { MoveFolderModal } from './MoveFolderModal';
 import { SettingsModal } from './SettingsModal';
 import { GitHubCalendar } from './GitHubCalendar';
-import { getCalendarHidden, setCalendarHidden as persistCalendarHidden } from '../lib/settings';
+import {
+  getCalendarHidden,
+  setCalendarHidden as persistCalendarHidden,
+  getSlackCtaHidden,
+  setSlackCtaHidden as persistSlackCtaHidden,
+} from '../lib/settings';
 import {
   ChevronIcon,
   CheckIcon,
@@ -54,6 +60,7 @@ import {
   SlackIcon,
   FolderPlusIcon,
   SettingsIcon,
+  EyeOffIcon,
 } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
@@ -134,10 +141,17 @@ export function ProjectList({
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
   const [calendarHidden, setCalendarHidden] = useState(false);
+  const [slackCtaHidden, setSlackCtaHidden] = useState(false);
 
-  // Load calendar visibility preference
+  // Load visibility preferences
   useEffect(() => {
     void getCalendarHidden().then(setCalendarHidden);
+    void getSlackCtaHidden().then(setSlackCtaHidden);
+  }, []);
+
+  const hideSlackCta = useCallback(() => {
+    setSlackCtaHidden(true);
+    void persistSlackCtaHidden(true);
   }, []);
 
   const hideCalendar = useCallback(() => {
@@ -414,9 +428,28 @@ export function ProjectList({
     setMoveProject(project);
   };
 
+  const handleDashboardDrag = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) return;
+    e.preventDefault();
+    void getCurrentWindow().startDragging();
+  }, []);
+
+  const handleDashboardDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) return;
+    const win = getCurrentWindow();
+    void win.isMaximized().then((maximized) => {
+      void (maximized ? win.unmaximize() : win.maximize());
+    });
+  }, []);
+
   if (loading) {
     return (
       <div className="dashboard-scroll-container">
+        <div
+          className="dashboard-drag-region"
+          onMouseDown={handleDashboardDrag}
+          onDoubleClick={handleDashboardDoubleClick}
+        />
         <div className="project-list dashboard">
           <div className="project-list-loading">
             <div className="spinner" />
@@ -439,26 +472,41 @@ export function ProjectList({
 
   return (
     <div className="dashboard-scroll-container">
+      <div
+        className="dashboard-drag-region"
+        onMouseDown={handleDashboardDrag}
+        onDoubleClick={handleDashboardDoubleClick}
+      />
       <div className="project-list dashboard">
-        <div className="slack-cta">
-          <div className="slack-cta-content">
-            <SlackIcon />
-            <span>
-              <strong>Join our community</strong> — suggest features, share what you're building,
-              and shape the future of how we build for the web.
-            </span>
+        {!slackCtaHidden && (
+          <div className="slack-cta">
+            <div className="slack-cta-content">
+              <SlackIcon />
+              <span>
+                <strong>Join the Slack</strong> — suggest features, share what you're building, and
+                shape the future of how we build for the web.
+              </span>
+            </div>
+            <button
+              className="slack-cta-join"
+              onClick={() =>
+                void openUrl(
+                  'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ'
+                )
+              }
+            >
+              Join Slack
+            </button>
+            <button
+              className="slack-cta-hide"
+              onClick={hideSlackCta}
+              title="Hide"
+              aria-label="Hide community banner"
+            >
+              <EyeOffIcon size={14} />
+            </button>
           </div>
-          <button
-            className="slack-cta-join"
-            onClick={() =>
-              void openUrl(
-                'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ'
-              )
-            }
-          >
-            Join Slack
-          </button>
-        </div>
+        )}
 
         {!calendarHidden && (
           <GitHubCalendar
@@ -691,6 +739,7 @@ export function ProjectList({
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
           onCalendarHiddenChange={setCalendarHidden}
+          onSlackCtaHiddenChange={setSlackCtaHidden}
         />
       </div>
     </div>

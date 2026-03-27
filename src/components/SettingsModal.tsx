@@ -10,27 +10,44 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CloseIcon } from './icons';
 import { getAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../lib/analytics';
-import { getCalendarHidden, setCalendarHidden } from '../lib/settings';
+import {
+  getCalendarHidden,
+  setCalendarHidden,
+  getSlackCtaHidden,
+  setSlackCtaHidden,
+} from '../lib/settings';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCalendarHiddenChange?: (hidden: boolean) => void;
+  onSlackCtaHiddenChange?: (hidden: boolean) => void;
 }
 
-export function SettingsModal({ isOpen, onClose, onCalendarHiddenChange }: SettingsModalProps) {
+export function SettingsModal({
+  isOpen,
+  onClose,
+  onCalendarHiddenChange,
+  onSlackCtaHiddenChange,
+}: SettingsModalProps) {
   const [analyticsEnabled, setLocalAnalyticsEnabled] = useState(true);
   const [calendarVisible, setLocalCalendarVisible] = useState(true);
+  const [slackCtaVisible, setLocalSlackCtaVisible] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     void (async () => {
-      const [enabled, hidden] = await Promise.all([getAnalyticsEnabled(), getCalendarHidden()]);
+      const [enabled, calHidden, slackHidden] = await Promise.all([
+        getAnalyticsEnabled(),
+        getCalendarHidden(),
+        getSlackCtaHidden(),
+      ]);
       if (!cancelled) {
         setLocalAnalyticsEnabled(enabled);
-        setLocalCalendarVisible(!hidden);
+        setLocalCalendarVisible(!calHidden);
+        setLocalSlackCtaVisible(!slackHidden);
         setLoading(false);
       }
     })();
@@ -60,6 +77,13 @@ export function SettingsModal({ isOpen, onClose, onCalendarHiddenChange }: Setti
     onCalendarHiddenChange?.(!newVisible);
   }, [calendarVisible, onCalendarHiddenChange]);
 
+  const handleSlackCtaToggle = useCallback(() => {
+    const newVisible = !slackCtaVisible;
+    setLocalSlackCtaVisible(newVisible);
+    void setSlackCtaHidden(!newVisible);
+    onSlackCtaHiddenChange?.(!newVisible);
+  }, [slackCtaVisible, onSlackCtaHiddenChange]);
+
   if (!isOpen) return null;
 
   return (
@@ -87,6 +111,25 @@ export function SettingsModal({ isOpen, onClose, onCalendarHiddenChange }: Setti
                 disabled={loading}
                 role="switch"
                 aria-checked={calendarVisible}
+              >
+                <span className="settings-toggle-track">
+                  <span className="settings-toggle-thumb" />
+                </span>
+              </button>
+            </div>
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <span className="settings-row-label">Community banner</span>
+                <span className="settings-row-description">
+                  Show the Slack community invite on the dashboard.
+                </span>
+              </div>
+              <button
+                className={`settings-toggle ${slackCtaVisible ? 'on' : 'off'}`}
+                onClick={handleSlackCtaToggle}
+                disabled={loading}
+                role="switch"
+                aria-checked={slackCtaVisible}
               >
                 <span className="settings-toggle-track">
                   <span className="settings-toggle-thumb" />

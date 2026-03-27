@@ -59,6 +59,8 @@ pub async fn open_project_in_new_window(
         .min_inner_size(400.0, 300.0)
         .resizable(true)
         .transparent(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
         .build()
         .map_err(|e| format!("Failed to create window: {e}"))?;
 

@@ -46,10 +46,14 @@
 }
 
 /* GitHub Integration - Workspace Header */
-.workspace-header-actions {
+.workspace-header-left,
+.workspace-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.workspace-header-right {
   margin-left: auto;
 }
 

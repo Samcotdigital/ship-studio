@@ -1,15 +1,15 @@
 /* Changelog Panel - sticky sidebar */
 .changelog {
   position: sticky;
-  top: 24px;
+  top: 44px;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
   width: 260px;
-  /* 100vh minus equal top/bottom padding (24px each) */
-  height: calc(100vh - 48px);
+  /* 100vh minus top padding (44px for traffic lights) and matching bottom padding */
+  height: calc(100vh - 88px);
   flex-shrink: 0;
   overflow: hidden;
   margin-left: 24px;
