@@ -621,7 +621,7 @@ export function useProjectLifecycle({
     // Yield again so the status update renders
     await new Promise((resolve) => setTimeout(resolve, 0));
     t = performance.now();
-    await stopServer();
+    await Promise.race([stopServer(), new Promise((resolve) => setTimeout(resolve, 5000))]);
     logger.info('[BackToProjects] stopServer', { ms: Math.round(performance.now() - t) });
 
     // Check again — stopServer may have taken a while
@@ -637,24 +637,20 @@ export function useProjectLifecycle({
 
     setCleanupStatus('Cleaning up processes...');
     try {
+      // Run all cleanup in parallel with a 5-second hard timeout
       t = performance.now();
-      await invoke('kill_window_pty', { windowLabel: currentWindowLabel });
-      logger.info('[BackToProjects] kill_window_pty', { ms: Math.round(performance.now() - t) });
-      t = performance.now();
-      await invoke('cleanup_orphaned_processes');
-      logger.info('[BackToProjects] cleanup_orphaned_processes', {
-        ms: Math.round(performance.now() - t),
-      });
-      // Query backend for the actual reserved port (don't rely on potentially stale React state)
       const actualPort = await invoke<number | null>('get_reserved_port_for_window', {
         windowLabel: currentWindowLabel,
       });
-      if (actualPort !== null) {
-        await Promise.race([
-          invoke('kill_port', { port: actualPort }),
-          new Promise((resolve) => setTimeout(resolve, 3000)),
-        ]);
-      }
+      await Promise.race([
+        Promise.allSettled([
+          invoke('kill_window_pty', { windowLabel: currentWindowLabel }),
+          invoke('cleanup_orphaned_processes'),
+          ...(actualPort !== null ? [invoke('kill_port', { port: actualPort })] : []),
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+      logger.info('[BackToProjects] process cleanup', { ms: Math.round(performance.now() - t) });
     } catch {
       // Ignore cleanup errors
     }

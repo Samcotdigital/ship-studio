@@ -364,24 +364,40 @@ pub async fn kill_window_pty(window_label: String) -> Result<u32, String> {
         window_label
     );
 
+    // Kill all PTYs in parallel with a 2-second timeout per process
+    let mut handles = Vec::new();
     for (id, pid) in &pids_to_kill {
-        #[cfg(unix)]
-        {
-            let _ = create_command("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
-        }
+        let pid = *pid;
+        let id = *id;
+        handles.push(tokio::spawn(async move {
+            let _ = tokio::time::timeout(
+                tokio::time::Duration::from_secs(2),
+                tokio::task::spawn_blocking(move || {
+                    #[cfg(unix)]
+                    {
+                        let _ = create_command("kill")
+                            .args(["-9", &pid.to_string()])
+                            .output();
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = create_command("taskkill")
+                            .args(["/F", "/T", "/PID", &pid.to_string()])
+                            .output();
+                    }
+                }),
+            )
+            .await;
+            id
+        }));
+    }
 
-        #[cfg(windows)]
-        {
-            let _ = create_command("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .output();
-        }
-
-        // Remove from registry
-        if let Ok(mut registry) = PTY_REGISTRY.lock() {
-            registry.remove(id);
+    // Wait for all kills to complete, then remove from registry
+    for handle in handles {
+        if let Ok(id) = handle.await {
+            if let Ok(mut registry) = PTY_REGISTRY.lock() {
+                registry.remove(&id);
+            }
         }
     }
 
@@ -434,9 +450,11 @@ pub async fn kill_all_pty() -> Result<u32, String> {
 pub async fn cleanup_orphaned_processes() -> Result<(), String> {
     #[cfg(unix)]
     {
-        // Kill orphaned processes for ALL agents (not just the active one)
+        // Build all kill scripts, then run them in parallel with a 3-second timeout
+        let mut scripts: Vec<String> = Vec::new();
+
         for agent in crate::agent::ALL_AGENTS {
-            let kill_script = format!(
+            scripts.push(format!(
                 r#"
                     for pid in $(pgrep -x {} 2>/dev/null); do
                         ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
@@ -446,24 +464,38 @@ pub async fn cleanup_orphaned_processes() -> Result<(), String> {
                     done
                 "#,
                 agent.process_name
-            );
-            let _ = create_command("sh").args(["-c", &kill_script]).output();
+            ));
         }
 
         // Also kill orphaned node processes running next-server (from dev server)
-        let _ = create_command("sh")
-            .args([
-                "-c",
-                r#"
+        scripts.push(
+            r#"
                 for pid in $(pgrep -f 'next-server' 2>/dev/null); do
                     ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
                     if [ "$ppid" = "1" ]; then
                         kill $pid 2>/dev/null
                     fi
                 done
-            "#,
-            ])
-            .output();
+            "#
+            .to_string(),
+        );
+
+        let mut handles = Vec::new();
+        for script in scripts {
+            handles.push(tokio::spawn(async move {
+                let _ = tokio::time::timeout(
+                    tokio::time::Duration::from_secs(3),
+                    tokio::task::spawn_blocking(move || {
+                        let _ = create_command("sh").args(["-c", &script]).output();
+                    }),
+                )
+                .await;
+            }));
+        }
+
+        for handle in handles {
+            let _ = handle.await;
+        }
     }
 
     Ok(())
