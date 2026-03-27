@@ -856,6 +856,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                           onStatusChange={createTabStatusHandler(tab.id)}
                           onTitleChange={handleTabTitleChange(tab.id)}
                           sessionName={tab.sessionId}
+                          isActive={!showDevServerLogs && activeTerminalTab === tab.id}
                           shouldResume={tab.shouldResume}
                         />
                       </div>

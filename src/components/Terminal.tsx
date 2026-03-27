@@ -30,6 +30,33 @@ import '@xterm/xterm/css/xterm.css';
 /** Agent status based on terminal title */
 export type AgentStatus = 'thinking' | 'waiting' | 'idle';
 
+// Spawn queue: ensures only one terminal spawns at a time to avoid IPC congestion
+let spawnResolve: (() => void) | null = null;
+const spawnQueue: Array<() => void> = [];
+
+function acquireSpawnLock(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!spawnResolve) {
+      spawnResolve = resolve;
+      resolve();
+    } else {
+      spawnQueue.push(resolve);
+    }
+  });
+}
+
+function releaseSpawnLock() {
+  if (spawnQueue.length > 0) {
+    spawnResolve = spawnQueue.shift()!;
+    spawnResolve();
+  } else {
+    spawnResolve = null;
+  }
+}
+
+/** Max buffer size for hidden terminal output (500KB) */
+const MAX_HIDDEN_BUFFER = 512 * 1024;
+
 /** Props for the Terminal component */
 interface TerminalProps {
   /** Agent configuration to use for this terminal */
@@ -46,6 +73,8 @@ interface TerminalProps {
   onTitleChange?: (title: string) => void;
   /** Unique session name for naming/resuming agent conversations */
   sessionName?: string;
+  /** Whether this terminal tab is currently visible */
+  isActive?: boolean;
   /** Whether to resume a previous session with this name */
   shouldResume?: boolean;
 }
@@ -76,6 +105,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     onStatusChange,
     onTitleChange,
     sessionName,
+    isActive = true,
     shouldResume,
   },
   ref
@@ -84,11 +114,27 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const terminalRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<IPty | null>(null);
+  // Buffer for data received while terminal is hidden
+  const hiddenBufferRef = useRef<string[]>([]);
+  const hiddenBufferSizeRef = useRef(0);
+  const isActiveRef = useRef(isActive);
   // Track IDisposable handles from pty.onData/onExit so we can remove listeners on cleanup.
   // Without this, killed PTY processes continue flooding Tauri IPC → microtasks → 100% CPU.
   const ptyDisposablesRef = useRef<Array<{ dispose(): void }>>([]);
   const [isReady, setIsReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
+
+  // Flush hidden buffer when terminal becomes active
+  useEffect(() => {
+    isActiveRef.current = isActive;
+    if (isActive && terminalRef.current && hiddenBufferRef.current.length > 0) {
+      for (const chunk of hiddenBufferRef.current) {
+        terminalRef.current.write(chunk);
+      }
+      hiddenBufferRef.current = [];
+      hiddenBufferSizeRef.current = 0;
+    }
+  }, [isActive]);
 
   // Use refs for callbacks to prevent effect re-runs when callback references change
   const onExitRef = useRef(onExit);
@@ -415,9 +461,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const setupPty = async (retryCount = 0) => {
       const maxRetries = 3;
 
+      // Serialize spawns across all Terminal instances to avoid IPC congestion
+      if (retryCount === 0) {
+        await acquireSpawnLock();
+        if (!mounted) {
+          releaseSpawnLock();
+          return;
+        }
+      }
+
       // Check if still mounted before proceeding
       if (!mounted) {
         logger.info('[Terminal] PTY setup skipped - component unmounted', { agent: agent.id });
+        releaseSpawnLock();
         return;
       }
 
@@ -531,7 +587,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // likely failed to launch (binary not found, permission error, etc.).
         // Show an error instead of hanging on "Starting..." forever.
         let receivedOutput = false;
+        let spawnLockReleased = retryCount > 0; // only hold lock on first attempt
+        const maybeReleaseSpawnLock = () => {
+          if (!spawnLockReleased) {
+            spawnLockReleased = true;
+            releaseSpawnLock();
+          }
+        };
         const startupTimeout = setTimeout(() => {
+          maybeReleaseSpawnLock();
           if (!receivedOutput && mounted) {
             logger.error('[Terminal] Startup timeout - no output after 10s', {
               agent: agent.id,
@@ -547,6 +611,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // Buffer early output to detect resume failures on exit
         let outputBuffer = '';
 
+        // Write data to xterm, or buffer it if the terminal is hidden
+        const writeToTerminal = (data: string | Uint8Array) => {
+          if (isActiveRef.current) {
+            terminalRef.current?.write(data);
+          } else {
+            const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+            hiddenBufferRef.current.push(str);
+            hiddenBufferSizeRef.current += str.length;
+            // Cap buffer to prevent memory growth
+            while (
+              hiddenBufferSizeRef.current > MAX_HIDDEN_BUFFER &&
+              hiddenBufferRef.current.length > 1
+            ) {
+              const removed = hiddenBufferRef.current.shift()!;
+              hiddenBufferSizeRef.current -= removed.length;
+            }
+          }
+        };
+
         // Handle PTY output -> terminal
         // Store disposables so cleanup() can remove IPC listeners and prevent CPU leak.
         // For agents without title-based detection, add idle-detection:
@@ -554,10 +637,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         if (!agent.supportsStatusDetection) {
           let idleTimer: ReturnType<typeof setTimeout> | null = null;
           const dataDisposable = pty.onData((data) => {
+            if (!receivedOutput) maybeReleaseSpawnLock();
             receivedOutput = true;
             if (outputBuffer.length < 2000) outputBuffer += String(data);
             clearTimeout(startupTimeout);
-            terminalRef.current?.write(data);
+            writeToTerminal(data);
             if (lastStatusRef.current === 'thinking') {
               if (idleTimer) clearTimeout(idleTimer);
               idleTimer = setTimeout(() => {
@@ -571,10 +655,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           ptyDisposablesRef.current.push(dataDisposable);
         } else {
           const dataDisposable = pty.onData((data) => {
+            if (!receivedOutput) maybeReleaseSpawnLock();
             receivedOutput = true;
             if (outputBuffer.length < 2000) outputBuffer += String(data);
             clearTimeout(startupTimeout);
-            terminalRef.current?.write(data);
+            writeToTerminal(data);
           });
           ptyDisposablesRef.current.push(dataDisposable);
         }
@@ -706,6 +791,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           return true; // Allow all other keys
         });
       } catch (err) {
+        releaseSpawnLock();
         logger.error('[Terminal] Failed to spawn PTY', {
           agent: agent.id,
           binary: agent.binaryName,
