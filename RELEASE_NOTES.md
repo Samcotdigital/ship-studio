@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.19
+
+- **Fixed terminal resize** — No more narrow text wrapping when switching tabs
+- **Smaller toolbar buttons** — Consistent sizing across all toolbar actions
+- **Screenshot shortcuts** — ⌘⇧S for capture, ⌘⇧C for crop mode
+- **Removed broken full page screenshot**
+
+
 ## What's New in v0.4.18
 
 - **Overlay title bar** - Cleaner look with traffic lights inline, drag-to-move, and double-click to maximize
