@@ -30,30 +30,6 @@ import '@xterm/xterm/css/xterm.css';
 /** Agent status based on terminal title */
 export type AgentStatus = 'thinking' | 'waiting' | 'idle';
 
-// Spawn queue: ensures only one terminal spawns at a time to avoid IPC congestion
-let spawnResolve: (() => void) | null = null;
-const spawnQueue: Array<() => void> = [];
-
-function acquireSpawnLock(): Promise<void> {
-  return new Promise((resolve) => {
-    if (!spawnResolve) {
-      spawnResolve = resolve;
-      resolve();
-    } else {
-      spawnQueue.push(resolve);
-    }
-  });
-}
-
-function releaseSpawnLock() {
-  if (spawnQueue.length > 0) {
-    spawnResolve = spawnQueue.shift()!;
-    spawnResolve();
-  } else {
-    spawnResolve = null;
-  }
-}
-
 /** Max buffer size for hidden terminal output (500KB) */
 const MAX_HIDDEN_BUFFER = 512 * 1024;
 
@@ -118,21 +94,32 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const hiddenBufferRef = useRef<string[]>([]);
   const hiddenBufferSizeRef = useRef(0);
   const isActiveRef = useRef(isActive);
+  // Deferred spawn: set by the main effect, called when tab becomes active
+  const deferredSpawnRef = useRef<(() => void) | null>(null);
   // Track IDisposable handles from pty.onData/onExit so we can remove listeners on cleanup.
   // Without this, killed PTY processes continue flooding Tauri IPC → microtasks → 100% CPU.
   const ptyDisposablesRef = useRef<Array<{ dispose(): void }>>([]);
   const [isReady, setIsReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
 
-  // Flush hidden buffer when terminal becomes active
+  // When tab becomes active: flush hidden buffer and spawn PTY if deferred
   useEffect(() => {
     isActiveRef.current = isActive;
-    if (isActive && terminalRef.current && hiddenBufferRef.current.length > 0) {
-      for (const chunk of hiddenBufferRef.current) {
-        terminalRef.current.write(chunk);
+    if (isActive) {
+      // Flush buffered output
+      if (terminalRef.current && hiddenBufferRef.current.length > 0) {
+        for (const chunk of hiddenBufferRef.current) {
+          terminalRef.current.write(chunk);
+        }
+        hiddenBufferRef.current = [];
+        hiddenBufferSizeRef.current = 0;
       }
-      hiddenBufferRef.current = [];
-      hiddenBufferSizeRef.current = 0;
+      // Spawn PTY if it was deferred (tab was created while hidden)
+      if (deferredSpawnRef.current) {
+        const spawn = deferredSpawnRef.current;
+        deferredSpawnRef.current = null;
+        spawn();
+      }
     }
   }, [isActive]);
 
@@ -461,19 +448,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const setupPty = async (retryCount = 0) => {
       const maxRetries = 3;
 
-      // Serialize spawns across all Terminal instances to avoid IPC congestion
-      if (retryCount === 0) {
-        await acquireSpawnLock();
-        if (!mounted) {
-          releaseSpawnLock();
-          return;
-        }
-      }
-
       // Check if still mounted before proceeding
       if (!mounted) {
         logger.info('[Terminal] PTY setup skipped - component unmounted', { agent: agent.id });
-        releaseSpawnLock();
         return;
       }
 
@@ -587,15 +564,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // likely failed to launch (binary not found, permission error, etc.).
         // Show an error instead of hanging on "Starting..." forever.
         let receivedOutput = false;
-        let spawnLockReleased = retryCount > 0; // only hold lock on first attempt
-        const maybeReleaseSpawnLock = () => {
-          if (!spawnLockReleased) {
-            spawnLockReleased = true;
-            releaseSpawnLock();
-          }
-        };
         const startupTimeout = setTimeout(() => {
-          maybeReleaseSpawnLock();
           if (!receivedOutput && mounted) {
             logger.error('[Terminal] Startup timeout - no output after 10s', {
               agent: agent.id,
@@ -637,7 +606,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         if (!agent.supportsStatusDetection) {
           let idleTimer: ReturnType<typeof setTimeout> | null = null;
           const dataDisposable = pty.onData((data) => {
-            if (!receivedOutput) maybeReleaseSpawnLock();
             receivedOutput = true;
             if (outputBuffer.length < 2000) outputBuffer += String(data);
             clearTimeout(startupTimeout);
@@ -655,7 +623,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           ptyDisposablesRef.current.push(dataDisposable);
         } else {
           const dataDisposable = pty.onData((data) => {
-            if (!receivedOutput) maybeReleaseSpawnLock();
             receivedOutput = true;
             if (outputBuffer.length < 2000) outputBuffer += String(data);
             clearTimeout(startupTimeout);
@@ -791,7 +758,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           return true; // Allow all other keys
         });
       } catch (err) {
-        releaseSpawnLock();
         logger.error('[Terminal] Failed to spawn PTY', {
           agent: agent.id,
           binary: agent.binaryName,
@@ -816,8 +782,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Show a loading message while agent starts up
     term.write(`\r\n  \x1b[2m${agent.loadingMessage}\x1b[0m`);
 
-    // Small delay before starting to ensure terminal is ready
-    setTimeout(() => void setupPty(), 100);
+    // Only spawn PTY when this tab is active to avoid IPC congestion
+    // from multiple concurrent PTY read loops.
+    // If hidden, defer until the tab becomes active.
+    if (isActiveRef.current) {
+      setTimeout(() => void setupPty(), 100);
+    } else {
+      deferredSpawnRef.current = () => setTimeout(() => void setupPty(), 100);
+    }
 
     // Handle resize — debounce with rAF to avoid layout thrashing during drags/animations
     let resizeRaf: number | null = null;
