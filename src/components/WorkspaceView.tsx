@@ -10,7 +10,7 @@
  * @module components/WorkspaceView
  */
 
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useState, type RefObject } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Terminal } from './Terminal';
 import { DevServerLogs } from './DevServerLogs';
@@ -506,15 +506,20 @@ export const WorkspaceView = memo(function WorkspaceView({
   } = lifecycle;
 
   // Cmd+Shift+S — capture viewport screenshot, Cmd+Shift+C — toggle crop mode
+  // Only active when preview is visible (not hidden, and on preview tab for web projects)
+  const previewVisible =
+    projectType !== 'generic' && workspaceTab === 'preview' && !isPreviewHidden;
   useEffect(() => {
+    if (!previewVisible) return;
     function handleScreenshotKeys(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
-      if (e.key === 'S') {
+      const key = e.key.toLowerCase();
+      if (key === 's') {
         e.preventDefault();
         if (!isCapturing && !isCropMode) {
           void handleCaptureScreenshot();
         }
-      } else if (e.key === 'C') {
+      } else if (key === 'c') {
         e.preventDefault();
         if (!isCapturing && !isCropCapturing) {
           setIsCropMode(!isCropMode);
@@ -523,7 +528,14 @@ export const WorkspaceView = memo(function WorkspaceView({
     }
     window.addEventListener('keydown', handleScreenshotKeys);
     return () => window.removeEventListener('keydown', handleScreenshotKeys);
-  }, [isCapturing, isCropMode, isCropCapturing, handleCaptureScreenshot, setIsCropMode]);
+  }, [
+    previewVisible,
+    isCapturing,
+    isCropMode,
+    isCropCapturing,
+    handleCaptureScreenshot,
+    setIsCropMode,
+  ]);
 
   // Generic projects (Tauri apps, CLI tools, etc.) don't have a web preview
   const isWebProject = projectType !== 'generic';
@@ -597,26 +609,12 @@ export const WorkspaceView = memo(function WorkspaceView({
     };
   }, [terminalTabs, activeTerminalTab, closeTerminalTab]);
 
-  // Hide terminal content briefly during tab switch to avoid showing the skinny state.
-  // Uses direct DOM manipulation to avoid cascading React renders.
-  const terminalContentRef = useRef<HTMLDivElement>(null);
+  // Focus the active terminal tab when switching
   useEffect(() => {
-    const container = terminalContentRef.current;
-    if (container) container.style.opacity = '0';
     const ref = terminalRefsMap.current.get(activeTerminalTab);
-    if (!ref) {
-      if (container) container.style.opacity = '1';
-      return;
+    if (ref) {
+      ref.focus();
     }
-    // Double-rAF: first frame lets display:block take effect, second frame fits + focuses
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        ref.fit();
-        ref.focus();
-        if (container) container.style.opacity = '1';
-      });
-    });
-    return () => cancelAnimationFrame(raf);
   }, [activeTerminalTab, terminalRefsMap]);
 
   return (
@@ -839,19 +837,11 @@ export const WorkspaceView = memo(function WorkspaceView({
                       </button>
                     </div>
                   </div>
-                  <div
-                    className="terminal-content"
-                    data-education-id="claude-terminal"
-                    ref={terminalContentRef}
-                  >
+                  <div className="terminal-content" data-education-id="claude-terminal">
                     {terminalTabs.map((tab) => (
                       <div
                         key={`session-${terminalSessionId}-tab-${tab.id}`}
-                        className="terminal-tab-content"
-                        style={{
-                          display:
-                            !showDevServerLogs && activeTerminalTab === tab.id ? 'block' : 'none',
-                        }}
+                        className={`terminal-tab-content ${!showDevServerLogs && activeTerminalTab === tab.id ? 'active' : ''}`}
                       >
                         <Terminal
                           ref={(ref) => {
@@ -871,7 +861,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                       </div>
                     ))}
                     {showDevServerLogs && !showHealthLogs && (
-                      <div className="terminal-tab-content" style={{ display: 'block' }}>
+                      <div className="terminal-tab-content active">
                         <DevServerLogs
                           output={devServerOutput}
                           outputVersion={devServerOutputVersion}
@@ -879,7 +869,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                       </div>
                     )}
                     {showHealthLogs && (
-                      <div className="terminal-tab-content" style={{ display: 'block' }}>
+                      <div className="terminal-tab-content active">
                         <DevServerLogs output={healthOutput} outputVersion={healthOutputVersion} />
                       </div>
                     )}
