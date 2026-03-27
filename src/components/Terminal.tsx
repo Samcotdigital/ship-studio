@@ -16,6 +16,7 @@ import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHand
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { spawn, IPty } from 'tauri-pty';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -302,6 +303,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     // Open terminal in container
     term.open(container);
+
+    // Use WebGL renderer for GPU-accelerated rendering (reduces flickering)
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        webglAddon.dispose();
+      });
+      term.loadAddon(webglAddon);
+    } catch {
+      logger.warn('[Terminal] WebGL not available, using canvas renderer');
+    }
 
     // Initial fit
     setTimeout(() => {
@@ -712,18 +724,24 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Small delay before starting to ensure terminal is ready
     setTimeout(() => void setupPty(), 100);
 
-    // Handle resize
+    // Handle resize — debounce with rAF to avoid layout thrashing during drags/animations
+    let resizeRaf: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && terminalRef.current && ptyRef.current) {
-        fitAddonRef.current.fit();
-        ptyRef.current.resize(terminalRef.current.cols, terminalRef.current.rows);
-      }
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        if (fitAddonRef.current && terminalRef.current && ptyRef.current) {
+          fitAddonRef.current.fit();
+          ptyRef.current.resize(terminalRef.current.cols, terminalRef.current.rows);
+        }
+      });
     });
     resizeObserver.observe(container);
 
     return () => {
       mounted = false;
       resizeObserver.disconnect();
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       if (textarea) {
         textarea.removeEventListener('focus', onTextareaFocus);
         textarea.removeEventListener('blur', onTextareaBlur);
