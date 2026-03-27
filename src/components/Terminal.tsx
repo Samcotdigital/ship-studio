@@ -589,15 +589,41 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             void setupPty(0);
           };
 
-          // If resume failed because session doesn't exist, retry as fresh session.
-          // Check immediately, then also after a short delay in case data arrives
-          // after exit (PTY can deliver data and exit events out of order).
+          // If resume failed, retry as a fresh session.
+          // Primary signal: non-zero exit code during a resume attempt means
+          // the session is gone — retry without parsing output at all.
+          // Secondary signal: output contains "no conversation found" etc.
           if (attemptResume && agent.id === 'claude-code') {
-            const isResumeFail = () =>
-              outputBuffer.includes('No conversation found') ||
-              outputBuffer.includes('no conversation found') ||
-              outputBuffer.includes('session not found') ||
-              outputBuffer.includes('Session not found');
+            if (exitCode !== 0) {
+              logger.info('[Terminal] Resume exited non-zero, retrying fresh', { exitCode });
+              retryFreshSession();
+              return;
+            }
+
+            // Zero exit code but might still be a resume failure (edge case).
+            // Strip ANSI escape sequences before matching.
+            // Strip ANSI escape sequences so substring matching works on raw PTY output.
+            // Uses a single combined pattern to avoid chained .replace type issues.
+            const ansiPattern = new RegExp(
+              [
+                String.fromCharCode(0x1b) + '\\[[\\x20-\\x3f]*[\\x40-\\x7e]', // CSI
+                String.fromCharCode(0x1b) +
+                  '\\][^' +
+                  String.fromCharCode(0x07) +
+                  ']*(?:' +
+                  String.fromCharCode(0x07) +
+                  '|' +
+                  String.fromCharCode(0x1b) +
+                  '\\\\)', // OSC
+                String.fromCharCode(0x1b) + '[^\\[\\]]', // other ESC
+              ].join('|'),
+              'g'
+            );
+            const stripAnsi = (s: string): string => s.replace(ansiPattern, '');
+            const isResumeFail = () => {
+              const clean = stripAnsi(outputBuffer).toLowerCase();
+              return clean.includes('no conversation found') || clean.includes('session not found');
+            };
 
             if (isResumeFail()) {
               retryFreshSession();

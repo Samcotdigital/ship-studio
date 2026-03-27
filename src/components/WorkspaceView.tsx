@@ -591,10 +591,11 @@ export const WorkspaceView = memo(function WorkspaceView({
       if (container) container.style.opacity = '1';
       return;
     }
-    // Double-rAF: first frame lets display:block take effect, second frame fits
+    // Double-rAF: first frame lets display:block take effect, second frame fits + focuses
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         ref.fit();
+        ref.focus();
         if (container) container.style.opacity = '1';
       });
     });
