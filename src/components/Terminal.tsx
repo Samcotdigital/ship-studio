@@ -114,16 +114,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     ptyDisposablesRef.current = [];
 
     if (ptyRef.current) {
-      // Invalidate PID FIRST to break tauri-pty's infinite readData() loop
-      // and prevent kill() from blocking. The backend's kill_window_pty
-      // handles cleanup of any zombie processes.
+      // Invalidate PID to break tauri-pty's infinite readData() loop.
+      // Do NOT call ptyRef.current.kill() — it blocks the main thread
+      // waiting for the process to die. The backend's kill_window_pty
+      // handles actual process cleanup via kill -9 with timeouts.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       (ptyRef.current as any).pid = undefined;
-      try {
-        ptyRef.current.kill();
-      } catch {
-        // Ignore - PTY may already be dead
-      }
       ptyRef.current = null;
     }
 
