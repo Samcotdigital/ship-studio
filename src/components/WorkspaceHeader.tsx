@@ -219,7 +219,7 @@ export function WorkspaceHeader({
             title="Backups"
             data-education-id="backups-button"
           >
-            <HistoryIcon size={14} />
+            <HistoryIcon size={12} />
           </button>
           <button
             className="toolbar-icon-btn"
@@ -227,7 +227,7 @@ export function WorkspaceHeader({
             title="Environment Variables"
             data-education-id="env-button"
           >
-            <DollarIcon size={14} />
+            <DollarIcon size={12} />
           </button>
           <button
             className="toolbar-icon-btn"
@@ -235,7 +235,7 @@ export function WorkspaceHeader({
             title="Report a Bug"
             data-education-id="bug-report-button"
           >
-            <BugIcon size={14} />
+            <BugIcon size={12} />
           </button>
           <button
             className="toolbar-icon-btn"
@@ -243,7 +243,7 @@ export function WorkspaceHeader({
             title="Assets"
             data-education-id="assets-button"
           >
-            <ImageIcon size={14} />
+            <ImageIcon size={12} />
           </button>
           <button
             className={`toolbar-icon-btn ${isEducationMode ? 'active' : ''}`}
@@ -254,7 +254,7 @@ export function WorkspaceHeader({
             title="Education Mode"
             data-education-id="education-button"
           >
-            <GraduationCapIcon size={14} />
+            <GraduationCapIcon size={12} />
           </button>
           <button
             className="toolbar-icon-btn"
@@ -262,7 +262,7 @@ export function WorkspaceHeader({
             title="Manage Plugins"
             data-education-id="plugin-manager"
           >
-            <PuzzleIcon size={14} />
+            <PuzzleIcon size={12} />
           </button>
           <div
             className="ide-dropdown-container"
@@ -271,7 +271,7 @@ export function WorkspaceHeader({
             data-education-id="ide-button"
           >
             <button className="toolbar-icon-btn" title="Open in IDE">
-              <CodeIcon size={14} />
+              <CodeIcon size={12} />
             </button>
             {showIdeDropdown && (
               <div className="ide-dropdown">

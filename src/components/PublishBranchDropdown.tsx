@@ -309,7 +309,7 @@ export function PublishBranchDropdown({
 
               <div className="publish-branch-body">
                 <div className="publish-branch-info">
-                  <BranchIcon size={14} />
+                  <BranchIcon size={12} />
                   <span className="publish-branch-name">{currentBranch}</span>
                   {isMainBranch && <span className="branch-live-badge">Live</span>}
                 </div>

@@ -62,9 +62,9 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 10px;
-  min-height: 32px;
-  font-size: 13px;
+  padding: 0 8px;
+  height: 28px;
+  font-size: 12px;
   border-radius: 6px;
   border: 1px solid var(--border);
   transition:
@@ -114,7 +114,7 @@
 }
 
 .github-button.github-link {
-  padding: 6px 10px;
+  padding: 0 8px;
   background: var(--bg-tertiary);
 }
 
