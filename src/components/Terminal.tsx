@@ -102,7 +102,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   }, [onExit, onStatusChange, onTitleChange]);
 
   const cleanup = useCallback(() => {
+    const t0 = performance.now();
     logger.info('[Terminal] Cleanup started', { hasPty: !!ptyRef.current });
+
     // Dispose PTY event listeners FIRST to stop IPC message flood
     for (const d of ptyDisposablesRef.current) {
       try {
@@ -112,21 +114,32 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       }
     }
     ptyDisposablesRef.current = [];
+    logger.info('[Terminal] Listeners disposed', { ms: Math.round(performance.now() - t0) });
 
     if (ptyRef.current) {
-      // Invalidate PID to break tauri-pty's infinite readData() loop.
-      // Do NOT call ptyRef.current.kill() — it blocks the main thread
-      // waiting for the process to die. The backend's kill_window_pty
-      // handles actual process cleanup via kill -9 with timeouts.
+      // Invalidate PID FIRST to break tauri-pty's infinite readData() loop
+      // and prevent kill() from blocking. The backend's kill_window_pty
+      // handles cleanup of any zombie processes.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       (ptyRef.current as any).pid = undefined;
+      const t1 = performance.now();
+      try {
+        ptyRef.current.kill();
+      } catch {
+        // Ignore - PTY may already be dead
+      }
+      logger.info('[Terminal] pty.kill() done', { ms: Math.round(performance.now() - t1) });
       ptyRef.current = null;
     }
 
     if (terminalRef.current) {
+      const t2 = performance.now();
       terminalRef.current.dispose();
+      logger.info('[Terminal] xterm disposed', { ms: Math.round(performance.now() - t2) });
       terminalRef.current = null;
     }
+
+    logger.info('[Terminal] Cleanup complete', { totalMs: Math.round(performance.now() - t0) });
   }, []);
 
   // Initialize terminal after mount and fonts are loaded

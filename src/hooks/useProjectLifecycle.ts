@@ -602,11 +602,13 @@ export function useProjectLifecycle({
     resetLayout();
 
     // Yield to browser so the projects view renders before heavy terminal cleanup
+    logger.info('[BackToProjects] yielding before resetTerminals');
     await new Promise((resolve) => setTimeout(resolve, 0));
+    logger.info('[BackToProjects] yield complete, calling resetTerminals');
 
     t = performance.now();
     resetTerminals();
-    logger.info('[BackToProjects] resetTerminals', { ms: Math.round(performance.now() - t) });
+    logger.info('[BackToProjects] resetTerminals done', { ms: Math.round(performance.now() - t) });
 
     // Check again before destructive server/process cleanup
     if (navigationVersionRef.current !== backNavVersion) {

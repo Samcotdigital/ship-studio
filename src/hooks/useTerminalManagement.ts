@@ -108,8 +108,13 @@ export function useTerminalManagement(): UseTerminalManagementReturn {
     const tabCount = terminalRefsMap.current.size;
     logger.info('[TerminalMgmt] Killing all terminals', { tabCount });
     terminalRefsMap.current.forEach((ref, tabId) => {
-      logger.info('[TerminalMgmt] Killing terminal', { tabId });
+      const t = performance.now();
+      logger.info('[TerminalMgmt] Killing terminal START', { tabId });
       ref?.kill();
+      logger.info('[TerminalMgmt] Killing terminal DONE', {
+        tabId,
+        ms: Math.round(performance.now() - t),
+      });
     });
     terminalRefsMap.current.clear();
     logger.info('[TerminalMgmt] All terminals killed');
