@@ -24,6 +24,19 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.18',
+    items: [
+      'New overlay title bar — cleaner look with traffic lights inline',
+      'Toolbar split into left (utilities) and right (hosting/GitHub/Publish)',
+      'Vercel plugin now appears on the right side of the toolbar',
+      'Drag to move window from title bar or toolbar empty space',
+      'Double-click title bar to maximize/restore',
+      'Slack community banner can be dismissed (eye icon or Settings)',
+      'Terminal auto-focuses when switching tabs via ⌘1-5, ⌘T, or ⌘W',
+      'Fixed session resume — stale sessions now reliably restart',
+    ],
+  },
+  {
     version: '0.4.17',
     items: [
       'External projects no longer hit "forbidden path" errors when starting dev server',
