@@ -774,7 +774,14 @@ export const WorkspaceView = memo(function WorkspaceView({
                         }}
                         onAddTab={addTerminalTab}
                         onCloseTab={closeTerminalTab}
-                        onSwitchAgent={switchTabAgent}
+                        onSwitchAgent={(tabId, agentId) => {
+                          setTabTitles((prev) => {
+                            const next = new Map(prev);
+                            next.delete(tabId);
+                            return next;
+                          });
+                          switchTabAgent(tabId, agentId);
+                        }}
                       />
                     </div>
                     <div className="terminal-logs-tabs">
