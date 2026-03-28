@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.20
+
+- **Fixed terminal stability** — No more hangs, freezes, or 'no output' errors with multiple tabs
+- **GPU-accelerated terminal** — WebGL rendering for smoother output
+- **Smarter tab management** — Hidden tabs don't consume CPU; new tabs start on demand
+- **Faster project switching** — Back-to-projects cleanup no longer freezes
+
+
 ## What's New in v0.4.19
 
 - **Fixed terminal resize** — No more narrow text wrapping when switching tabs
