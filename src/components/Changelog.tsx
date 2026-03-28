@@ -24,6 +24,17 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.20',
+    items: [
+      'Fixed terminal hanging and "no output" errors with multiple tabs',
+      'GPU-accelerated terminal rendering via WebGL',
+      'Hidden tabs no longer consume CPU — output is buffered until you switch to them',
+      'New tabs only start Claude Code when you switch to them',
+      'Back-to-projects cleanup is fast and no longer freezes',
+      'Tab name updates immediately when switching agents',
+    ],
+  },
+  {
     version: '0.4.19',
     items: [
       'Fixed terminal resize when switching tabs — no more narrow text wrapping',
