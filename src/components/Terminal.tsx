@@ -710,7 +710,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         ptyDisposablesRef.current.push(exitDisposable);
 
         // Handle terminal input -> PTY
-        term.onData((data) => {
+        const inputDisposable = term.onData((data) => {
           ptyRef.current?.write(data);
           // When user sends input to an agent without title-based status detection,
           // assume it transitions to "thinking" (processing the request).
@@ -721,6 +721,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             }
           }
         });
+        ptyDisposablesRef.current.push(inputDisposable);
 
         // Handle special key combinations
         term.attachCustomKeyEventHandler((event) => {
