@@ -12,7 +12,7 @@ Write clear, user-friendly notes about what changed in this version.
 - **Fixed double-typing** — Each keystroke now registers once, not twice
 - **New tab autofocus** — Cmd+T creates a tab that's immediately ready for input
 - **Better error messages** — Failed project imports show actual error output instead of cryptic exit codes
-- **Support panel** — Built-in help and bug reporting replaces the old bug report button
+- **Support panel** — Built-in help and bug reporting
 
 
 ## What's New in v0.4.20
