@@ -1034,10 +1034,10 @@ export const WorkspaceView = memo(function WorkspaceView({
                       </>
                     )}
                   </div>
-                  {isWebProject && (
-                    <>
-                      <div className="preview-tabs-divider" />
-                      <div className="preview-actions">
+                  <div className="preview-tabs-divider" />
+                  <div className="preview-actions">
+                    {isWebProject && (
+                      <>
                         <button
                           className="preview-action-btn-icon"
                           onClick={() => void handleEnterCompactMode()}
@@ -1053,17 +1053,17 @@ export const WorkspaceView = memo(function WorkspaceView({
                             iconOnly
                           />
                         </span>
-                        <button
-                          className="preview-action-btn-icon"
-                          onClick={() => setIsPreviewHidden(true)}
-                          title="Hide Preview"
-                          data-education-id="hide-preview"
-                        >
-                          <PanelRightIcon size={12} />
-                        </button>
-                      </div>
-                    </>
-                  )}
+                      </>
+                    )}
+                    <button
+                      className="preview-action-btn-icon"
+                      onClick={() => setIsPreviewHidden(true)}
+                      title="Hide Panel"
+                      data-education-id="hide-preview"
+                    >
+                      <PanelRightIcon size={12} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Tab content */}
