@@ -537,8 +537,15 @@ export const WorkspaceView = memo(function WorkspaceView({
     setIsCropMode,
   ]);
 
-  // Generic projects (Tauri apps, CLI tools, etc.) don't have a web preview
-  const isWebProject = projectType !== 'generic';
+  // Generic/unknown projects (Tauri apps, CLI tools, blank projects, etc.) don't have a web preview
+  const isWebProject = projectType !== 'generic' && projectType !== 'unknown';
+
+  // Switch to code tab for non-web projects (blank, generic) since preview is unavailable
+  useEffect(() => {
+    if (!isWebProject && workspaceTab === 'preview') {
+      setWorkspaceTab('code');
+    }
+  }, [isWebProject, workspaceTab, setWorkspaceTab]);
 
   // Track terminal tab titles from PTY title changes
   const [tabTitles, setTabTitles] = useState<Map<number, string>>(new Map());

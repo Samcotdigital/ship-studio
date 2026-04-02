@@ -87,9 +87,16 @@ fn ensure_gitignore_has_shipstudio_sync(project: &std::path::Path) -> Result<(),
     Ok(())
 }
 
-/// Check if a directory is a valid project (has package.json or HTML files)
+/// Check if a directory is a valid project.
+/// Accepts any directory inside ~/ShipStudio that has project files,
+/// a .gitignore (blank projects), or a .shipstudio metadata folder.
 fn is_valid_project(path: &std::path::Path) -> bool {
-    path.is_dir() && (path.join("package.json").exists() || detection::has_html_files(path))
+    path.is_dir()
+        && (path.join("package.json").exists()
+            || detection::has_html_files(path)
+            || path.join(".gitignore").exists()
+            || path.join(".shipstudio").exists()
+            || path.join(".git").exists())
 }
 
 // ============ Tauri Commands ============
@@ -435,6 +442,32 @@ pub async fn ensure_gitignore_has_shipstudio(project_path: String) -> Result<(),
 
     std::fs::write(&gitignore_path, new_content)
         .map_err(|e| format!("Failed to write .gitignore: {e}"))?;
+
+    Ok(())
+}
+
+/// Creates a blank project directory with a .gitignore.
+#[tauri::command]
+pub async fn create_blank_project(project_path: String) -> Result<(), String> {
+    // Can't use validate_project_path because the directory doesn't exist yet.
+    // Instead, validate that the parent is within ~/ShipStudio.
+    let path = std::path::Path::new(&project_path);
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+    let parent = path.parent().ok_or("Invalid project path")?;
+    let canonical_parent =
+        dunce::canonicalize(parent).map_err(|e| format!("Invalid parent path: {e}"))?;
+    if !canonical_parent.starts_with(&shipstudio_dir) {
+        return Err("Project must be inside ~/ShipStudio".to_string());
+    }
+
+    std::fs::create_dir_all(path)
+        .map_err(|e| format!("Failed to create project directory: {e}"))?;
+
+    // Add .shipstudio/ to gitignore
+    let gitignore = path.join(".gitignore");
+    std::fs::write(&gitignore, ".shipstudio/\n")
+        .map_err(|e| format!("Failed to create .gitignore: {e}"))?;
 
     Ok(())
 }
