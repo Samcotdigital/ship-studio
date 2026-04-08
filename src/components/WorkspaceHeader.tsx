@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GitHubButton } from './GitHubButton';
+import { ClientEditorButton } from './ClientEditorButton';
 import { checkIdeAvailability, openInIde as launchIde, openInFinder } from '../lib/ide';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { PluginSlot } from './PluginSlot';
@@ -304,8 +305,9 @@ export function WorkspaceHeader({
           />
         </div>
 
-        {/* Right side — hosting plugin, GitHub, Publish */}
+        {/* Right side — client editor, hosting plugin, GitHub, Publish */}
         <div className="workspace-header-right">
+          <ClientEditorButton projectPath={projectPath} />
           <PluginSlot
             name="toolbar"
             plugins={toolbarPlugins.hosting}

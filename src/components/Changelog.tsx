@@ -24,6 +24,13 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.23',
+    items: [
+      'New "Add Clients" button — introduces the Client Editor for inline content editing',
+      'Panel toggle button now visible when preview is hidden on all project types',
+    ],
+  },
+  {
     version: '0.4.22',
     items: [
       'New "Blank Project" template — start from scratch with just a terminal',
