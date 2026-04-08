@@ -6,6 +6,12 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.23
+
+- **Client Editor** — New "Add Clients" button in the toolbar introduces the inline Client Editor for your clients
+- **Panel toggle** — Show/hide panel button now visible on all project types
+
+
 ## What's New in v0.4.22
 
 - **Blank Project template** — start from scratch with just a terminal
