@@ -261,7 +261,7 @@ pub async fn get_project_github_status(project_path: String) -> ProjectGitHubSta
 
 /// Ensures git user.name and user.email are configured for the repo.
 /// If not set, fetches the user's identity from GitHub CLI and sets it locally.
-fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
+pub fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), String> {
     let has_name = create_command("git")
         .args(["config", "user.name"])
         .current_dir(repo_path)

@@ -3,6 +3,7 @@
 //! Commands for publishing to GitHub, staging, and production.
 
 use crate::commands::git::git_stage_and_commit;
+use crate::commands::github::ensure_git_identity;
 use crate::types::PublishResult;
 use crate::utils::{create_command, validate_project_path};
 use tracing::{debug, error, info, instrument, warn};
@@ -60,6 +61,9 @@ pub async fn publish_to_github(
         }
         _ => {}
     }
+
+    // Ensure git identity matches GitHub account before committing
+    let _ = ensure_git_identity(&validated_path);
 
     // Stage all changes
     let output = create_command("git")
@@ -123,6 +127,9 @@ pub async fn publish_to_staging(
     let message = commit_message.unwrap_or_else(|| "Update from Ship Studio".to_string());
     info!(message = %message, "Publishing to staging");
 
+    // Ensure git identity matches GitHub account before committing
+    let _ = ensure_git_identity(&validated_path);
+
     // Stage and commit any changes
     let _ = git_stage_and_commit(&validated_path, &message);
 
@@ -162,6 +169,9 @@ pub async fn publish_to_production(
     let validated_path = validate_project_path(&project_path)?;
     let message = commit_message.unwrap_or_else(|| "Update from Ship Studio".to_string());
     info!(message = %message, "Publishing to production");
+
+    // Ensure git identity matches GitHub account before committing
+    let _ = ensure_git_identity(&validated_path);
 
     // Stage and commit any changes
     let _ = git_stage_and_commit(&validated_path, &message);
@@ -209,6 +219,9 @@ pub async fn publish_branch(
         .trim()
         .to_string();
     info!(branch = %branch, message = %message, "Publishing branch");
+
+    // Ensure git identity matches GitHub account before committing
+    let _ = ensure_git_identity(&validated_path);
 
     // Stage all changes
     let _ = create_command("git")

@@ -2,6 +2,7 @@
 //!
 //! Commands for detecting and resolving merge conflicts.
 
+use crate::commands::github::ensure_git_identity;
 use crate::types::{ConflictBlock, ConflictedFile};
 use crate::utils::{create_command, validate_project_path};
 
@@ -312,6 +313,9 @@ pub async fn complete_merge(project_path: String) -> Result<(), String> {
         let stderr = String::from_utf8_lossy(&add_output.stderr);
         return Err(format!("Failed to stage changes: {stderr}"));
     }
+
+    // Ensure git identity matches GitHub account before committing
+    let _ = ensure_git_identity(&validated_path);
 
     // Create the merge commit
     let commit_output = create_command("git")
