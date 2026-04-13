@@ -509,25 +509,26 @@ export const WorkspaceView = memo(function WorkspaceView({
   // Only active when preview is visible (not hidden, and on preview tab for web projects)
   const previewVisible =
     projectType !== 'generic' && workspaceTab === 'preview' && !isPreviewHidden;
+
+  // Listen for native menu accelerators (Cmd+Shift+S / Cmd+Shift+C).
+  // Native accelerators work even when the cross-origin preview iframe has focus,
+  // unlike window keydown listeners which the iframe swallows.
   useEffect(() => {
     if (!previewVisible) return;
-    function handleScreenshotKeys(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
-      const key = e.key.toLowerCase();
-      if (key === 's') {
-        e.preventDefault();
-        if (!isCapturing && !isCropMode) {
-          void handleCaptureScreenshot();
-        }
-      } else if (key === 'c') {
-        e.preventDefault();
-        if (!isCapturing && !isCropCapturing) {
-          setIsCropMode(!isCropMode);
-        }
+    const unlistenScreenshot = listen('capture-screenshot', () => {
+      if (!isCapturing && !isCropMode) {
+        void handleCaptureScreenshot();
       }
-    }
-    window.addEventListener('keydown', handleScreenshotKeys);
-    return () => window.removeEventListener('keydown', handleScreenshotKeys);
+    });
+    const unlistenCrop = listen('toggle-crop', () => {
+      if (!isCapturing && !isCropCapturing) {
+        setIsCropMode(!isCropMode);
+      }
+    });
+    return () => {
+      void unlistenScreenshot.then((f) => f());
+      void unlistenCrop.then((f) => f());
+    };
   }, [
     previewVisible,
     isCapturing,

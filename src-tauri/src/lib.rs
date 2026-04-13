@@ -117,6 +117,16 @@ pub fn run() {
                     .accelerator("CmdOrCtrl+Q")
                     .build(app)?;
 
+                // Hidden menu items to register native accelerators for screenshot shortcuts.
+                // Native accelerators work even when the preview iframe has keyboard focus.
+                let screenshot_item =
+                    MenuItemBuilder::with_id("capture_screenshot", "Capture Screenshot")
+                        .accelerator("CmdOrCtrl+Shift+S")
+                        .build(app)?;
+                let crop_item = MenuItemBuilder::with_id("toggle_crop", "Crop Screenshot")
+                    .accelerator("CmdOrCtrl+Shift+C")
+                    .build(app)?;
+
                 let app_menu = SubmenuBuilder::new(app, "Ship Studio")
                     .about(None)
                     .separator()
@@ -129,7 +139,12 @@ pub fn run() {
                     .item(&quit_item)
                     .build()?;
 
-                let file_menu = SubmenuBuilder::new(app, "File").item(&close_tab).build()?;
+                let file_menu = SubmenuBuilder::new(app, "File")
+                    .item(&close_tab)
+                    .separator()
+                    .item(&screenshot_item)
+                    .item(&crop_item)
+                    .build()?;
 
                 let edit_menu = SubmenuBuilder::new(app, "Edit")
                     .undo()
@@ -166,6 +181,10 @@ pub fn run() {
                             let _ = window.emit("close-tab", ());
                         } else if event.id() == "confirm_quit" {
                             let _ = window.emit("confirm-quit", ());
+                        } else if event.id() == "capture_screenshot" {
+                            let _ = window.emit("capture-screenshot", ());
+                        } else if event.id() == "toggle_crop" {
+                            let _ = window.emit("toggle-crop", ());
                         }
                     }
                 });
