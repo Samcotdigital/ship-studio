@@ -25,6 +25,21 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.0', // v0.5.0
+    items: [
+      'Multi-project multitasking — run multiple projects at once with live agents and dev servers in each',
+      'Sidebar overhaul — pinned + active project groups, attention indicators, drag-to-reorder, searchable "+" picker',
+      'External dev-server death detection — status flips immediately when Next.js crashes or the port is killed',
+      'Opencode agent — third agent option alongside Claude Code and Codex, managed from the dashboard',
+      'Dashboard redesign — matching cards for Coding Agents, Preferences, and Integrations; "What\'s New" is a modal',
+      'Workspace toolbar split — sidebar toggle on top row, Restart / project settings on the lower row',
+      'Plugin crash isolation — a misbehaving plugin can no longer take down the app; crashes auto-remove with a toast',
+      'Backups on non-git projects — Safe Backup Restore works on folders without git history',
+      'Sentry error monitoring for frontend and backend',
+      'Stability fixes — no more dropped async results under StrictMode, --no-pager on git subprocess calls, better frontend error typing',
+    ],
+  },
+  {
     version: '0.4.25', // v0.4.25
     items: [
       'Pinned-projects sidebar — pin projects for quick switching, drag to reorder',

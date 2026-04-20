@@ -6,6 +6,20 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.5.0
+
+- **Multi-project multitasking** — Run multiple projects at once with live Claude Code / Codex / Opencode sessions and dev servers in each. Switching projects is instant — nothing tears down until you explicitly close it.
+- **Sidebar overhaul** — Pinned and active project groups, attention indicators when a background terminal needs your input, searchable "+" picker to pin any project, drag-to-reorder, and proper scroll behavior.
+- **External dev-server death detection** — Sidebar status flips immediately if Next.js crashes or the port is killed from elsewhere; no more stale "running" indicators.
+- **Opencode agent** — Third coding agent option alongside Claude Code and Codex, managed from a new Coding Agents panel on the dashboard with install / sign-in / set-default controls.
+- **Dashboard redesign** — Coding Agents, Preferences, and Integrations live in matching cards for a cleaner stack. "What's New" is a modal now, not an inline sidebar.
+- **Workspace toolbar split** — Sidebar toggle stays up top; Restart dev server and project settings moved to the lower toolbar for tighter grouping.
+- **Plugin crash isolation** — A misbehaving plugin can no longer take down the whole app. Plugins that crash are auto-removed with a toast so you can keep working.
+- **Backups on non-git projects** — Safe backup restore now works on folders without git history.
+- **Error monitoring** — Frontend and backend errors are now reported to Sentry so hangs and crashes get diagnosed faster.
+- **Stability fixes** — No more dropped async results under React StrictMode, `--no-pager` on git subprocess calls (was hanging on large repos), and better error discrimination on the frontend.
+
+
 ## What's New in v0.4.25
 
 - **Pinned-projects sidebar** — Pin projects for quick switching with drag-to-reorder, searchable picker, and proper flex layout
