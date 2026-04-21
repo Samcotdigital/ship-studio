@@ -86,33 +86,47 @@
   color: var(--action-text);
 }
 
-/* Search / filter — matches the editor's secondary toolbar height
- * (28px icon buttons + 8px vertical padding x2 = 44px, + 1px border). */
+/* Sidebar-top palette trigger — button styled like a search input. The
+ * real search happens inside the Cmd+K palette; clicking opens it. */
 .workspace-sidebar-filter {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  width: 100%;
   height: 48px;
   padding: 0 var(--spacing-md);
+  background: transparent;
+  border: none;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-.workspace-sidebar-filter input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
   font-size: 12px;
-  font-family: inherit;
-  padding: 0;
+  text-align: left;
+  transition: background-color var(--transition-fast);
 }
 
-.workspace-sidebar-filter input::placeholder {
+.workspace-sidebar-filter:hover {
+  background: var(--bg-tertiary);
+}
+
+.workspace-sidebar-filter-placeholder {
+  flex: 1;
   color: var(--text-muted);
+}
+
+.workspace-sidebar-filter-shortcut {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.3px;
 }
 
 .workspace-sidebar-scroll {
@@ -122,7 +136,7 @@
   max-width: 100% !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  padding: var(--spacing-xs) 0 var(--spacing-md);
+  padding: 0 0 var(--spacing-md);
   /* Plain block layout. Every child takes a full line. */
   display: block !important;
   /* Hide the scrollbar visually while keeping the container scrollable.
@@ -172,7 +186,7 @@
   align-items: center;
   gap: var(--spacing-sm);
   width: 100%;
-  height: 24px;
+  height: 32px;
   padding: 0 var(--spacing-md);
   background: transparent;
   border: none;
@@ -324,6 +338,16 @@
   flex-shrink: 0;
 }
 
+/* When the row has a Cmd+N shortcut, the initials slot shows the shortcut
+ * instead. Matches the ⌘K badge sizing on the dashboard search trigger. */
+.sidebar-project-initials.is-shortcut {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+}
+
 .sidebar-project-body {
   padding: 2px 0 var(--spacing-sm);
 }
@@ -463,6 +487,22 @@
 .sidebar-section-add:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+/* Keyboard-shortcut hint rendered next to the "+" button. */
+.sidebar-section-shortcut {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: 0.3px;
 }
 
 /* Agent picker popover */
@@ -679,94 +719,4 @@
   line-height: 1;
 }
 
-/* Project picker modal (overlay of the projects grid). */
-.project-picker-modal {
-  width: min(900px, 90vw);
-  max-height: 80vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.project-picker-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--spacing-lg);
-}
-
-.project-picker-search {
-  width: 100%;
-  padding: 10px var(--spacing-md);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  margin-bottom: var(--spacing-md);
-}
-
-.project-picker-search::placeholder {
-  color: var(--text-muted);
-}
-
-.project-picker-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.project-picker-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.project-picker-item:hover {
-  background: var(--bg-primary);
-}
-
-.project-picker-item-initials {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 700;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.project-picker-item-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-picker-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: var(--spacing-xl) 0;
-}
+/* Project picker styles removed — replaced by the command palette (⌘O). */

@@ -41,6 +41,7 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
+import { useWorkspaceCommands } from '../commands/useWorkspaceCommands';
 import {
   CameraIcon,
   CodeIcon,
@@ -48,11 +49,9 @@ import {
   BranchIcon,
   PullRequestIcon,
   EyeIcon,
-  PanelRightIcon,
   CompactIcon,
   ActivityIcon,
   ResetIcon,
-  SettingsIcon,
 } from './icons';
 import { ToolbarDropdown } from './ToolbarDropdown';
 import { getAgentById } from '../lib/agent';
@@ -160,7 +159,6 @@ interface LayoutProps {
   showHealthLogs: boolean;
   setShowHealthLogs: (show: boolean) => void;
   isPreviewHidden: boolean;
-  setIsPreviewHidden: (hidden: boolean) => void;
   workspaceTab: 'preview' | 'code' | 'branches' | 'prs';
   setWorkspaceTab: (tab: 'preview' | 'code' | 'branches' | 'prs') => void;
   compactView: 'terminal' | 'branches' | 'prs';
@@ -377,7 +375,6 @@ export const WorkspaceView = memo(function WorkspaceView({
   const helpModal = useModal('help');
   const skillsModal = useModal('skills');
   const mcpModal = useModal('mcp');
-  const pluginManagerModal = useModal('pluginManager');
   const devCommandModal = useModal('devCommand');
   const projectSettingsModal = useModal('projectSettings');
   useEffect(() => {
@@ -451,7 +448,6 @@ export const WorkspaceView = memo(function WorkspaceView({
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
-    setIsPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
     compactView,
@@ -472,7 +468,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     installSuggestedPlugin,
   } = pluginState;
 
-  const { isEducationMode, setIsEducationMode, closeEducation } = modals;
+  const { isEducationMode, closeEducation } = modals;
 
   const { toasts: toastList, showToast, dismissToast } = toasts;
 
@@ -585,6 +581,20 @@ export const WorkspaceView = memo(function WorkspaceView({
   // projects view renders its own sidebar instance unconditionally, so
   // this state does not affect it.
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  // In compact mode we hide the sidebar unconditionally — project switching
+  // happens via ⌘1..9 shortcuts. Users can't manually re-show it; the toggle
+  // button is also suppressed below to avoid a dead affordance.
+  const effectiveSidebarHidden = isPinned || isSidebarHidden;
+
+  // Workspace-scoped palette commands (branch + PR flows).
+  useWorkspaceCommands({
+    currentBranch,
+    hasUncommittedChanges,
+    hasConflicts: showConflictResolution,
+    setWorkspaceTab,
+    setShowSubmitReview,
+    handleResolveConflicts: () => void handleResolveConflicts(),
+  });
 
   const registryVersion = useSyncExternalStore(
     sessionRegistry.subscribeSimple,
@@ -683,12 +693,9 @@ export const WorkspaceView = memo(function WorkspaceView({
   const header = WorkspaceHeader({
     projectPath: currentProject.path,
     projectName: currentProject.name,
-    isEducationMode,
-    onToggleEducationMode: () => setIsEducationMode(!isEducationMode),
-    onOpenPluginManager: pluginManagerModal.open,
     onOpenAssetsPanel: assetsPanelModal.open,
-    onOpenEnvEditor: envEditorModal.open,
-    onOpenBackupsModal: backupsModal.open,
+    isSidebarHidden: effectiveSidebarHidden,
+    onToggleSidebar: isPinned ? undefined : () => setIsSidebarHidden((v) => !v),
     integrations,
     onGitHubStatusChange: handleGitHubStatusChange,
     onGitHubConnect: handleGitHubConnect,
@@ -717,7 +724,7 @@ export const WorkspaceView = memo(function WorkspaceView({
         <UpdateBanner />
         {header.titlebar}
 
-        <div className={`workspace-body${isSidebarHidden ? ' is-sidebar-hidden' : ''}`}>
+        <div className={`workspace-body${effectiveSidebarHidden ? ' is-sidebar-hidden' : ''}`}>
           <WorkspaceSidebar
             isHomeActive={false}
             onGoHome={onGoHome}
@@ -769,6 +776,98 @@ export const WorkspaceView = memo(function WorkspaceView({
               />
             )}
 
+            {/* Full-width branch + tabs bar. Historically this lived inside
+                the right pane of the SplitPane, but it was lifted up here
+                so the branch chip + workspace tabs span the full workspace
+                width and stay visible even when the preview pane is
+                hidden. The tabs still only control what's rendered in the
+                right pane — clicking "Code" / "Branches" / "PRs" swaps
+                that content, identical to before. */}
+            <div className="preview-tabs-bar">
+              {integrations.projectGithub?.status === 'connected' && currentBranch && (
+                <BranchIndicator
+                  currentBranch={currentBranch}
+                  hasUncommittedChanges={hasUncommittedChanges}
+                  changedFiles={changedFiles}
+                  projectPath={currentProject.path}
+                  isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
+                  isWebProject={isWebProject}
+                  onClick={() => {
+                    if (workspaceTab === 'branches' || workspaceTab === 'prs') {
+                      setWorkspaceTab(isWebProject ? 'preview' : 'code');
+                    } else {
+                      setWorkspaceTab('branches');
+                    }
+                  }}
+                  onDiscard={() => {
+                    void checkGitStatus(currentProject.path);
+                  }}
+                  onSave={() => setForcePublishOpen(true)}
+                />
+              )}
+              <div style={{ flex: 1 }} />
+              <div className="workspace-tabs">
+                {isWebProject && (
+                  <button
+                    className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                    onClick={() => setWorkspaceTab('preview')}
+                  >
+                    <EyeIcon size={14} />
+                    <span>Preview</span>
+                  </button>
+                )}
+                <button
+                  className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
+                  onClick={() => setWorkspaceTab('code')}
+                >
+                  <CodeIcon size={14} />
+                  <span>Code</span>
+                </button>
+                {integrations.projectGithub?.status === 'connected' && (
+                  <>
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('branches')}
+                      data-education-id="branches-tab"
+                    >
+                      <BranchIcon size={14} />
+                      <span>Branches</span>
+                    </button>
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('prs')}
+                      data-education-id="prs-tab"
+                    >
+                      <PullRequestIcon size={14} />
+                      <span>PRs</span>
+                    </button>
+                  </>
+                )}
+              </div>
+              {isWebProject && (
+                <>
+                  <div className="preview-tabs-divider" />
+                  <div className="preview-actions">
+                    <button
+                      className="preview-action-btn-icon"
+                      onClick={() => void handleEnterCompactMode()}
+                      title="Compact Mode"
+                      data-education-id="compact-button"
+                    >
+                      <CompactIcon size={12} />
+                    </button>
+                    <span data-education-id="browser-button">
+                      <BrowserDropdown
+                        url={`http://localhost:${devServerPort}`}
+                        buttonClassName="preview-action-btn-icon"
+                        iconOnly
+                      />
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
             <div className="workspace-content">
               <SplitPane
                 defaultSplit={28}
@@ -782,13 +881,6 @@ export const WorkspaceView = memo(function WorkspaceView({
                       healthPanelRef={healthPanelRef}
                       onAskClaude={sendToClaude}
                       onHealthOutput={handleHealthOutput}
-                      isWebProject={isWebProject}
-                      isPreviewHidden={isPreviewHidden}
-                      devServerPort={devServerPort}
-                      onEnterCompactMode={handleEnterCompactMode}
-                      onShowPreview={() => setIsPreviewHidden(false)}
-                      isSidebarHidden={isSidebarHidden}
-                      onToggleSidebar={() => setIsSidebarHidden((v) => !v)}
                     />
                     {/* Terminal view - hidden in compact mode when viewing branches/PRs */}
                     <div
@@ -814,23 +906,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                               )}
                             </button>
                           )}
-                          {!isWebProject && customDevCommand !== null && (
-                            <button
-                              className="show-preview-btn icon-only"
-                              onClick={devCommandModal.open}
-                              title="Edit dev command"
-                            >
-                              <SettingsIcon size={12} />
-                            </button>
-                          )}
-                          <button
-                            className="show-preview-btn icon-only"
-                            data-education-id="project-settings-button"
-                            onClick={projectSettingsModal.open}
-                            title="Project settings"
-                          >
-                            <SettingsIcon size={12} />
-                          </button>
+                          {/* "Edit dev command" and "Project settings" moved to ⌘K palette. */}
                         </div>
                         <div className="terminal-logs-tabs">
                           {(isWebProject || hasDevServer) && (
@@ -974,100 +1050,11 @@ export const WorkspaceView = memo(function WorkspaceView({
                 }
                 right={
                   <div className="preview-pane">
-                    {/* Preview/Branches/PRs Tabs - always show all tabs */}
-                    <div className="preview-tabs-bar">
-                      {/* Branch Indicator - only show when GitHub is connected and we have branch info */}
-                      {integrations.projectGithub?.status === 'connected' && currentBranch && (
-                        <BranchIndicator
-                          currentBranch={currentBranch}
-                          hasUncommittedChanges={hasUncommittedChanges}
-                          changedFiles={changedFiles}
-                          projectPath={currentProject.path}
-                          isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
-                          isWebProject={isWebProject}
-                          onClick={() => {
-                            if (workspaceTab === 'branches' || workspaceTab === 'prs') {
-                              setWorkspaceTab(isWebProject ? 'preview' : 'code');
-                            } else {
-                              setWorkspaceTab('branches');
-                            }
-                          }}
-                          onDiscard={() => {
-                            void checkGitStatus(currentProject.path);
-                          }}
-                          onSave={() => setForcePublishOpen(true)}
-                        />
-                      )}
-                      <div style={{ flex: 1 }} />
-                      <div className="workspace-tabs">
-                        {isWebProject && (
-                          <button
-                            className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                            onClick={() => setWorkspaceTab('preview')}
-                          >
-                            <EyeIcon size={14} />
-                            <span>Preview</span>
-                          </button>
-                        )}
-                        <button
-                          className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
-                          onClick={() => setWorkspaceTab('code')}
-                        >
-                          <CodeIcon size={14} />
-                          <span>Code</span>
-                        </button>
-                        {integrations.projectGithub?.status === 'connected' && (
-                          <>
-                            <button
-                              className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                              onClick={() => setWorkspaceTab('branches')}
-                              data-education-id="branches-tab"
-                            >
-                              <BranchIcon size={14} />
-                              <span>Branches</span>
-                            </button>
-                            <button
-                              className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                              onClick={() => setWorkspaceTab('prs')}
-                              data-education-id="prs-tab"
-                            >
-                              <PullRequestIcon size={14} />
-                              <span>PRs</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      <div className="preview-tabs-divider" />
-                      <div className="preview-actions">
-                        {isWebProject && (
-                          <>
-                            <button
-                              className="preview-action-btn-icon"
-                              onClick={() => void handleEnterCompactMode()}
-                              title="Compact Mode"
-                              data-education-id="compact-button"
-                            >
-                              <CompactIcon size={12} />
-                            </button>
-                            <span data-education-id="browser-button">
-                              <BrowserDropdown
-                                url={`http://localhost:${devServerPort}`}
-                                buttonClassName="preview-action-btn-icon"
-                                iconOnly
-                              />
-                            </span>
-                          </>
-                        )}
-                        <button
-                          className="preview-action-btn-icon"
-                          onClick={() => setIsPreviewHidden(true)}
-                          title="Hide Panel"
-                          data-education-id="hide-preview"
-                        >
-                          <PanelRightIcon size={12} />
-                        </button>
-                      </div>
-                    </div>
+                    {/* The .preview-tabs-bar that used to live here was
+                        lifted up to the workspace-main level so it spans
+                        the full workspace width. Tab switching behavior
+                        is unchanged — the content below still swaps
+                        based on `workspaceTab`. */}
 
                     {/* Tab content */}
                     {workspaceTab === 'preview' && isWebProject && (

@@ -43,7 +43,6 @@ import { useAppSetup } from './hooks/useAppSetup';
 import { ProjectsView } from './components/ProjectsView';
 import { WorkspaceView } from './components/WorkspaceView';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
-import { ProjectPickerModal } from './components/ProjectPickerModal';
 import { useProjectRail } from './hooks/useProjectRail';
 import { OnboardingScreen } from './components/setup';
 import { Project } from './lib/project';
@@ -56,6 +55,15 @@ import { ModalFrame } from './components/primitives/ModalFrame';
 import { Button } from './components/primitives/Button';
 import { ToastContext } from './contexts/ToastContext';
 import { ModalProvider, useModal } from './contexts/ModalContext';
+import { CommandPaletteHost } from './components/CommandPalette/CommandPaletteHost';
+import { AppGlobalModals } from './components/AppGlobalModals';
+import {
+  PaletteContextProvider,
+  useOpenPalette,
+  useSetPaletteContext,
+} from './components/CommandPalette/paletteContext';
+import { useAppCommands } from './commands/useAppCommands';
+import { useProjectNumberShortcuts } from './hooks/useProjectNumberShortcuts';
 import { SuccessIcon, InfoIcon, CloseIcon } from './components/icons';
 import { logger } from './lib/logger';
 import { trackEvent } from './lib/analytics';
@@ -82,7 +90,11 @@ interface AppProps {
 function App({ initialProjectPath }: AppProps) {
   return (
     <ModalProvider>
-      <AppContents initialProjectPath={initialProjectPath} />
+      <PaletteContextProvider>
+        <AppContents initialProjectPath={initialProjectPath} />
+        <CommandPaletteHost />
+        <AppGlobalModals />
+      </PaletteContextProvider>
     </ModalProvider>
   );
 }
@@ -94,9 +106,22 @@ const noop = () => {};
 function AppContents({ initialProjectPath }: AppProps) {
   const [view, setView] = useState<AppView>('loading');
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const setPaletteContext = useSetPaletteContext();
+  useEffect(() => {
+    if (view === 'workspace' || view === 'project-loading') {
+      setPaletteContext({
+        kind: 'project',
+        currentProjectName: currentProject?.name ?? null,
+        currentProjectPath: currentProject?.path ?? null,
+      });
+    } else if (view === 'projects') {
+      setPaletteContext({ kind: 'home', currentProjectName: null, currentProjectPath: null });
+    } else {
+      setPaletteContext({ kind: 'other', currentProjectName: null, currentProjectPath: null });
+    }
+  }, [view, currentProject, setPaletteContext]);
   const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
-  const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
   const previewRef = useRef<import('./components/Preview').PreviewHandle | null>(null);
   const currentProjectPathRef = useRef<string | null>(null);
 
@@ -245,7 +270,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
-    setIsPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
     compactView,
@@ -406,9 +430,40 @@ function AppContents({ initialProjectPath }: AppProps) {
     await enterCompactMode();
   };
 
+  // Register palette commands with real handlers — see src/commands/useAppCommands.tsx
+  // `pinnedPaths` is passed after the rail hook runs; done below.
+
   const { pinnedProjects, handleTogglePin, handleRailClick } = useProjectRail({
     currentProjectPath: currentProject?.path ?? null,
     handleSelectProject,
+    showToast,
+  });
+
+  const pinnedPaths = useMemo(
+    () => pinnedProjects.rows.map((r) => r.projectPath),
+    [pinnedProjects.rows]
+  );
+
+  const openPalette = useOpenPalette();
+  const openProjectPicker = useCallback(() => openPalette({ tab: 'project' }), [openPalette]);
+
+  // Cmd/Ctrl+1..9 → jump to Nth sidebar project (pinned first, then active).
+  useProjectNumberShortcuts({ pinnedPaths, handleSelectProject });
+
+  // Palette commands with real handlers — see src/commands/useAppCommands.tsx
+  useAppCommands({
+    currentProject,
+    pinnedPaths,
+    handleSelectProject,
+    handleBackToProjects,
+    handleCreateProject,
+    handleImportProject,
+    handleImportLocalFolder,
+    handleGitHubConnect: handleGitHubConnectFromOverlay,
+    handleRestartDevServer,
+    handleEnterCompactMode,
+    isEducationMode,
+    setIsEducationMode,
     showToast,
   });
 
@@ -698,7 +753,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,
-      setIsPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
       compactView,
@@ -713,7 +767,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,
-      setIsPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
       compactView,
@@ -967,7 +1020,7 @@ function AppContents({ initialProjectPath }: AppProps) {
             onGoHome={() => {
               /* already on Home */
             }}
-            onOpenProjectPicker={() => setIsProjectPickerOpen(true)}
+            onOpenProjectPicker={openProjectPicker}
             projects={pinnedProjects.rows}
             currentProjectPath={null}
             currentProjectName={null}
@@ -1032,12 +1085,6 @@ function AppContents({ initialProjectPath }: AppProps) {
             ))}
           </div>
         )}
-        <ProjectPickerModal
-          isOpen={isProjectPickerOpen}
-          onClose={() => setIsProjectPickerOpen(false)}
-          onSelectProject={handleRailClick}
-          currentProjectPath={currentProject?.path ?? null}
-        />
         {quitConfirmModal}
       </>
     );
@@ -1051,7 +1098,7 @@ function AppContents({ initialProjectPath }: AppProps) {
             key="sidebar-project-loading"
             isHomeActive={false}
             onGoHome={handleBackToProjects}
-            onOpenProjectPicker={() => setIsProjectPickerOpen(true)}
+            onOpenProjectPicker={openProjectPicker}
             projects={pinnedProjects.rows}
             currentProjectPath={currentProject?.path ?? null}
             currentProjectName={currentProject?.name ?? null}
@@ -1118,14 +1165,8 @@ function AppContents({ initialProjectPath }: AppProps) {
         onCloseProject={handleCloseProject}
         onSelectProjectTab={handleSelectProjectTab}
         onGoHome={handleBackToProjects}
-        onOpenProjectPicker={() => setIsProjectPickerOpen(true)}
+        onOpenProjectPicker={openProjectPicker}
         isProjectDevServerRunning={isServerRunning}
-      />
-      <ProjectPickerModal
-        isOpen={isProjectPickerOpen}
-        onClose={() => setIsProjectPickerOpen(false)}
-        onSelectProject={handleRailClick}
-        currentProjectPath={currentProject?.path ?? null}
       />
       {quitConfirmModal}
     </ToastContext.Provider>

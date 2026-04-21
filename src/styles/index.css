@@ -5,6 +5,7 @@
 
 /* Components (primitives) */
 @import './components/modal.css';
+@import './components/command-palette.css';
 
 /* Features */
 @import './features/setup.css';

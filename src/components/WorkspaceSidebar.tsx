@@ -9,6 +9,7 @@ import {
   type MouseEvent,
 } from 'react';
 import { SearchIcon, ChevronIcon } from './icons';
+import { useOpenPalette } from './CommandPalette/paletteContext';
 import { ALL_AGENTS, TERMINAL, getAgentById, type AgentConfig } from '../lib/agent';
 import type { TerminalTab } from '../hooks/useTerminalManagement';
 import type { PinnedProjectRow } from '../hooks/usePinnedProjects';
@@ -196,7 +197,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
   onOpenDevServerLogs,
   isProjectDevServerRunning,
 }: Props) {
-  const [filter, setFilter] = useState('');
+  // Filter state retained as a constant — the sidebar used to own a
+  // text-filter input, but the ⌘K palette now takes over search. The
+  // filter helpers below all short-circuit when the string is empty,
+  // so they become free no-ops.
+  const filter = '';
+  const openPalette = useOpenPalette();
   const [collapsed, setCollapsed] = useState<Record<SectionId, boolean>>(readCollapsed);
   const [projectExpanded, setProjectExpanded] =
     useState<Record<string, boolean>>(readProjectExpanded);
@@ -398,6 +404,22 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
   const pinnedOpen = currentInPinned || !groupCollapsed.pinned;
   const activeOpen = currentInActive || !groupCollapsed.projects;
 
+  /**
+   * Cmd+1..9 shortcut number for this row — matches the ordering used by
+   * `useProjectNumberShortcuts`: pinned first, then active (alphabetical).
+   * Only rows 1..9 get a badge; 10+ return null.
+   */
+  const shortcutNumberFor = (row: PinnedProjectRow): number | null => {
+    const pinIdx = pinnedRows.findIndex((r) => r.projectPath === row.projectPath);
+    if (pinIdx !== -1) return pinIdx < 9 ? pinIdx + 1 : null;
+    const actIdx = activeRows.findIndex((r) => r.projectPath === row.projectPath);
+    if (actIdx !== -1) {
+      const n = pinnedRows.length + actIdx + 1;
+      return n <= 9 ? n : null;
+    }
+    return null;
+  };
+
   // Single row renderer shared by both groups — the current project gets its
   // live agent/terminal/command sections; anyone else gets the read-only
   // InactiveProjectSections view fed from the session registry.
@@ -413,6 +435,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
         row={row}
         isCurrent={isCurrent}
         isExpanded={expanded}
+        shortcutNumber={shortcutNumberFor(row)}
         onToggleExpand={() => toggleProjectExpanded(row.projectPath)}
         onSelectProject={onSelectProject}
         onClose={canClose ? () => onCloseProject(row.projectPath) : undefined}
@@ -429,6 +452,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
                 addOptions={atMaxTabs ? undefined : AGENT_ADD_OPTIONS}
                 onAdd={atMaxTabs ? undefined : (agentId) => onAddTab(agentId)}
                 addLabel="Add agent tab"
+                addShortcut="⌘T"
                 items={filteredAgents}
                 emptyHint={filter ? 'No matches' : 'No agents running'}
               />
@@ -499,17 +523,16 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
         <span>Home</span>
       </button>
 
-      <div className="workspace-sidebar-filter">
+      <button
+        type="button"
+        className="workspace-sidebar-filter"
+        onClick={() => openPalette()}
+        aria-label="Open command palette"
+      >
         <SearchIcon size={12} />
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search"
-          aria-label="Search"
-          spellCheck={false}
-        />
-      </div>
+        <span className="workspace-sidebar-filter-placeholder">Search</span>
+        <span className="workspace-sidebar-filter-shortcut">⌘K</span>
+      </button>
 
       <div className="workspace-sidebar-scroll">
         <SidebarGroupHeader
@@ -679,6 +702,7 @@ function ProjectGroup({
   row,
   isCurrent,
   isExpanded,
+  shortcutNumber,
   onToggleExpand,
   onSelectProject,
   onClose,
@@ -687,6 +711,8 @@ function ProjectGroup({
   row: PinnedProjectRow;
   isCurrent: boolean;
   isExpanded: boolean;
+  /** Cmd+N shortcut badge (1..9). Null for rows beyond the shortcut range. */
+  shortcutNumber: number | null;
   onToggleExpand: () => void;
   onSelectProject: (path: string) => void;
   /** Shown as a hover-only X when defined. */
@@ -733,8 +759,12 @@ function ProjectGroup({
             className={isExpanded ? 'chevron-expanded' : 'chevron-collapsed'}
           />
         </button>
-        <span className="sidebar-project-initials" aria-hidden="true">
-          {initials}
+        <span
+          className={`sidebar-project-initials ${shortcutNumber !== null ? 'is-shortcut' : ''}`}
+          aria-hidden="true"
+          title={shortcutNumber !== null ? `⌘${shortcutNumber}` : undefined}
+        >
+          {shortcutNumber !== null ? `⌘${shortcutNumber}` : initials}
         </span>
         <span className="sidebar-project-name" title={row.fallbackName}>
           {row.fallbackName}
@@ -779,6 +809,8 @@ interface SectionProps {
   /** Simple "+" click handler. If `addOptions` is provided, this is invoked with the chosen agent id. */
   onAdd?: (agentId?: string) => void;
   addLabel?: string;
+  /** Display-only keyboard hint next to the "+" button (e.g. "⌘T"). */
+  addShortcut?: string;
   /** If provided, the "+" opens a popover picker with these options instead of an instant add. */
   addOptions?: AgentConfig[];
 }
@@ -793,6 +825,7 @@ function SidebarSection({
   onToggle,
   onAdd,
   addLabel,
+  addShortcut,
   addOptions,
 }: SectionProps) {
   const headerId = `sidebar-section-${id}`;
@@ -843,15 +876,22 @@ function SidebarSection({
         <div className="sidebar-section-meta" ref={pickerRef}>
           <span className="sidebar-section-count">{total}</span>
           {onAdd && (
-            <button
-              type="button"
-              className="sidebar-section-add"
-              onClick={handleAddClick}
-              title={addLabel}
-              aria-label={addLabel}
-            >
-              +
-            </button>
+            <>
+              <button
+                type="button"
+                className="sidebar-section-add"
+                onClick={handleAddClick}
+                title={addLabel}
+                aria-label={addLabel}
+              >
+                +
+              </button>
+              {addShortcut && (
+                <kbd className="sidebar-section-shortcut" aria-hidden="true">
+                  {addShortcut}
+                </kbd>
+              )}
+            </>
           )}
           {pickerOpen && addOptions && (
             <div className="sidebar-section-picker" role="menu">

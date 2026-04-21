@@ -14,27 +14,15 @@
  * @module components/WorkspaceHeader
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GitHubButton } from './GitHubButton';
 import { ClientEditorButton } from './ClientEditorButton';
-import { checkIdeAvailability, openInIde as launchIde, openInFinder } from '../lib/ide';
+import { openInFinder } from '../lib/ide';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { PluginSlot } from './PluginSlot';
-import {
-  CodeIcon,
-  VSCodeIcon,
-  CursorIcon,
-  ImageIcon,
-  GraduationCapIcon,
-  HistoryIcon,
-  DollarIcon,
-  PuzzleIcon,
-  HelpIcon,
-} from './icons';
+import { ImageIcon, HelpIcon, PanelLeftIcon } from './icons';
 import { SupportPanel } from './support/SupportPanel';
-import { logger } from '../lib/logger';
-import { trackEvent } from '../lib/analytics';
 import type { IntegrationState } from '../hooks/useIntegrationStatus';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 import type { PluginThemeData } from '../contexts/PluginContext';
@@ -46,15 +34,16 @@ export interface WorkspaceHeaderProps {
   projectPath: string;
   projectName: string;
 
-  // Education mode
-  isEducationMode: boolean;
-  onToggleEducationMode: () => void;
-
-  // Modal openers
-  onOpenPluginManager: () => void;
+  // Modal openers — kept here only for Assets (still a toolbar button).
+  // Env editor, backups, plugin manager, learn mode, and IDE launch moved
+  // to the Cmd+K palette.
   onOpenAssetsPanel: () => void;
-  onOpenEnvEditor: () => void;
-  onOpenBackupsModal: () => void;
+
+  // Sidebar collapse — lives at the far-left of the header so the health
+  // panel row below stays focused on health/logs. Omit `onToggleSidebar`
+  // to hide the button entirely (e.g. compact mode or pinned layouts).
+  isSidebarHidden?: boolean;
+  onToggleSidebar?: () => void;
 
   // GitHub
   integrations: IntegrationState;
@@ -103,12 +92,9 @@ export interface WorkspaceHeaderProps {
 export function WorkspaceHeader({
   projectPath,
   projectName,
-  isEducationMode,
-  onToggleEducationMode,
-  onOpenPluginManager,
   onOpenAssetsPanel,
-  onOpenEnvEditor,
-  onOpenBackupsModal,
+  isSidebarHidden,
+  onToggleSidebar,
   integrations,
   onGitHubStatusChange,
   onGitHubConnect,
@@ -154,37 +140,8 @@ export function WorkspaceHeader({
   // Support panel state
   const [isSupportPanelOpen, setIsSupportPanelOpen] = useState(false);
 
-  // IDE dropdown state (internal to header)
-  const [showIdeDropdown, setShowIdeDropdown] = useState(false);
-  const [ideAvailability, setIdeAvailability] = useState<{ vscode: boolean; cursor: boolean }>({
-    vscode: false,
-    cursor: false,
-  });
-  const [openingIde, setOpeningIde] = useState<string | null>(null);
-
-  // Check IDE availability on mount
-  useEffect(() => {
-    void checkIdeAvailability()
-      .then(setIdeAvailability)
-      .catch(() => setIdeAvailability({ vscode: false, cursor: false }));
-  }, []);
-
-  // Open project in IDE
-  const openInIde = async (ide: 'vscode' | 'cursor') => {
-    setOpeningIde(ide);
-    try {
-      await launchIde(projectPath, ide);
-      void trackEvent('ide_opened', {
-        ide,
-        project_name: projectName,
-        $screen_name: 'Workspace',
-      });
-      setOpeningIde(null);
-    } catch (e) {
-      logger.error(`Failed to open in ${ide}`, { error: e });
-      setOpeningIde(null);
-    }
-  };
+  // IDE launch, env editor, backups, plugin manager, and learn-mode toggle
+  // now live in the Cmd+K palette. See src/commands/useAppCommands.tsx.
 
   const titlebar = (
     <div className="workspace-titlebar" onMouseDown={handleDrag} onDoubleClick={handleDoubleClick}>
@@ -201,44 +158,22 @@ export function WorkspaceHeader({
 
   const toolbar = (
     <header className="workspace-header">
-      {/* Left side — utility buttons + plugin toolbar slots */}
+      {/* Left side — sidebar collapse, Assets, Support. Learn mode, env
+          vars, backups, plugin manager, and IDE launch are reachable via
+          ⌘K. The sidebar toggle used to live in the health-panel row but
+          moved up here so that row can stay focused on health/logs. */}
       <div className="workspace-header-left">
-        <button
-          className={`toolbar-icon-btn ${isEducationMode ? 'active' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleEducationMode();
-          }}
-          title="Learn Mode"
-          data-education-id="education-button"
-        >
-          <GraduationCapIcon size={12} />
-          <span>Learn Mode</span>
-        </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={onOpenBackupsModal}
-          title="Backups"
-          data-education-id="backups-button"
-        >
-          <HistoryIcon size={12} />
-        </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={onOpenEnvEditor}
-          title="Environment Variables"
-          data-education-id="env-button"
-        >
-          <DollarIcon size={12} />
-        </button>
-        <button
-          className="toolbar-icon-btn"
-          onClick={() => setIsSupportPanelOpen(true)}
-          title="Support"
-          data-education-id="support-button"
-        >
-          <HelpIcon size={12} />
-        </button>
+        {onToggleSidebar && (
+          <button
+            className="toolbar-icon-btn"
+            onClick={onToggleSidebar}
+            title={isSidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+            aria-label={isSidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+            data-education-id="toggle-sidebar"
+          >
+            <PanelLeftIcon size={12} />
+          </button>
+        )}
         <button
           className="toolbar-icon-btn"
           onClick={onOpenAssetsPanel}
@@ -249,50 +184,12 @@ export function WorkspaceHeader({
         </button>
         <button
           className="toolbar-icon-btn"
-          onClick={onOpenPluginManager}
-          title="Manage Plugins"
-          data-education-id="plugin-manager"
+          onClick={() => setIsSupportPanelOpen(true)}
+          title="Support"
+          data-education-id="support-button"
         >
-          <PuzzleIcon size={12} />
+          <HelpIcon size={12} />
         </button>
-        <div
-          className="ide-dropdown-container"
-          onMouseEnter={() => setShowIdeDropdown(true)}
-          onMouseLeave={() => setShowIdeDropdown(false)}
-          data-education-id="ide-button"
-        >
-          <button className="toolbar-icon-btn" title="Open in IDE">
-            <CodeIcon size={12} />
-          </button>
-          {showIdeDropdown && (
-            <div className="ide-dropdown">
-              <div className="ide-dropdown-inner">
-                {ideAvailability.vscode && (
-                  <button onClick={() => void openInIde('vscode')} disabled={openingIde !== null}>
-                    <VSCodeIcon size={14} />
-                    {openingIde === 'vscode' ? 'Opening...' : 'VS Code'}
-                  </button>
-                )}
-                {ideAvailability.cursor && (
-                  <button onClick={() => void openInIde('cursor')} disabled={openingIde !== null}>
-                    <CursorIcon size={14} />
-                    {openingIde === 'cursor' ? 'Opening...' : 'Cursor'}
-                  </button>
-                )}
-                {!ideAvailability.vscode && !ideAvailability.cursor && (
-                  <div className="ide-dropdown-empty">No IDEs found</div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        <PluginSlot
-          name="toolbar"
-          plugins={toolbarPlugins.regular}
-          project={pluginProject}
-          actions={pluginActions}
-          theme={pluginTheme}
-        />
       </div>
 
       {/* Right side — client editor, hosting plugin, GitHub, Publish */}
