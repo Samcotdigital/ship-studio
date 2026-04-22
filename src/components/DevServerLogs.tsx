@@ -110,15 +110,33 @@ export function DevServerLogs({ output, outputVersion }: DevServerLogsProps) {
       lastWrittenLengthRef.current = output.length;
     }
 
-    // Handle resize
+    // Handle resize. `fit()` recomputes cols/rows from the new container
+    // size but doesn't force xterm to repaint already-rendered lines at
+    // the new width — so without `refresh()` you get overlapping text
+    // (old glyphs at old column positions bleeding through the new
+    // layout). Debounce to coalesce transient resize events (grid
+    // animation, font load, tab switches) into a single fit+refresh.
+    let resizeTimer: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
-      }
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        const t = terminalRef.current;
+        const fit = fitAddonRef.current;
+        if (!t || !fit) return;
+        try {
+          fit.fit();
+          t.refresh(0, t.rows - 1);
+        } catch {
+          // fit() throws if container is 0×0 (e.g. mid-transition);
+          // safe to ignore — next resize event will retry.
+        }
+      }, 16);
     });
     resizeObserver.observe(container);
 
     return () => {
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       lastWrittenLengthRef.current = 0;
       if (terminalRef.current) {

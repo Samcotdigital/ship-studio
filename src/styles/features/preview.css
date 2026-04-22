@@ -1,8 +1,25 @@
-/* Preview */
+/* Preview. Uses grid rather than column-flex because ancestor heights
+   in the chain above .preview-pane are indefinite at layout time —
+   percentage flex-basis on the logs panel was resolving to auto
+   (content size) and letting the viewport grow past its share. Grid
+   rows are computed against the container's resolved height, which
+   WKWebView handles deterministically here.
+
+   Three rows: toolbar (auto), viewport (1fr), logs panel. The panel
+   row is `0` when closed and `1fr` when open. Panel stays mounted
+   either way (its overflow:hidden clips at the 0 row) so plugin-
+   style state inside doesn't get torn down on toggle. JS sets
+   `data-logs="open"` on the container when showLogs is true. */
 .preview-container {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.preview-container[data-logs='open'] {
+  grid-template-rows: auto 1fr 1fr;
 }
 
 .preview-toolbar {
@@ -344,6 +361,172 @@
 
 .preview-resize-handle:hover .preview-resize-handle-bar {
   background: var(--accent);
+}
+
+/* Dev server logs toggle (toolbar button) */
+.preview-logs-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.preview-logs-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.preview-logs-toggle.active {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: var(--bg-primary);
+}
+
+/* Collapsible dev server logs panel (bottom of preview) */
+.preview-logs-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #1a1a1a;
+  border-top: 1px solid var(--border);
+  /* Isolate the panel's internal layout from ancestors: any Network
+     row / DOM tree / console line change inside the panel won't
+     trigger re-layout upward. */
+  contain: layout size;
+}
+
+.preview-logs-header {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  padding-right: var(--spacing-md);
+}
+
+.preview-logs-tabs {
+  display: flex;
+  align-items: stretch;
+}
+
+.preview-logs-tab {
+  position: relative;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition);
+  outline: none;
+}
+
+.preview-logs-tab:hover,
+.preview-logs-tab:focus-visible {
+  color: var(--text-secondary);
+  outline: none;
+}
+
+.preview-logs-tab.is-active {
+  color: var(--text-primary);
+}
+
+.preview-logs-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.preview-logs-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Center within the header row — the header is `align-items: stretch`
+     for the tabs (so their `::after` underline spans the full height),
+     so the close button needs align-self:center to vertical-center its
+     fixed 22px box in the taller stretched row. */
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.preview-logs-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Body stacks both tab contents in a single grid cell. The active
+   slot is visible; the inactive slot stays laid out (full size,
+   same grid cell) but hidden via `visibility: hidden` — so nothing
+   re-mounts and xterm / stores keep their state across tab switches. */
+.preview-logs-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* Hide via opacity (not visibility): the BrowserTools slot has its
+   own active sub-slot with its own visibility:visible rule, which
+   would punch through an outer `visibility: hidden` and render inner
+   Console entries on top of the Server Logs. Opacity compounds
+   through stacking contexts, so opacity:0 on the outer slot hides
+   every descendant unconditionally.
+
+   `isolation: isolate` is important: it forces every slot to create
+   its own stacking context regardless of opacity. Without it,
+   xterm's internal `.xterm-helper-textarea` (which has inline
+   `z-index: 1000`) escapes the inactive DevServerLogs slot and
+   renders on top of the active BrowserTools buttons — eating clicks.
+   The explicit `z-index` + `isolation` combo guarantees the active
+   slot always wins the hit-test. */
+.preview-logs-slot {
+  grid-row: 1;
+  grid-column: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  z-index: 0;
+}
+
+.preview-logs-slot.is-active {
+  opacity: 1;
+  z-index: 1;
 }
 
 /* Crop selection overlay */

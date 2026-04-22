@@ -585,6 +585,7 @@ export const WorkspaceView = memo(function WorkspaceView({
   // happens via ⌘1..9 shortcuts. Users can't manually re-show it; the toggle
   // button is also suppressed below to avoid a dead affordance.
   const effectiveSidebarHidden = isPinned || isSidebarHidden;
+  const [showPreviewLogs, setShowPreviewLogs] = useState(false);
 
   // Workspace-scoped palette commands (branch + PR flows).
   useWorkspaceCommands({
@@ -1061,6 +1062,12 @@ export const WorkspaceView = memo(function WorkspaceView({
                           isBranchSwitching={isBranchSwitching}
                           isDevServerRestarting={isRestartingDevServer}
                           onSendToClaude={sendToClaude}
+                          showLogs={showPreviewLogs}
+                          onToggleLogs={
+                            hasDevServer ? () => setShowPreviewLogs((s) => !s) : undefined
+                          }
+                          devServerOutput={devServerOutput}
+                          devServerOutputVersion={devServerOutputVersion}
                           previewPlugins={
                             <PluginSlot
                               name="preview"
