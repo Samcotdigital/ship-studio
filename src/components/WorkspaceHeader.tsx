@@ -27,7 +27,7 @@ import type { IntegrationState } from '../hooks/useIntegrationStatus';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 import type { PluginThemeData } from '../contexts/PluginContext';
 
-const HOSTING_PLUGIN_IDS = ['vercel', 'cloudflare', 'netlify'];
+export const HOSTING_PLUGIN_IDS = ['vercel', 'cloudflare', 'netlify'];
 
 export interface WorkspaceHeaderProps {
   // Project

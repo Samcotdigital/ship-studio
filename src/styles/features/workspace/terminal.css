@@ -309,6 +309,86 @@
   font-style: italic;
 }
 
+/* Plugins dropdown stays mounted so plugin subtrees survive open/close
+   cycles. Hidden via off-screen absolute positioning (not display:none)
+   so plugin-rendered modals using position:fixed can still paint to
+   the viewport even while their dropdown ancestor is "closed". */
+.toolbar-dropdown-menu.is-hidden {
+  left: -99999px !important;
+  top: -99999px !important;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Plugin modals use position:fixed inside the hidden menu — they need
+   to override the inherited `visibility: hidden` so they can render. */
+.toolbar-dropdown-menu.is-hidden [class*='overlay'],
+.toolbar-dropdown-menu.is-hidden [class*='modal'],
+.toolbar-dropdown-menu.is-hidden [class*='portal'] {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* One row per plugin in the Plugins dropdown. The plugin's own
+   `toolbar` slot component is rendered inside `.plugin-dropdown-row-
+   trigger` — it stays the real click target (preserving its internal
+   modalOpen state), but we strip the toolbar-icon-btn chrome so it
+   looks like a menu row icon. The label alongside it is the plugin
+   name from manifest (purely decorative). */
+.plugin-dropdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.plugin-dropdown-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.plugin-dropdown-row-trigger {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Neutralize the plugin's toolbar button chrome (border, padding,
+   background) so it looks like a menu-row icon slot. The plugin
+   retains its SVG logo and its click handler — only the outer
+   button styling is reset. */
+.plugin-dropdown-row-trigger > * > button,
+.plugin-dropdown-row-trigger button.toolbar-icon-btn {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.plugin-dropdown-row:hover .plugin-dropdown-row-trigger button.toolbar-icon-btn {
+  color: var(--text-primary);
+}
+
+.plugin-dropdown-row-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+
+.plugin-dropdown-row-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* Compact plugin-icon slot used inside dropdown rows. Mirrors the
    `.plugin-icon-container` defense-in-depth from plugins.css but at
    14×14 so the plugin's real SVG logo (Vercel, Webflow, etc.) fits a

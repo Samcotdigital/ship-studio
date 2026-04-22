@@ -37,7 +37,7 @@ import type { CodeHealthPanelRef } from './CodeHealthPanel';
 import { HealthIndicatorBar } from './workspace/HealthIndicatorBar';
 import { CompactModeToggle } from './workspace/CompactModeToggle';
 import { WorkspaceModals } from './WorkspaceModals';
-import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceHeader, HOSTING_PLUGIN_IDS } from './WorkspaceHeader';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
@@ -709,7 +709,13 @@ export const WorkspaceView = memo(function WorkspaceView({
           pluginActions={pluginActions}
           pluginTheme={pluginTheme}
         />
-        <PluginsDropdown plugins={loadedPlugins} onOpenPluginManager={pluginManagerModal.open} />
+        <PluginsDropdown
+          plugins={loadedPlugins.filter((p) => !HOSTING_PLUGIN_IDS.includes(p.info.manifest.id))}
+          pluginProject={pluginProject}
+          pluginActions={pluginActions}
+          pluginTheme={pluginTheme}
+          onOpenPluginManager={pluginManagerModal.open}
+        />
       </>
     ),
     isSidebarHidden: effectiveSidebarHidden,
