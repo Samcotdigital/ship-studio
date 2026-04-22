@@ -188,37 +188,57 @@
 
 .preview-breakpoints {
   display: flex;
-  gap: 4px;
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0;
+  /* Cancel the parent .preview-toolbar's 9px top/bottom padding so the
+     tabs span the full toolbar height — lets the active underline sit
+     flush with the toolbar's bottom border. */
+  margin-top: -9px;
+  margin-bottom: -9px;
   margin-left: auto;
   margin-right: 0;
 }
 
 .breakpoint-btn {
-  padding: 6px 8px;
+  position: relative;
+  padding: 0 var(--spacing-md);
   background: transparent;
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 0;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition:
-    background-color 0.15s,
-    color 0.15s,
-    border-color 0.15s;
+  cursor: pointer;
+  transition: color 0.15s;
+  outline: none;
 }
 
 .breakpoint-btn svg {
   display: block;
 }
 
-.breakpoint-btn:hover {
-  background: var(--bg-tertiary);
+.breakpoint-btn:hover,
+.breakpoint-btn:focus-visible {
+  background: transparent;
   color: var(--text-secondary);
 }
 
 .breakpoint-btn.active {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.breakpoint-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
   background: var(--accent);
-  color: #1e1e1e;
+  border-radius: 2px 2px 0 0;
 }
 
 .preview-zoom {
