@@ -39,7 +39,15 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
 import { useWorkspaceCommands } from '../commands/useWorkspaceCommands';
-import { CameraIcon, CodeIcon, CropIcon, BranchIcon, PullRequestIcon, EyeIcon } from './icons';
+import {
+  CameraIcon,
+  CodeIcon,
+  CropIcon,
+  BranchIcon,
+  PullRequestIcon,
+  EyeIcon,
+  EyeOffIcon,
+} from './icons';
 import { ToolbarDropdown } from './ToolbarDropdown';
 import { PluginsDropdown } from './PluginsDropdown';
 import { getAgentById } from '../lib/agent';
@@ -147,6 +155,7 @@ interface LayoutProps {
   showHealthLogs: boolean;
   setShowHealthLogs: (show: boolean) => void;
   isPreviewHidden: boolean;
+  setIsPreviewHidden: (hidden: boolean) => void;
   workspaceTab: 'preview' | 'code' | 'branches' | 'prs';
   setWorkspaceTab: (tab: 'preview' | 'code' | 'branches' | 'prs') => void;
 }
@@ -432,6 +441,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
+    setIsPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
   } = layout;
@@ -834,16 +844,35 @@ export const WorkspaceView = memo(function WorkspaceView({
                 <div className="workspace-tabs">
                   {isWebProject && (
                     <button
-                      className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('preview')}
+                      className={`workspace-tab ${workspaceTab === 'preview' && !isPreviewHidden ? 'active' : ''}`}
+                      onClick={() => {
+                        setIsPreviewHidden(false);
+                        setWorkspaceTab('preview');
+                      }}
                     >
                       <EyeIcon size={14} />
                       <span>Preview</span>
                     </button>
                   )}
+                  {/* Focus mode — collapses the preview pane so the agent
+                    terminal takes the full workspace. Useful when the user
+                    is running their own browser as the preview. Active
+                    whenever the preview is hidden, regardless of which
+                    tab underlies it. */}
                   <button
-                    className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
-                    onClick={() => setWorkspaceTab('code')}
+                    className={`workspace-tab ${isPreviewHidden ? 'active' : ''}`}
+                    onClick={() => setIsPreviewHidden(!isPreviewHidden)}
+                    title={isPreviewHidden ? 'Exit focus mode' : 'Hide preview — agent only'}
+                  >
+                    <EyeOffIcon size={14} />
+                    <span>Focus</span>
+                  </button>
+                  <button
+                    className={`workspace-tab ${workspaceTab === 'code' && !isPreviewHidden ? 'active' : ''}`}
+                    onClick={() => {
+                      setIsPreviewHidden(false);
+                      setWorkspaceTab('code');
+                    }}
                   >
                     <CodeIcon size={14} />
                     <span>Code</span>
@@ -851,16 +880,22 @@ export const WorkspaceView = memo(function WorkspaceView({
                   {integrations.projectGithub?.status === 'connected' && (
                     <>
                       <button
-                        className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('branches')}
+                        className={`workspace-tab ${workspaceTab === 'branches' && !isPreviewHidden ? 'active' : ''}`}
+                        onClick={() => {
+                          setIsPreviewHidden(false);
+                          setWorkspaceTab('branches');
+                        }}
                         data-education-id="branches-tab"
                       >
                         <BranchIcon size={14} />
                         <span>Branches</span>
                       </button>
                       <button
-                        className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('prs')}
+                        className={`workspace-tab ${workspaceTab === 'prs' && !isPreviewHidden ? 'active' : ''}`}
+                        onClick={() => {
+                          setIsPreviewHidden(false);
+                          setWorkspaceTab('prs');
+                        }}
                         data-education-id="prs-tab"
                       >
                         <PullRequestIcon size={14} />

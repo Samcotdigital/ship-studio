@@ -272,6 +272,7 @@ function AppContents({ initialProjectPath }: AppProps) {
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
+    setIsPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
     resetLayout,
@@ -737,6 +738,7 @@ function AppContents({ initialProjectPath }: AppProps) {
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,
+      setIsPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
     }),
@@ -746,6 +748,7 @@ function AppContents({ initialProjectPath }: AppProps) {
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,
+      setIsPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
     ]
