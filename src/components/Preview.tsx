@@ -140,6 +140,10 @@ interface PreviewProps {
   devServerOutput?: string;
   /** Version counter that bumps when devServerOutput changes */
   devServerOutputVersion?: number;
+  /** Controlled inspect-panel sub-tab. Falls back to local state when unset. */
+  inspectTab?: InspectTab;
+  /** Callback when the user switches inspect-panel sub-tabs. */
+  onInspectTabChange?: (tab: InspectTab) => void;
 }
 
 /**
@@ -178,6 +182,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onToggleLogs,
     devServerOutput = '',
     devServerOutputVersion = 0,
+    inspectTab,
+    onInspectTabChange,
   },
   ref
 ) {
@@ -483,12 +489,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         devServerOutputVersion={devServerOutputVersion}
         onClose={onToggleLogs}
         onSendToAgent={onSendToClaude}
+        activeTab={inspectTab}
+        onActiveTabChange={onInspectTabChange}
       />
     </div>
   );
 });
 
-type InspectTab = 'logs' | 'browser';
+export type InspectTab = 'logs' | 'browser';
 
 interface InspectPanelProps {
   hidden: boolean;
@@ -496,6 +504,9 @@ interface InspectPanelProps {
   devServerOutputVersion: number;
   onClose?: () => void;
   onSendToAgent?: (text: string) => void;
+  /** Controlled tab. When set, the component is fully controlled. */
+  activeTab?: InspectTab;
+  onActiveTabChange?: (tab: InspectTab) => void;
 }
 
 function InspectPanel({
@@ -504,8 +515,12 @@ function InspectPanel({
   devServerOutputVersion,
   onClose,
   onSendToAgent,
+  activeTab: activeTabProp,
+  onActiveTabChange,
 }: InspectPanelProps) {
-  const [activeTab, setActiveTab] = useState<InspectTab>('logs');
+  const [activeTabLocal, setActiveTabLocal] = useState<InspectTab>('logs');
+  const activeTab = activeTabProp ?? activeTabLocal;
+  const setActiveTab = onActiveTabChange ?? setActiveTabLocal;
 
   return (
     <div className="preview-logs-panel" aria-hidden={hidden}>

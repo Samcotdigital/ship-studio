@@ -71,7 +71,6 @@ export interface UseProjectLifecycleParams {
   startScreenshotInterval: (projectPath: string) => void;
   onPreviewReady: (projectPath: string) => void;
   // Layout
-  setShowDevServerLogs: (show: boolean) => void;
   setWorkspaceTab: (tab: 'preview' | 'branches' | 'prs') => void;
   resetLayout: () => void;
   // Integrations
@@ -103,7 +102,6 @@ export function useProjectLifecycle({
   clearScreenshotInterval,
   startScreenshotInterval,
   onPreviewReady,
-  setShowDevServerLogs,
   setWorkspaceTab,
   resetLayout,
   setProjectGitHubStatus,
@@ -253,7 +251,6 @@ export function useProjectLifecycle({
     currentProjectPathRef.current = project.path;
     clearScreenshotInterval();
     setIsPublishing(false);
-    setShowDevServerLogs(false);
     setView('workspace');
 
     // Restore terminal tabs only on the FIRST open of a project this

@@ -10,24 +10,9 @@ describe('useWorkspaceLayout', () => {
   it('initializes with default state', () => {
     const { result } = renderHook(() => useWorkspaceLayout({ isGitHubConnected: false }));
 
-    expect(result.current.showDevServerLogs).toBe(false);
     expect(result.current.showHealthLogs).toBe(false);
     expect(result.current.isPreviewHidden).toBe(false);
     expect(result.current.workspaceTab).toBe('preview');
-  });
-
-  it('toggles dev server logs visibility', () => {
-    const { result } = renderHook(() => useWorkspaceLayout({ isGitHubConnected: false }));
-
-    act(() => {
-      result.current.setShowDevServerLogs(true);
-    });
-    expect(result.current.showDevServerLogs).toBe(true);
-
-    act(() => {
-      result.current.setShowDevServerLogs(false);
-    });
-    expect(result.current.showDevServerLogs).toBe(false);
   });
 
   it('switches workspace tabs', () => {
@@ -80,7 +65,6 @@ describe('useWorkspaceLayout', () => {
     const { result } = renderHook(() => useWorkspaceLayout({ isGitHubConnected: false }));
 
     act(() => {
-      result.current.setShowDevServerLogs(true);
       result.current.setShowHealthLogs(true);
     });
 
@@ -88,7 +72,6 @@ describe('useWorkspaceLayout', () => {
       result.current.resetLayout();
     });
 
-    expect(result.current.showDevServerLogs).toBe(false);
     expect(result.current.showHealthLogs).toBe(false);
   });
 

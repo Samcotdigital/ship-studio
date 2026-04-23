@@ -15,8 +15,8 @@ interface UseWorkspaceLayoutParams {
 }
 
 export function useWorkspaceLayout({ isGitHubConnected }: UseWorkspaceLayoutParams) {
-  // Log panel visibility
-  const [showDevServerLogs, setShowDevServerLogs] = useState(false);
+  // Health-logs panel visibility (takes over the terminal pane when the user
+  // opens the code-health log feed).
   const [showHealthLogs, setShowHealthLogs] = useState(false);
 
   // Preview panel visibility
@@ -36,14 +36,11 @@ export function useWorkspaceLayout({ isGitHubConnected }: UseWorkspaceLayoutPara
 
   // Reset layout state (when going back to projects)
   const resetLayout = useCallback(() => {
-    setShowDevServerLogs(false);
     setShowHealthLogs(false);
   }, []);
 
   return {
     // Log panel
-    showDevServerLogs,
-    setShowDevServerLogs,
     showHealthLogs,
     setShowHealthLogs,
 

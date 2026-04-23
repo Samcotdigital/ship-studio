@@ -267,8 +267,6 @@ function AppContents({ initialProjectPath }: AppProps) {
 
   // Workspace layout
   const {
-    showDevServerLogs,
-    setShowDevServerLogs,
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
@@ -388,7 +386,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     clearScreenshotInterval,
     startScreenshotInterval,
     onPreviewReady,
-    setShowDevServerLogs,
     setWorkspaceTab,
     resetLayout,
     setProjectGitHubStatus,
@@ -733,8 +730,6 @@ function AppContents({ initialProjectPath }: AppProps) {
 
   const layoutProps = useMemo(
     () => ({
-      showDevServerLogs,
-      setShowDevServerLogs,
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,
@@ -743,8 +738,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       setWorkspaceTab,
     }),
     [
-      showDevServerLogs,
-      setShowDevServerLogs,
       showHealthLogs,
       setShowHealthLogs,
       isPreviewHidden,

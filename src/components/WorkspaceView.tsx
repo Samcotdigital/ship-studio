@@ -23,7 +23,7 @@ import { listen } from '@tauri-apps/api/event';
 import { Terminal } from './Terminal';
 import { DevServerLogs } from './DevServerLogs';
 import { Preview } from './Preview';
-import type { PreviewHandle } from './Preview';
+import type { PreviewHandle, InspectTab } from './Preview';
 import { SplitPane } from './SplitPane';
 import { BranchIndicator } from './BranchIndicator';
 import { CodeTab } from './CodeTab';
@@ -150,8 +150,6 @@ interface ScreenshotProps {
 }
 
 interface LayoutProps {
-  showDevServerLogs: boolean;
-  setShowDevServerLogs: (show: boolean) => void;
   showHealthLogs: boolean;
   setShowHealthLogs: (show: boolean) => void;
   isPreviewHidden: boolean;
@@ -436,8 +434,6 @@ export const WorkspaceView = memo(function WorkspaceView({
   } = screenshots;
 
   const {
-    showDevServerLogs,
-    setShowDevServerLogs,
     showHealthLogs,
     setShowHealthLogs,
     isPreviewHidden,
@@ -574,6 +570,7 @@ export const WorkspaceView = memo(function WorkspaceView({
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const effectiveSidebarHidden = isSidebarHidden;
   const [showPreviewLogs, setShowPreviewLogs] = useState(false);
+  const [inspectTab, setInspectTab] = useState<InspectTab>('logs');
 
   // Workspace-scoped palette commands (branch + PR flows).
   useWorkspaceCommands({
@@ -770,7 +767,6 @@ export const WorkspaceView = memo(function WorkspaceView({
               attentionTabs={attentionTabs}
               maxTabs={maxTerminalTabs}
               onSelectTab={(tabId) => {
-                setShowDevServerLogs(false);
                 setShowHealthLogs(false);
                 setActiveTerminalTab(tabId);
                 setAttentionTabs((prev) => {
@@ -788,8 +784,9 @@ export const WorkspaceView = memo(function WorkspaceView({
               onOpenDevServerLogs={
                 isWebProject || hasDevServer
                   ? () => {
-                      setShowDevServerLogs(true);
-                      setShowHealthLogs(false);
+                      setWorkspaceTab('preview');
+                      setShowPreviewLogs(true);
+                      setInspectTab('logs');
                     }
                   : undefined
               }
@@ -944,9 +941,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             session.tabs.map((tab) => {
                               const isCurrentProject = session.projectPath === currentProject.path;
                               const isVisible =
-                                isCurrentProject &&
-                                !showDevServerLogs &&
-                                activeTerminalTab === tab.id;
+                                isCurrentProject && !showHealthLogs && activeTerminalTab === tab.id;
                               const refKey = `${session.projectPath}::${tab.id}`;
                               // Background projects use the same `.terminal-tab-content`
                               // visibility-based hide (position: absolute + visibility: hidden).
@@ -1008,15 +1003,6 @@ export const WorkspaceView = memo(function WorkspaceView({
                                 </div>
                               );
                             })
-                          )}
-                          {showDevServerLogs && !showHealthLogs && (
-                            <div className="terminal-tab-content active">
-                              <DevServerLogs
-                                output={devServerOutput}
-                                outputVersion={devServerOutputVersion}
-                                onSendToAgent={sendToClaude}
-                              />
-                            </div>
                           )}
                           {showHealthLogs && (
                             <div className="terminal-tab-content active">
@@ -1106,6 +1092,8 @@ export const WorkspaceView = memo(function WorkspaceView({
                             }
                             devServerOutput={devServerOutput}
                             devServerOutputVersion={devServerOutputVersion}
+                            inspectTab={inspectTab}
+                            onInspectTabChange={setInspectTab}
                             previewPlugins={
                               <PluginSlot
                                 name="preview"
