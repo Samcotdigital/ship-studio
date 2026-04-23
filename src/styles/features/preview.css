@@ -439,8 +439,8 @@
 }
 
 .preview-logs-toggle-switch.is-on {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--success-light);
+  border-color: var(--success-light);
 }
 
 .preview-logs-toggle-switch.is-on::after {
