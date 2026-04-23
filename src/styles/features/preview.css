@@ -405,13 +405,47 @@
 
 .preview-logs-toggle:hover {
   color: var(--text-primary);
+}
+
+/* iOS-style toggle pill next to the Inspect label. Reflects the open
+   state of the inspector panel — replaces the prior border/background
+   color-change because those didn't read as a toggle. */
+.preview-logs-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  margin-left: 2px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.preview-logs-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition:
+    transform var(--transition),
+    background var(--transition);
+}
+
+.preview-logs-toggle-switch.is-on {
+  background: var(--accent);
   border-color: var(--accent);
 }
 
-.preview-logs-toggle.active {
-  color: var(--text-primary);
-  border-color: var(--accent);
-  background: var(--bg-primary);
+.preview-logs-toggle-switch.is-on::after {
+  transform: translateX(10px);
+  background: #ffffff;
 }
 
 /* Collapsible dev server logs panel (bottom of preview) */
