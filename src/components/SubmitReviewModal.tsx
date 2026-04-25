@@ -52,7 +52,8 @@ export function SubmitReviewModal({
 
   // Track modal open
   useEffect(() => {
-    void trackEvent('submit_review_opened', { branch: branchName, $screen_name: 'Workspace' });
+    // Branch name omitted on purpose — see PublishBranchDropdown for rationale.
+    void trackEvent('submit_review_opened', { $screen_name: 'Workspace' });
   }, [branchName]);
 
   const handleGenerate = async () => {
@@ -120,16 +121,21 @@ export function SubmitReviewModal({
     setIsSubmitting(true);
     setError(null);
 
+    const trimmedTitle = title.trim();
+    const trimmedDescription = description.trim();
+
     try {
       const prUrl = await createPullRequest(
         projectPath,
-        title.trim(),
-        description.trim() || null,
+        trimmedTitle,
+        trimmedDescription || null,
         baseBranch
       );
       void trackEvent('pr_created', {
         base_branch: baseBranch,
         used_ai: usedAiGeneration,
+        title_length: trimmedTitle.length,
+        description_length: trimmedDescription.length,
         $screen_name: 'Workspace',
       });
       onSuccess(prUrl);

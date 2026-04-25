@@ -204,11 +204,17 @@ pub async fn track_event(
 
 /// Identify a user by linking their distinct_id with person properties.
 /// Call this when the user authenticates (e.g., GitHub login).
+///
+/// `properties` becomes PostHog `$set` (always overwrites person props on
+/// every identify). `set_once` becomes `$set_once` (only written if the
+/// property doesn't already exist on the person — useful for first_seen_*
+/// fields that should never change after the first call).
 #[tauri::command]
 #[tracing::instrument]
 pub async fn identify_user(
     user_id: String,
     properties: Option<serde_json::Value>,
+    set_once: Option<serde_json::Value>,
 ) -> Result<(), CommandError> {
     // Cache the identified user ID so all future events use it
     if let Ok(mut guard) = ANALYTICS.lock() {
@@ -230,12 +236,35 @@ pub async fn identify_user(
         serde_json::Value::String(device_id.clone()),
     );
 
-    let props = serde_json::json!({
-        "$set": serde_json::Value::Object(set_props),
-        "$anon_distinct_id": device_id,
-    });
+    let mut props = serde_json::Map::new();
+    props.insert("$set".to_string(), serde_json::Value::Object(set_props));
+    match set_once {
+        Some(serde_json::Value::Object(once_map)) if !once_map.is_empty() => {
+            props.insert("$set_once".to_string(), serde_json::Value::Object(once_map));
+        }
+        Some(serde_json::Value::Object(_)) | None => {
+            // Empty or absent — nothing to merge.
+        }
+        Some(other) => {
+            warn!(
+                "identify_user: set_once must be a non-empty object, got {} — ignoring",
+                match other {
+                    serde_json::Value::String(_) => "string",
+                    serde_json::Value::Number(_) => "number",
+                    serde_json::Value::Bool(_) => "bool",
+                    serde_json::Value::Array(_) => "array",
+                    serde_json::Value::Null => "null",
+                    serde_json::Value::Object(_) => unreachable!(),
+                }
+            );
+        }
+    }
+    props.insert(
+        "$anon_distinct_id".to_string(),
+        serde_json::Value::String(device_id),
+    );
 
-    send_event("$identify", &user_id, props);
+    send_event("$identify", &user_id, serde_json::Value::Object(props));
     Ok(())
 }
 
@@ -267,15 +296,8 @@ pub fn set_analytics_enabled(enabled: bool) -> Result<(), CommandError> {
     app_state.analytics_enabled = Some(enabled);
     write_app_state(&app_state)?;
 
-    if enabled {
-        // Track that analytics were re-enabled
-        let device_id = get_device_id();
-        send_event(
-            "analytics_opted_in",
-            &device_id,
-            serde_json::Value::Object(serde_json::Map::new()),
-        );
-    }
+    // The frontend's SettingsModal fires `analytics_enabled` on the same
+    // user toggle, so we don't fire a second event here.
 
     debug!("Analytics enabled set to: {}", enabled);
     Ok(())

@@ -14,6 +14,8 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useOptionalToast } from '../contexts/ToastContext';
 import { ChevronIcon, CodeIcon, FileIcon, VSCodeIcon, CursorIcon, CopyIcon } from './icons';
+import { trackEvent } from '../lib/analytics';
+import { fileExtensionForAnalytics } from '../lib/code';
 
 interface CodeViewerProps {
   projectPath: string;
@@ -252,10 +254,24 @@ export function CodeViewer({
 
     const formatted = parts.join('\n');
 
+    // Selections can be inverted (drag from line 10 → line 5); abs ensures the
+    // recorded count is always positive.
+    const lineCount = Math.abs(selectionInfo.endLine - selectionInfo.startLine) + 1;
     if (onSendToAgent) {
+      void trackEvent('code_snippet_sent_to_agent', {
+        file_extension: fileExtensionForAnalytics(filePath),
+        language: fileContent?.language ?? '',
+        line_count: lineCount,
+        char_count: formatted.length,
+        had_question: question.trim().length > 0,
+      });
       onSendToAgent(formatted);
       onToast?.('Sent to agent', 'success');
     } else {
+      void trackEvent('code_snippet_copied', {
+        file_extension: fileExtensionForAnalytics(filePath),
+        line_count: lineCount,
+      });
       void copy(formatted);
     }
 

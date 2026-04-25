@@ -38,6 +38,7 @@ import { WorkspaceHeader, HOSTING_PLUGIN_IDS } from './WorkspaceHeader';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
+import { trackEvent } from '../lib/analytics';
 import { useWorkspaceCommands } from '../commands/useWorkspaceCommands';
 import {
   CameraIcon,
@@ -569,8 +570,27 @@ export const WorkspaceView = memo(function WorkspaceView({
   // layout owns its own chrome (see `CompactWorkspace`).
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const effectiveSidebarHidden = isSidebarHidden;
+  // Naming note: `showPreviewLogs` is the legacy state for the inspect panel
+  // (which hosts dev-server logs + browser tools). The event keeps the
+  // generic name so future inspect-only telemetry doesn't have to migrate.
   const [showPreviewLogs, setShowPreviewLogs] = useState(false);
-  const [inspectTab, setInspectTab] = useState<InspectTab>('logs');
+  const [inspectTab, setInspectTabRaw] = useState<InspectTab>('logs');
+
+  // Wrap setters with click tracking. We read previous state from the closure
+  // (not a functional updater) to avoid double-firing under React StrictMode.
+  const setInspectTab = useCallback(
+    (tab: InspectTab) => {
+      if (inspectTab !== tab) {
+        void trackEvent('inspect_subtab_switched', { from_tab: inspectTab, to_tab: tab });
+      }
+      setInspectTabRaw(tab);
+    },
+    [inspectTab]
+  );
+  const togglePreviewLogs = useCallback(() => {
+    void trackEvent('inspect_panel_toggled', { is_open: !showPreviewLogs });
+    setShowPreviewLogs(!showPreviewLogs);
+  }, [showPreviewLogs]);
 
   // Workspace-scoped palette commands (branch + PR flows).
   useWorkspaceCommands({
@@ -690,7 +710,10 @@ export const WorkspaceView = memo(function WorkspaceView({
       />
     ),
     isSidebarHidden: effectiveSidebarHidden,
-    onToggleSidebar: () => setIsSidebarHidden((v) => !v),
+    onToggleSidebar: () => {
+      void trackEvent('sidebar_toggled', { is_hidden: !isSidebarHidden });
+      setIsSidebarHidden(!isSidebarHidden);
+    },
     integrations,
     onGitHubStatusChange: handleGitHubStatusChange,
     onGitHubConnect: handleGitHubConnect,
@@ -1087,9 +1110,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             isDevServerRestarting={isRestartingDevServer}
                             onSendToClaude={sendToClaude}
                             showLogs={showPreviewLogs}
-                            onToggleLogs={
-                              hasDevServer ? () => setShowPreviewLogs((s) => !s) : undefined
-                            }
+                            onToggleLogs={hasDevServer ? togglePreviewLogs : undefined}
                             devServerOutput={devServerOutput}
                             devServerOutputVersion={devServerOutputVersion}
                             inspectTab={inspectTab}

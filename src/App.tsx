@@ -26,7 +26,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { exit } from '@tauri-apps/plugin-process';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
 import { usePlugins } from './hooks/usePlugins';
@@ -67,7 +66,9 @@ import { useAppCommands } from './commands/useAppCommands';
 import { useProjectNumberShortcuts } from './hooks/useProjectNumberShortcuts';
 import { SuccessIcon, InfoIcon, CloseIcon } from './components/icons';
 import { logger } from './lib/logger';
-import { trackEvent } from './lib/analytics';
+import { trackEvent, setActiveProject, trackPageview } from './lib/analytics';
+import { endProjectSession } from './lib/session';
+import { installAppLifecycleTracking, quitAppWithTracking } from './lib/appLifecycle';
 import type { AppView } from './lib/types';
 import './styles/index.css';
 
@@ -122,6 +123,23 @@ function AppContents({ initialProjectPath }: AppProps) {
       setPaletteContext({ kind: 'other', currentProjectName: null, currentProjectPath: null });
     }
   }, [view, currentProject, setPaletteContext]);
+
+  // Top-level pageviews. Per-step Onboarding pageviews are fired by
+  // OnboardingScreen so we don't double-up on entry. Workspace fires its
+  // own tab-specific pageviews from useWorkspaceLayout.
+  useEffect(() => {
+    if (view === 'projects') trackPageview('Dashboard');
+    // 'loading', 'project-loading', 'onboarding', and 'workspace' are
+    // intentionally not tracked here — they're either transient or
+    // handled by the screen itself.
+  }, [view]);
+
+  // Install app-lifecycle tracking once (focus/blur, idle, OS close). The
+  // empty deps array is intentional — listeners are global and shouldn't
+  // re-bind on re-render.
+  useEffect(() => {
+    return installAppLifecycleTracking();
+  }, []);
   const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const previewRef = useRef<import('./components/Preview').PreviewHandle | null>(null);
@@ -428,7 +446,12 @@ function AppContents({ initialProjectPath }: AppProps) {
   );
 
   const openPalette = useOpenPalette();
-  const openProjectPicker = useCallback(() => openPalette({ tab: 'project' }), [openPalette]);
+  const openProjectPicker = useCallback(() => {
+    // Dedicated picker button only — Cmd+K palette opens are tracked by the
+    // palette itself in Phase 3, with `tab` as a property.
+    void trackEvent('project_picker_button_clicked');
+    openPalette({ tab: 'project' });
+  }, [openPalette]);
 
   // Cmd/Ctrl+1..9 → jump to Nth sidebar project (pinned first, then active).
   useProjectNumberShortcuts({ pinnedPaths, handleSelectProject });
@@ -472,9 +495,22 @@ function AppContents({ initialProjectPath }: AppProps) {
         }
         sessionRegistry.destroy(projectPath);
         if (currentProject?.path === projectPath) {
+          // Closing the current project ends its analytics session. Switching
+          // away to projects view also clears active project context so any
+          // home-screen events that follow aren't tagged with stale project_id.
+          const ended = endProjectSession();
+          if (ended) {
+            void trackEvent('project_session_ended', {
+              project_session_id: ended.session_id,
+              duration_seconds: ended.duration_seconds,
+              reason: 'project_closed',
+            });
+          }
+          setActiveProject(null);
           setCurrentProject(null);
           currentProjectPathRef.current = null;
           setView('projects');
+          // The view-change effect above fires the Dashboard pageview.
         }
       })();
     },
@@ -925,7 +961,7 @@ function AppContents({ initialProjectPath }: AppProps) {
     >
       <div
         onKeyDown={(e) => {
-          if (e.key === 'Enter') void exit(0);
+          if (e.key === 'Enter') void quitAppWithTracking();
         }}
       >
         <p>Are you sure you want to quit Ship Studio?</p>
@@ -933,7 +969,7 @@ function AppContents({ initialProjectPath }: AppProps) {
           <Button variant="secondary" onClick={() => setShowQuitConfirm(false)}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => void exit(0)} autoFocus>
+          <Button variant="primary" onClick={() => void quitAppWithTracking()} autoFocus>
             Quit
           </Button>
         </div>

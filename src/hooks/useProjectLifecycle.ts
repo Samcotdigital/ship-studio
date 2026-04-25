@@ -28,7 +28,9 @@ import {
 } from '../lib/window';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../lib/logger';
-import { trackEvent, trackError } from '../lib/analytics';
+import { trackEvent, trackError, setActiveProject } from '../lib/analytics';
+import { getProjectId } from '../lib/projectIdentity';
+import { startProjectSession, endProjectSession } from '../lib/session';
 
 import type { AppView } from '../lib/types';
 
@@ -190,18 +192,38 @@ export function useProjectLifecycle({
     const navVersion = ++navigationVersionRef.current;
 
     logger.info(`[OpenProject] Starting: ${project.name}`, { windowLabel });
-    void trackEvent('project_opened', {
-      project_name: project.name,
-      project_path: project.path,
-      $screen_name: 'Workspace',
-    });
 
-    // Guard against concurrent opens for the same project (race condition prevention)
+    // Guard against concurrent opens for the same project (race condition
+    // prevention). Must run before any tracking — otherwise a double-click
+    // emits project_opened twice.
     if (openingProjectPathRef.current === project.path) {
       logger.info(`[OpenProject] Already opening ${project.name}, skipping duplicate call`);
       return;
     }
     openingProjectPathRef.current = project.path;
+
+    // Set the active project so every subsequent event in this session
+    // auto-tags project context. The hash is sync (FNV-1a) so this never
+    // blocks the render path. We intentionally do NOT emit the raw
+    // project_path — it leaks user filesystem layout to PostHog.
+    setActiveProject({ id: getProjectId(project.path), name: project.name });
+
+    // End any prior project session before starting a new one. Switching A→B
+    // should record A's session before opening B.
+    const priorSession = endProjectSession();
+    if (priorSession) {
+      void trackEvent('project_session_ended', {
+        project_session_id: priorSession.session_id,
+        duration_seconds: priorSession.duration_seconds,
+        reason: 'project_switched',
+      });
+    }
+    startProjectSession();
+
+    void trackEvent('project_opened', { $screen_name: 'Workspace' });
+    void trackEvent('project_session_started', { $screen_name: 'Workspace' });
+    // The initial Workspace pageview is fired by useWorkspaceLayout's
+    // workspaceTab effect once the resolved tab is known.
 
     // Every active session is hot: once a project has a dev server, it
     // stays alive until the user explicitly closes it via the sidebar (or
@@ -639,6 +661,20 @@ export function useProjectLifecycle({
     ++navigationVersionRef.current;
 
     logger.info('[BackToProjects] Leaving session alive', { leavingProjectPath });
+
+    // End the project session. The dev server / PTYs stay alive (see comment
+    // below), but for analytics we treat returning to the dashboard as the
+    // end of the engaged session.
+    const ended = endProjectSession();
+    if (ended) {
+      void trackEvent('project_session_ended', {
+        project_session_id: ended.session_id,
+        duration_seconds: ended.duration_seconds,
+        reason: 'back_to_projects',
+      });
+    }
+    setActiveProject(null);
+    // App.tsx fires the Dashboard pageview when view becomes 'projects'.
 
     // New model: back-to-projects is a *view switch*, not a teardown. The
     // leaving project's dev server, PTYs, and session registry entry all

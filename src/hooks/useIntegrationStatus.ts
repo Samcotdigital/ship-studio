@@ -14,6 +14,7 @@
  */
 
 import { useReducer, useCallback, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import {
   checkGitHubCliStatus,
   getGitHubUsername,
@@ -23,6 +24,19 @@ import {
 } from '../lib/github';
 import { checkAgentCliStatus, AgentCliStatus } from '../lib/claude';
 import { identifyUser } from '../lib/analytics';
+
+// `getVersion` reads a baked-in compile-time constant; cache it so the
+// repeated identify path doesn't pay the Tauri IPC cost on every refresh.
+let cachedAppVersion: string | null | undefined;
+async function getCachedAppVersion(): Promise<string | null> {
+  if (cachedAppVersion !== undefined) return cachedAppVersion;
+  try {
+    cachedAppVersion = await getVersion();
+  } catch {
+    cachedAppVersion = null;
+  }
+  return cachedAppVersion;
+}
 
 /** Global GitHub CLI and authentication state */
 export interface GitHubState {
@@ -189,7 +203,20 @@ export function useIntegrationStatus(): UseIntegrationStatusReturn {
       try {
         ghUsername = await getGitHubUsername();
         if (ghUsername) {
-          void identifyUser(ghUsername, { github_username: ghUsername });
+          // Person props ($set) overwrite on every identify; person props
+          // ($set_once) only land the first time we see this user.
+          const appVersion = await getCachedAppVersion();
+          const nowIso = new Date().toISOString();
+          const setProps: Record<string, unknown> = {
+            github_username: ghUsername,
+            last_identified_at: nowIso,
+          };
+          if (appVersion) setProps.latest_app_version = appVersion;
+          const setOnce: Record<string, unknown> = {
+            first_identified_at: nowIso,
+          };
+          if (appVersion) setOnce.first_app_version = appVersion;
+          void identifyUser(ghUsername, setProps, setOnce);
         }
       } catch {
         // Ignore - username is optional
