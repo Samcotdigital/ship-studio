@@ -6,6 +6,21 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.6.0
+
+- **Cmd+K command palette** — Press ⌘K anywhere to switch projects, open modals, or run actions. Cmd+1..9 jumps to pinned projects. The workspace header is slimmer because IDE picker, env editor, backups, plugin manager, and Learn Mode toggle all live in the palette now.
+- **Inspect panel** — New collapsible panel under the preview with **Server Logs** (dev server output) and **Browser Tools** (Console, Network, Elements from the live preview). Each tab has a "Send to agent" button so you can pipe runtime errors, network requests, or DOM trees straight into your coding agent.
+- **Focus tab** — New workspace tab between Preview and Code that hides the preview pane and gives the agent terminal the full workspace — for when you're running your own browser alongside.
+- **Send-to-agent everywhere** — Server logs, code snippets, console/network entries, DOM trees, and even the live viewport dimensions all have buttons or drag-to-select that pipe context into the active agent's prompt.
+- **Resizable preview** — Drag the right or bottom edge of the preview to resize freely. The iframe centers and frames as a floating panel when both dimensions are custom. "Full" breakpoint resets back to fill.
+- **Compact mode rebuild** — Narrow windows (under 750px) now use a purpose-built layout — terminal plus agent/project switcher and an always-on-top pin in the topbar — instead of squeezing the full workspace down. Open-in-browser dropdown moved to the sidebar Dev server row.
+- **Header overhaul** — Agent Settings and Plugins each have a proper labeled dropdown. Plugins dropdown now actually opens non-hosting plugins (Webflow, Figma, etc.) instead of just dumping you into the Plugin Manager. Restart-dev-server moved into the sidebar.
+- **Sidebar refinements** — Add-new-agent footer, hover-opens-picker on the agent "+" button, click the Dev server row to jump straight to Inspect → Server Logs, and you can finally collapse the current project with its chevron.
+- **Underlined workspace tabs** — Preview / Code / Branches / PRs and the breakpoint controls switched from button-style backgrounds to a cleaner underline treatment.
+- **Live W × H readout** — Preview toolbar shows the iframe's current pixel dimensions; click it to send the size to your agent.
+- **Security fix** — HTML in page text and attributes is now escaped before being sent to the agent.
+
+
 ## What's New in v0.5.1
 
 - **Fixed garbled terminal output on some macOS betas** — new "Terminal GPU acceleration" toggle in Settings → Preferences lets you fall back to the canvas renderer if agent output looks fragmented or corrupted

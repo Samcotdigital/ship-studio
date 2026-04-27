@@ -25,6 +25,22 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.0', // v0.6.0
+    items: [
+      'Cmd+K command palette — switch projects, open modals, run actions; Cmd+1..9 jumps to pinned projects',
+      'Inspect panel under the preview — Server Logs + Browser Tools (Console, Network, Elements), each with a "Send to agent" button',
+      'Focus tab — collapses the preview pane to give the agent terminal the full workspace',
+      'Send-to-agent everywhere — server logs, code snippets, console/network entries, DOM trees, viewport dimensions',
+      'Resizable preview — drag the right or bottom edge; iframe centers and frames as a floating panel',
+      'Compact mode rebuilt — purpose-built narrow layout under 750px with always-on-top pin',
+      'Header overhaul — labeled Agent Settings + Plugins dropdowns; non-hosting plugins now open inline',
+      'Sidebar refinements — add-new-agent footer, hover-opens agent picker, Dev server row opens Inspect, current project collapses',
+      'Underlined workspace tabs — cleaner tab style across workspace and breakpoint controls',
+      'Live W × H readout in preview toolbar — click to send dimensions to your agent',
+      'Security fix — HTML escaped in DOM-to-agent serializer',
+    ],
+  },
+  {
     version: '0.5.1', // v0.5.1
     items: [
       'Fix terminal rendering corruption on some macOS betas — new "Terminal GPU acceleration" toggle in Settings → Preferences lets you fall back to the canvas renderer if agent output looks garbled or fragmented',
