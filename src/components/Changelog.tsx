@@ -25,6 +25,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.2', // v0.6.2
+    items: [
+      'Undo/Redo (⌘Z / ⌘⇧Z) — every burst of edits gets snapshotted as a git stash so you can roll the working tree back, even on work the agent never committed. Toast confirms "Undid 3 files: App.tsx, Preview.tsx +1 more". Buttons grey out at the edge of history. Native character-undo still wins inside text inputs',
+      'Custom project thumbnails — upload your own via the project menu; auto-capture stops overwriting it',
+      'Sidebar agent picker — replaced hover-to-open with an explicit caret next to "Add new agent" so the agent name doesn\'t shift when the cursor drifts past',
+      'Skip broken Claude binaries — if a stale `claude` install is on the GUI PATH (e.g. an old `/opt/homebrew/bin/claude` from a legacy installer), Ship Studio now validates each candidate with `--version` and falls through to the next working install instead of surfacing the raw npm-wrapper error',
+    ],
+  },
+  {
     version: '0.6.1', // v0.6.1
     items: [
       'Health tab in the Inspect panel — Code Health moved into the Inspect panel with a tab-native layout: status rows for Test / Lint / Types / Format and inline output for the selected check',
