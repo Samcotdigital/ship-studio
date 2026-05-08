@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.6.2
+
+- **Undo/Redo (⌘Z / ⌘⇧Z)** — every burst of edits gets snapshotted as a git stash so you can roll the working tree back, even on changes the agent never committed. Toast confirms "Undid 3 files: App.tsx, Preview.tsx +1 more". Buttons grey out at the edge of history. Native character-undo still wins inside text inputs.
+- **Custom project thumbnails** — upload your own thumbnail via the project menu; auto-capture stops overwriting it.
+- **Sidebar agent picker** — replaced the hover-to-open behaviour with an explicit caret button next to "Add new agent" so the agent name no longer shifts when the cursor drifts past.
+- **Skip broken Claude binaries** — if a stale `claude` install is on the GUI PATH (e.g. an old `/opt/homebrew/bin/claude` from a legacy installer), Ship Studio now validates each candidate with `--version` and falls through to the next working install instead of surfacing the raw npm-wrapper error.
+
+
 ## What's New in v0.6.1
 
 - **Health tab in the Inspect panel** — Code Health moved into the Inspect panel with a tab-native layout: status rows for Test / Lint / Types / Format and inline output for the selected check.
