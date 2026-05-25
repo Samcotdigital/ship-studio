@@ -126,6 +126,8 @@ interface DevServerProps {
   healthOutput: string;
   healthOutputVersion: number;
   handleHealthOutput: (data: string) => void;
+  needsInstall: { packageManager: string } | null;
+  onRunInstall: () => void;
 }
 
 interface NotificationProps {
@@ -147,6 +149,15 @@ interface IntegrationProps {
   authTerminalConfig: AuthTerminalConfig | null;
   closeAuthTerminal: () => void;
   handleAuthTerminalExit: (exitCode: number | null, projectPath?: string) => void;
+  installTerminalConfig: {
+    projectPath: string;
+    packageManager: string;
+    cwd: string;
+    args: string[];
+  } | null;
+  installTerminalExited: boolean;
+  onCloseInstallTerminal: () => void;
+  onInstallTerminalExit: (exitCode: number | null) => void;
 }
 
 interface ScreenshotProps {
@@ -423,6 +434,8 @@ export const WorkspaceView = memo(function WorkspaceView({
     healthOutput,
     healthOutputVersion,
     handleHealthOutput,
+    needsInstall,
+    onRunInstall,
   } = devServer;
 
   const {
@@ -441,6 +454,10 @@ export const WorkspaceView = memo(function WorkspaceView({
     authTerminalConfig,
     closeAuthTerminal,
     handleAuthTerminalExit,
+    installTerminalConfig,
+    installTerminalExited,
+    onCloseInstallTerminal,
+    onInstallTerminalExit,
   } = integrationStatus;
 
   const {
@@ -628,11 +645,6 @@ export const WorkspaceView = memo(function WorkspaceView({
     },
     [currentProject.path, terminalTabs, activeTerminalTab]
   );
-  // Subscribe to registry so the current project's sidebar / tab selector
-  // re-render when a title changes.
-  // Sidebar visibility is workspace-local (not persisted). The home /
-  // projects view renders its own sidebar instance unconditionally, so
-  // this state does not affect it.
   // Sidebar visibility is workspace-local (not persisted). The home / projects
   // view renders its own sidebar instance unconditionally, so this state does
   // not affect it. Compact mode never renders the full sidebar — the narrow
@@ -1343,6 +1355,8 @@ export const WorkspaceView = memo(function WorkspaceView({
                             onInspectTabChange={setInspectTab}
                             healthPanelRef={healthPanelRef}
                             onHealthOutput={handleHealthOutput}
+                            needsInstall={needsInstall}
+                            onRunInstall={onRunInstall}
                             previewPlugins={
                               <PluginSlot
                                 name="preview"
@@ -1435,6 +1449,14 @@ export const WorkspaceView = memo(function WorkspaceView({
             showToast('Pull request created', 'success');
             void fetchBranchInfo(currentProject.path);
           }}
+          onSubmitReviewBranchSwitch={(branch) => {
+            void handleBranchSwitch(branch);
+            setTimeout(() => void handleRestartDevServer(), 1500);
+          }}
+          onSubmitReviewSendToAgent={sendToClaude}
+          onSubmitReviewResolveConflicts={(headBranch, baseBranch) =>
+            void handleResolveConflicts(headBranch, baseBranch)
+          }
           onCloseSubmitReview={() => {
             setShowSubmitReview(null);
             focusActiveTerminal();
@@ -1455,6 +1477,10 @@ export const WorkspaceView = memo(function WorkspaceView({
           onAuthTerminalExit={(exitCode) =>
             void handleAuthTerminalExit(exitCode, currentProject.path)
           }
+          installTerminalConfig={installTerminalConfig}
+          installTerminalExited={installTerminalExited}
+          onCloseInstallTerminal={onCloseInstallTerminal}
+          onInstallTerminalExit={onInstallTerminalExit}
           customDevCommand={customDevCommand}
           onSaveDevCommand={handleSaveDevCommand}
           devServerPort={devServerPort}

@@ -92,6 +92,9 @@ export interface WorkspaceModalsProps {
   branches: BranchInfo[];
   integrations: IntegrationState;
   onSubmitReviewSuccess: () => void;
+  onSubmitReviewBranchSwitch?: (branchName: string) => void;
+  onSubmitReviewSendToAgent?: (prompt: string) => void;
+  onSubmitReviewResolveConflicts?: (headBranch: string, baseBranch: string) => void;
   onCloseSubmitReview: () => void;
 
   // Git error handler
@@ -114,6 +117,18 @@ export interface WorkspaceModalsProps {
   authTerminalConfig: AuthTerminalConfig | null;
   onCloseAuthTerminal: () => void;
   onAuthTerminalExit: (exitCode: number | null) => void;
+
+  // Dependency install terminal — shown when the user clicks "Install" on
+  // the dev server install CTA. Streams pnpm/npm/yarn output.
+  installTerminalConfig: {
+    projectPath: string;
+    packageManager: string;
+    cwd: string;
+    args: string[];
+  } | null;
+  installTerminalExited: boolean;
+  onCloseInstallTerminal: () => void;
+  onInstallTerminalExit: (exitCode: number | null) => void;
 
   // Dev command modal — read state via useModal('devCommand')
   customDevCommand: string | null;
@@ -165,6 +180,9 @@ export function WorkspaceModals({
   branches,
   integrations,
   onSubmitReviewSuccess,
+  onSubmitReviewBranchSwitch,
+  onSubmitReviewSendToAgent,
+  onSubmitReviewResolveConflicts,
   onCloseSubmitReview,
   gitError,
   onCloseGitError,
@@ -177,6 +195,10 @@ export function WorkspaceModals({
   authTerminalConfig,
   onCloseAuthTerminal,
   onAuthTerminalExit,
+  installTerminalConfig,
+  installTerminalExited,
+  onCloseInstallTerminal,
+  onInstallTerminalExit,
   customDevCommand,
   onSaveDevCommand,
   devServerPort,
@@ -349,6 +371,9 @@ export function WorkspaceModals({
             .map((b) => b.name)}
           aiAvailable={integrations.claude.cliStatus.installed}
           onSuccess={onSubmitReviewSuccess}
+          onBranchSwitch={onSubmitReviewBranchSwitch}
+          onSendToAgent={onSubmitReviewSendToAgent}
+          onResolveConflicts={onSubmitReviewResolveConflicts}
           onClose={onCloseSubmitReview}
         />
       )}
@@ -388,6 +413,29 @@ export function WorkspaceModals({
               command={authTerminalConfig.command}
               args={authTerminalConfig.args}
               onExit={onAuthTerminalExit}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Dependency install overlay — runs `pnpm/npm/yarn install` and
+          auto-restarts the dev server on success. */}
+      {installTerminalConfig && (
+        <div className="onboarding-terminal-overlay">
+          <div className="onboarding-terminal-modal">
+            <div className="onboarding-terminal-header">
+              <span className="onboarding-terminal-title">
+                Installing dependencies ({installTerminalConfig.packageManager})
+              </span>
+              <button className="onboarding-terminal-cancel" onClick={onCloseInstallTerminal}>
+                {installTerminalExited ? 'Close' : 'Cancel'}
+              </button>
+            </div>
+            <OnboardingTerminal
+              command={installTerminalConfig.packageManager}
+              args={installTerminalConfig.args}
+              cwd={installTerminalConfig.cwd}
+              onExit={onInstallTerminalExit}
             />
           </div>
         </div>

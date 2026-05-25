@@ -14,7 +14,28 @@ import {
   DevServerHandle,
   getCustomDevCommand,
   setCustomDevCommand as setCustomDevCommandApi,
+  getWorkspaceSubpath,
+  resolveWorkspacePath,
+  checkDependenciesInstalled,
 } from '../lib/project';
+import { detectPackageManager } from '../lib/github';
+
+/** Resolve the effective dev-server cwd for a project, logging any backend
+ *  failure instead of silently swallowing it. A stale Tauri build (missing
+ *  `get_workspace_subpath` command) would otherwise spawn dev servers from
+ *  the wrong directory with no signal. Returns the repo root on failure. */
+async function resolveDevServerCwd(projectPath: string): Promise<string> {
+  try {
+    const subpath = await getWorkspaceSubpath(projectPath);
+    return resolveWorkspacePath(projectPath, subpath);
+  } catch (err) {
+    logger.error('[DevServer] getWorkspaceSubpath failed; using repo root as cwd', {
+      projectPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return projectPath;
+  }
+}
 import {
   detectProjectType,
   startStaticServer,
@@ -43,6 +64,10 @@ interface ProjectServerState {
   healthThrottleTimer: ReturnType<typeof setTimeout> | null;
   healthPending: boolean;
   suppressed: boolean;
+  /** Set when the dep check found `node_modules` missing — the dev server is
+   *  intentionally not started; the Preview pane renders an install CTA
+   *  instead. Null means deps are fine (or there's nothing to install). */
+  needsInstall: { packageManager: string } | null;
   /** Carry-over of an incomplete trailing line between PTY chunks so the
    *  probe-line filter can match patterns split across chunk boundaries
    *  (the PTY emits chunks of arbitrary size — they are not line-aligned). */
@@ -68,6 +93,7 @@ function makeState(): ProjectServerState {
     healthThrottleTimer: null,
     healthPending: false,
     suppressed: false,
+    needsInstall: null,
     pendingOutputLine: '',
   };
 }
@@ -169,6 +195,7 @@ export function useDevServer(currentProjectPath: string | null) {
   const devServerPort = activeState?.port ?? DEFAULT_PORT;
   const projectType = activeState?.type ?? 'unknown';
   const customDevCommand = activeState?.customCommand ?? null;
+  const needsInstall = activeState?.needsInstall ?? null;
   const devServerOutputVersion = activeState?.outputVersion ?? 0;
   const healthOutputVersion = activeState?.healthVersion ?? 0;
 
@@ -371,6 +398,18 @@ export function useDevServer(currentProjectPath: string | null) {
     bump();
   }, [bump, getOrCreateState]);
 
+  /** After an install completes, drop the gate so a follow-up startServer
+   *  call actually spawns the dev server. */
+  const clearNeedsInstall = useCallback(
+    (projectPath: string) => {
+      const s = statesRef.current.get(projectPath);
+      if (!s) return;
+      s.needsInstall = null;
+      bump();
+    },
+    [bump]
+  );
+
   // ───────────── Lifecycle ─────────────
 
   const startServerForProject = useCallback(
@@ -380,6 +419,19 @@ export function useDevServer(currentProjectPath: string | null) {
       s.suppressed = false;
       s.port = port;
 
+      // For monorepo projects, dev server / project-type detection should run
+      // against the picked workspace subdir. Git/PR ops still use the repo root.
+      const cwd = await resolveDevServerCwd(projectPath);
+      if (cwd !== projectPath) {
+        logger.info('[OpenProject] Using workspace subpath as dev server cwd', {
+          projectPath,
+          cwd,
+        });
+      }
+
+      // Detect project type FIRST so `isWebProject` is correct even when we
+      // defer the dev server (the Preview pane gates on projectType ∉ {generic,
+      // unknown} and the install CTA renders inside the Preview pane).
       let detectedType: ProjectType = 'unknown';
       try {
         detectedType = await detectProjectType(projectPath);
@@ -388,6 +440,35 @@ export function useDevServer(currentProjectPath: string | null) {
       }
       s.type = detectedType;
       bump();
+
+      // Now verify `node_modules` exists. If not, the dev server would fail
+      // with "Cannot find module 'next'" — surface a Preview-pane install CTA
+      // instead. Cleared by `clearNeedsInstall` after install succeeds.
+      try {
+        const depStatus = await checkDependenciesInstalled(projectPath);
+        if (!depStatus.installed && depStatus.hasPackageJson) {
+          const packageManager = await detectPackageManager(projectPath).catch((err) => {
+            logger.warn(
+              '[OpenProject] detectPackageManager failed; falling back to npm. This will be wrong for pnpm/yarn projects.',
+              { error: err instanceof Error ? err.message : String(err) }
+            );
+            return 'npm';
+          });
+          s.needsInstall = { packageManager };
+          bump();
+          logger.info('[OpenProject] Dependencies missing; deferring dev server', {
+            projectPath,
+            packageManager,
+            projectType: detectedType,
+          });
+          return detectedType;
+        }
+      } catch (err) {
+        logger.warn('[OpenProject] Dependency check failed; attempting dev server anyway', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      s.needsInstall = null;
 
       void trackEvent('project_type_detected', {
         project_type: detectedType,
@@ -420,7 +501,7 @@ export function useDevServer(currentProjectPath: string | null) {
               $screen_name: 'Workspace',
             });
             s.handle = await startDevServer(
-              projectPath,
+              cwd,
               port,
               windowLabel,
               createOutputHandler(projectPath),
@@ -438,7 +519,7 @@ export function useDevServer(currentProjectPath: string | null) {
         }
       } else if (detectedType === 'statichtml') {
         try {
-          const staticPort = await startStaticServer(windowLabel, projectPath);
+          const staticPort = await startStaticServer(windowLabel, cwd);
           s.port = staticPort;
           bump();
           void trackEvent('dev_server_started', {
@@ -464,12 +545,7 @@ export function useDevServer(currentProjectPath: string | null) {
             project_name: projectName,
             $screen_name: 'Workspace',
           });
-          s.handle = await startDevServer(
-            projectPath,
-            port,
-            windowLabel,
-            createOutputHandler(projectPath)
-          );
+          s.handle = await startDevServer(cwd, port, windowLabel, createOutputHandler(projectPath));
           wireExitWatcher(projectPath, s);
         } catch (error) {
           logger.error('Failed to start dev server', { error });
@@ -572,6 +648,8 @@ export function useDevServer(currentProjectPath: string | null) {
       const s = getOrCreateState(projectPath);
       const effectivePort = portOverride ?? s.port ?? DEFAULT_PORT;
 
+      const cwd = await resolveDevServerCwd(projectPath);
+
       const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
         return Promise.race([
           promise,
@@ -597,7 +675,7 @@ export function useDevServer(currentProjectPath: string | null) {
         await delay(500);
         s.handle = await withTimeout(
           startDevServer(
-            projectPath,
+            cwd,
             effectivePort,
             getWindowLabel(),
             createOutputHandler(projectPath),
@@ -625,7 +703,7 @@ export function useDevServer(currentProjectPath: string | null) {
             /* Ignore */
           }
           await delay(300);
-          const newPort = await startStaticServer(windowLabel, projectPath);
+          const newPort = await startStaticServer(windowLabel, cwd);
           s.port = newPort;
           bump();
         } else {
@@ -685,8 +763,9 @@ export function useDevServer(currentProjectPath: string | null) {
           s.outputVersion = 0;
           s.healthVersion = 0;
           bump();
+          const cwd = await resolveDevServerCwd(projectPath);
           s.handle = await startDevServer(
-            projectPath,
+            cwd,
             s.port,
             getWindowLabel(),
             createOutputHandler(projectPath),
@@ -718,6 +797,7 @@ export function useDevServer(currentProjectPath: string | null) {
     setCustomDevCommand,
     devServerOutputVersion,
     healthOutputVersion,
+    needsInstall,
 
     // Handlers
     handleHealthOutput,
@@ -729,5 +809,6 @@ export function useDevServer(currentProjectPath: string | null) {
     getProjectType,
     clearOutputBuffers,
     saveCustomDevCommand,
+    clearNeedsInstall,
   };
 }

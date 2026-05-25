@@ -6,7 +6,8 @@
 
 use crate::errors::CommandError;
 use crate::types::ProjectMetadata;
-use crate::utils::validate_project_path;
+use crate::utils::{resolve_workspace_path, validate_project_path};
+use serde::Serialize;
 
 /// Gets the custom dev command for a project (for generic projects)
 #[tauri::command]
@@ -115,6 +116,109 @@ pub async fn set_dev_server_port(project_path: String, port: u16) -> Result<(), 
         .map_err(|e| format!("Failed to write project metadata: {e}"))?;
 
     Ok(())
+}
+
+/// Gets the active workspace subpath for a monorepo project, or None if the
+/// project is single-package. Returned path uses POSIX separators relative to
+/// the project root (e.g. `apps/admin`).
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub async fn get_workspace_subpath(project_path: String) -> Result<Option<String>, CommandError> {
+    let project = validate_project_path(&project_path)?;
+    let metadata_path = project.join(".shipstudio").join("project.json");
+
+    if !metadata_path.exists() {
+        return Ok(None);
+    }
+
+    let metadata = std::fs::read_to_string(&metadata_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+        .unwrap_or_default();
+
+    Ok(metadata.workspace_subpath)
+}
+
+/// Sets the active workspace subpath. Set to None to unlock (treat as single-package).
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub async fn set_workspace_subpath(
+    project_path: String,
+    subpath: Option<String>,
+) -> Result<(), CommandError> {
+    let project = validate_project_path(&project_path)?;
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
+
+    let mut metadata = if metadata_path.exists() {
+        std::fs::read_to_string(&metadata_path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+            .unwrap_or_default()
+    } else {
+        ProjectMetadata::default()
+    };
+
+    metadata.workspace_subpath = subpath;
+
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
+    }
+
+    let contents = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize project metadata: {e}"))?;
+    std::fs::write(&metadata_path, contents)
+        .map_err(|e| format!("Failed to write project metadata: {e}"))?;
+
+    Ok(())
+}
+
+/// Result of checking whether a project's npm/pnpm/yarn dependencies are installed.
+#[derive(Debug, Serialize)]
+pub struct DependencyStatus {
+    /// True when the project either has no `package.json` (nothing to install)
+    /// or `node_modules` already exists at the relevant location. False means
+    /// the user should be prompted to run an install before the dev server boots.
+    pub installed: bool,
+    /// True when the project has a `package.json` declaring deps at all.
+    /// Lets the frontend tell "no install needed" (generic / static project)
+    /// from "install needed, run pnpm install".
+    pub has_package_json: bool,
+}
+
+/// Check whether a project's dependencies are installed.
+///
+/// For monorepo projects (workspace_subpath set), we look at the repo root —
+/// pnpm/npm/yarn workspaces always install from the root and `node_modules`
+/// lives there (or per-workspace under pnpm, but the root presence is the
+/// reliable signal). Returns `installed: true` for projects without a
+/// `package.json` so we don't gate static-html / generic projects.
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub async fn check_dependencies_installed(
+    project_path: String,
+) -> Result<DependencyStatus, CommandError> {
+    let repo_root = validate_project_path(&project_path)?;
+    let workspace = resolve_workspace_path(&repo_root);
+
+    // Workspaces install at the repo root; single-package projects install in
+    // place. Either location is enough to consider deps present.
+    let has_package_json =
+        repo_root.join("package.json").exists() || workspace.join("package.json").exists();
+    if !has_package_json {
+        return Ok(DependencyStatus {
+            installed: true,
+            has_package_json: false,
+        });
+    }
+
+    let installed =
+        repo_root.join("node_modules").exists() || workspace.join("node_modules").exists();
+    Ok(DependencyStatus {
+        installed,
+        has_package_json: true,
+    })
 }
 
 /// Clears project cache directories (.next, node_modules/.cache, etc.)

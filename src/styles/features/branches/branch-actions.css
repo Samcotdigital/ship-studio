@@ -352,6 +352,22 @@
   font-weight: 500;
 }
 
+.post-merge-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-top: var(--spacing-md);
+  transition: color var(--transition);
+  cursor: pointer;
+}
+
+.post-merge-link:hover {
+  color: var(--text-primary);
+}
+
 .post-merge-footer {
   display: flex;
   justify-content: flex-end;
@@ -572,6 +588,22 @@
   align-items: center;
   justify-content: center;
   z-index: var(--z-app-modal);
+}
+
+.submit-review-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+}
+
+.submit-review-title-row-spread {
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.submit-review-conflict-question {
+  margin-top: var(--spacing-md);
 }
 
 .submit-review-content {

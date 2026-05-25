@@ -28,12 +28,20 @@ import {
   ensureShipStudioDir,
   spawnPty,
   ensureGitignoreHasShipstudio,
+  detectWorkspaces,
+  setWorkspaceSubpath,
+  type WorkspaceInfo,
 } from '../lib/project';
 import { getWindowLabel } from '../lib/window';
 import { checkNpmCachePermissions } from '../lib/setup';
 import { Step1AccountSelection } from './import-project/steps/Step1AccountSelection';
 import { Step2RepoSelection } from './import-project/steps/Step2RepoSelection';
 import { Step3ImportProgress, type Step } from './import-project/steps/Step3ImportProgress';
+import {
+  Step3WorkspacePicker,
+  type WorkspacePick,
+} from './import-project/steps/Step3WorkspacePicker';
+import { logger } from '../lib/logger';
 
 /** Props for the ImportProject component */
 interface ImportProjectProps {
@@ -61,6 +69,9 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [importedProjectPath, setImportedProjectPath] = useState<string | null>(null);
   const [importedPackageManager, setImportedPackageManager] = useState<string>('npm');
+  const [discoveredWorkspaces, setDiscoveredWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [selectedWorkspacePick, setSelectedWorkspacePick] = useState<WorkspacePick | null>(null);
+  const [awaitingWorkspacePick, setAwaitingWorkspacePick] = useState(false);
 
   // Load user and orgs on mount
   useEffect(() => {
@@ -221,34 +232,42 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       return;
     }
 
-    const safeName = selectedRepo.name
+    const baseName = selectedRepo.name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
 
-    if (!safeName) {
+    if (!baseName) {
       setError('Invalid repository name');
       return;
     }
 
-    // Check for duplicate project names
+    // Auto-suffix on collision so re-importing a monorepo for a different
+    // workspace doesn't error out (`sugar-shark`, `sugar-shark-2`, ...).
+    let safeName = baseName;
     try {
       const existingProjects = await listProjects();
-      const duplicate = existingProjects.find(
-        (p) => p.name.toLowerCase() === safeName.toLowerCase()
-      );
-      if (duplicate) {
-        setError(`A project named "${safeName}" already exists`);
-        return;
+      const existingNames = new Set(existingProjects.map((p) => p.name.toLowerCase()));
+      let counter = 2;
+      while (existingNames.has(safeName.toLowerCase())) {
+        safeName = `${baseName}-${counter}`;
+        counter += 1;
+        if (counter > 50) {
+          setError(`Too many copies of "${baseName}" already exist`);
+          return;
+        }
       }
     } catch {
-      // If we can't check, proceed anyway
+      // If we can't check, proceed with the base name
     }
 
     setIsImporting(true);
     setError(null);
     setCurrentStep('clone');
+    setDiscoveredWorkspaces([]);
+    setSelectedWorkspacePick(null);
+    setAwaitingWorkspacePick(false);
 
     try {
       // Ensure ShipStudio directory exists
@@ -274,29 +293,72 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
 
       await waitForPtyExit(cloneId);
 
-      // Detect package manager and install dependencies
+      setImportedProjectPath(projectPath);
+
+      // If this is a monorepo with runnable apps, pause for the user to pick
+      // which one this project will focus on. Empty result → single-package
+      // repo, fall through to the normal install flow. Errors are logged so
+      // a backend failure shows up in the dev console instead of being eaten.
+      let workspaces: WorkspaceInfo[] = [];
+      try {
+        workspaces = await detectWorkspaces(projectPath);
+      } catch (err) {
+        logger.warn('[ImportProject] detectWorkspaces failed; falling back to root', {
+          error: err instanceof Error ? err.message : String(err),
+          projectPath,
+        });
+      }
+
+      if (workspaces.length > 0) {
+        const firstWeb = workspaces.find((w) => w.isWeb) ?? workspaces[0];
+        setDiscoveredWorkspaces(workspaces);
+        setSelectedWorkspacePick({ kind: 'app', relativePath: firstWeb.relativePath });
+        setAwaitingWorkspacePick(true);
+        return;
+      }
+
+      await finishImport(projectPath);
+    } catch (err) {
+      trackError('project_import', err, 'Dashboard');
+      setError(getFriendlyError(err));
+    }
+  };
+
+  /** Resume install + setup after clone (and optionally after the workspace picker). */
+  const finishImport = async (projectPath: string) => {
+    try {
       setCurrentStep('install');
       const packageManager = await detectPackageManager(projectPath);
-      setImportedProjectPath(projectPath);
       setImportedPackageManager(packageManager);
 
       await runPackageInstall(projectPath, packageManager);
 
-      // Setup project
       setCurrentStep('setup');
-
-      // Ensure .shipstudio is gitignored
       await ensureGitignoreHasShipstudio(projectPath);
 
       setCurrentStep('done');
-
-      // Small delay before opening
       await new Promise((r) => setTimeout(r, 800));
       onComplete(projectPath);
     } catch (err) {
       trackError('project_import', err, 'Dashboard');
       setError(getFriendlyError(err));
     }
+  };
+
+  const handleConfirmWorkspacePick = async () => {
+    if (!importedProjectPath || !selectedWorkspacePick) return;
+    // Root pick → record an empty string so the open-time gate doesn't
+    // re-prompt; app pick → its relative subpath.
+    const subpath = selectedWorkspacePick.kind === 'root' ? '' : selectedWorkspacePick.relativePath;
+    try {
+      await setWorkspaceSubpath(importedProjectPath, subpath);
+    } catch (err) {
+      trackError('project_import_workspace_save', err, 'Dashboard');
+      setError(getFriendlyError(err));
+      return;
+    }
+    setAwaitingWorkspacePick(false);
+    await finishImport(importedProjectPath);
   };
 
   // Filter repos based on search
@@ -328,6 +390,20 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
   };
 
   const renderContent = () => {
+    // Pause for the monorepo picker between clone and install.
+    if (awaitingWorkspacePick && discoveredWorkspaces.length > 0 && !error) {
+      return (
+        <Step3WorkspacePicker
+          repoName={selectedRepo?.name ?? ''}
+          workspaces={discoveredWorkspaces}
+          selectedPick={selectedWorkspacePick}
+          onSelect={setSelectedWorkspacePick}
+          onConfirm={() => void handleConfirmWorkspacePick()}
+          onCancel={onCancel}
+        />
+      );
+    }
+
     // Importing state - show progress
     if (isImporting) {
       return (

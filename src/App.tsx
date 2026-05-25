@@ -51,6 +51,7 @@ import { initDefaultAgent } from './lib/agent';
 import { sessionRegistry } from './lib/sessionRegistry';
 import { unregisterProjectSession } from './lib/projectSessions';
 import { UpdateBanner } from './components/UpdateBanner';
+import { MonorepoPickerModal } from './components/MonorepoPickerModal';
 import { ModalFrame } from './components/primitives/ModalFrame';
 import { Button } from './components/primitives/Button';
 import { ToastContext } from './contexts/ToastContext';
@@ -223,6 +224,8 @@ function AppContents({ initialProjectPath }: AppProps) {
     stopAllServers,
     isServerRunning,
     saveCustomDevCommand,
+    needsInstall,
+    clearNeedsInstall,
   } = useDevServer(currentProject?.path ?? null);
 
   // Cleanup every live dev server when the window is closed (prevents
@@ -372,6 +375,15 @@ function AppContents({ initialProjectPath }: AppProps) {
     setShowCreateModal,
     importView,
     setImportView,
+    pendingMonorepoPick,
+    handleSelectMonorepoPick,
+    handleConfirmMonorepoPick,
+    handleCancelMonorepoPick,
+    installTerminalConfig,
+    installTerminalExited,
+    handleRunInstall,
+    handleCloseInstallTerminal,
+    handleInstallTerminalExit,
     setCurrentPreviewPage,
     isPublishing,
     setIsPublishing,
@@ -402,6 +414,7 @@ function AppContents({ initialProjectPath }: AppProps) {
     startServerForProject,
     isServerRunning,
     restartDevServer,
+    clearNeedsInstall,
     pasteToActiveTerminal,
     terminalTabs,
     activeTerminalTab,
@@ -681,6 +694,11 @@ function AppContents({ initialProjectPath }: AppProps) {
     ]
   );
 
+  const handleRunInstallCurrent = useCallback(() => {
+    if (!currentProject || !needsInstall) return;
+    handleRunInstall(currentProject.path, needsInstall.packageManager);
+  }, [currentProject, needsInstall, handleRunInstall]);
+
   const devServerProps = useMemo(
     () => ({
       hasDevServer: !!devServerRef.current,
@@ -694,6 +712,8 @@ function AppContents({ initialProjectPath }: AppProps) {
       healthOutput: healthOutputRef.current,
       healthOutputVersion,
       handleHealthOutput,
+      needsInstall,
+      onRunInstall: handleRunInstallCurrent,
     }),
     [
       devServerRef,
@@ -707,6 +727,8 @@ function AppContents({ initialProjectPath }: AppProps) {
       healthOutputVersion,
       handleHealthOutput,
       healthPanelRef,
+      needsInstall,
+      handleRunInstallCurrent,
     ]
   );
 
@@ -744,6 +766,10 @@ function AppContents({ initialProjectPath }: AppProps) {
       authTerminalConfig,
       closeAuthTerminal,
       handleAuthTerminalExit: memoizedHandleAuthTerminalExit,
+      installTerminalConfig,
+      installTerminalExited,
+      onCloseInstallTerminal: handleCloseInstallTerminal,
+      onInstallTerminalExit: handleInstallTerminalExit,
     }),
     [
       integrations,
@@ -751,6 +777,10 @@ function AppContents({ initialProjectPath }: AppProps) {
       authTerminalConfig,
       closeAuthTerminal,
       memoizedHandleAuthTerminalExit,
+      installTerminalConfig,
+      installTerminalExited,
+      handleCloseInstallTerminal,
+      handleInstallTerminalExit,
     ]
   );
 
@@ -1099,6 +1129,16 @@ function AppContents({ initialProjectPath }: AppProps) {
           />
         </div>
         {/* .projects-with-rail */}
+        {pendingMonorepoPick && (
+          <MonorepoPickerModal
+            projectName={pendingMonorepoPick.project.name}
+            workspaces={pendingMonorepoPick.workspaces}
+            selectedPick={pendingMonorepoPick.selectedPick}
+            onSelect={handleSelectMonorepoPick}
+            onConfirm={() => void handleConfirmMonorepoPick()}
+            onCancel={() => void handleCancelMonorepoPick()}
+          />
+        )}
         {toasts.length > 0 && (
           <div className="toast-container">
             {toasts.map((t) => (

@@ -9,13 +9,24 @@
  */
 
 import { useState, useRef, useCallback, type RefObject } from 'react';
-import type { Project } from '../lib/project';
+import type { Project, WorkspaceInfo } from '../lib/project';
 import type { ProjectType } from '../lib/static-server';
 import type { ProjectGitHubStatus } from '../lib/github';
-import { getAutoAcceptMode, setAutoAcceptMode as setAutoAcceptModeApi } from '../lib/project';
+import {
+  getAutoAcceptMode,
+  setAutoAcceptMode as setAutoAcceptModeApi,
+  detectWorkspaces,
+  getWorkspaceSubpath,
+  setWorkspaceSubpath,
+} from '../lib/project';
+import type { WorkspacePick } from '../components/MonorepoPickerModal';
 import { getProjectGitHubStatus } from '../lib/github';
 import { GITHUB_STATUS_FALLBACK } from './useIntegrationStatus';
-import { registerExternalProject } from '../lib/external-projects';
+import {
+  registerExternalProject,
+  unregisterExternalProject,
+  isProjectExternal,
+} from '../lib/external-projects';
 import { registerProjectSession } from '../lib/projectSessions';
 import { sessionRegistry } from '../lib/sessionRegistry';
 import { getDefaultAgentId } from '../lib/agent';
@@ -29,6 +40,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../lib/logger';
 import { trackEvent, trackError, setActiveProject } from '../lib/analytics';
+import { asCommandError, formatCommandError } from '../lib/errors';
 import { getProjectId } from '../lib/projectIdentity';
 import { startProjectSession, endProjectSession } from '../lib/session';
 
@@ -52,6 +64,9 @@ export interface UseProjectLifecycleParams {
   ) => Promise<ProjectType>;
   isServerRunning: (projectPath: string) => boolean;
   restartDevServer: (projectPath: string, portOverride?: number) => Promise<void>;
+  /** Drop the dependency-install gate on a project's dev server. Called after
+   *  a successful pnpm/npm install so a follow-up startServer actually spawns. */
+  clearNeedsInstall: (projectPath: string) => void;
   // Terminal
   pasteToActiveTerminal: (text: string) => void;
   terminalTabs: Array<{ id: number; agentId: string; sessionId: string }>;
@@ -94,6 +109,7 @@ export function useProjectLifecycle({
   startServerForProject,
   isServerRunning,
   restartDevServer,
+  clearNeedsInstall,
   pasteToActiveTerminal,
   terminalTabs,
   activeTerminalTab,
@@ -120,6 +136,31 @@ export function useProjectLifecycle({
 
   // Import project view: 'none' | 'picker' | 'github'
   const [importView, setImportView] = useState<'none' | 'picker' | 'github'>('none');
+
+  // Pending monorepo picker — set when an unconfigured monorepo is being
+  // opened. The actual project open is deferred until the user commits.
+  const [pendingMonorepoPick, setPendingMonorepoPick] = useState<{
+    project: Project;
+    workspaces: WorkspaceInfo[];
+    selectedPick: WorkspacePick | null;
+  } | null>(null);
+
+  // Active dependency install — when set, the overlay terminal is visible and
+  // running `pnpm install` (or the detected pm) so the user can watch it
+  // stream. Cleared on user-cancel or on exit-0 (which also restarts the dev
+  // server). Exit-non-zero leaves the overlay up showing the error.
+  //
+  // `args` lives in state (not a literal in JSX) so its reference is stable
+  // across renders — OnboardingTerminal's effect deps include `args`, and a
+  // fresh array literal each render would tear down + respawn the PTY in a
+  // loop. (Auth flow does the same with `authTerminalConfig.args`.)
+  const [installTerminalConfig, setInstallTerminalConfig] = useState<{
+    projectPath: string;
+    packageManager: string;
+    cwd: string;
+    args: string[];
+  } | null>(null);
+  const [installTerminalExited, setInstallTerminalExited] = useState(false);
 
   // Current preview page (tracked for potential future use)
   const [, setCurrentPreviewPage] = useState('/');
@@ -182,10 +223,61 @@ export function useProjectLifecycle({
     }
   }, [currentProject, onPreviewReady]);
 
-  const handleSelectProject = async (project: Project) => {
+  /** Returns true when the gate paused the open (workspace picker shown). */
+  const runMonorepoGate = async (project: Project): Promise<boolean> => {
+    let existingSubpath: string | null;
+    try {
+      existingSubpath = await getWorkspaceSubpath(project.path);
+    } catch (err) {
+      // A real backend failure here (command missing, validation, etc.) — fall
+      // through to open as-is rather than blocking the user, but emit telemetry
+      // and a log so we notice. Don't toast: this is internal.
+      trackError('workspace_gate_subpath_check', err, 'Dashboard');
+      logger.error('[OpenProject] getWorkspaceSubpath failed; opening as-is', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+    if (existingSubpath !== null) return false; // already configured
+
+    let workspaces: WorkspaceInfo[];
+    try {
+      workspaces = await detectWorkspaces(project.path);
+    } catch (err) {
+      trackError('workspace_gate_detect', err, 'Dashboard');
+      logger.error('[OpenProject] detectWorkspaces failed; opening as-is', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+    if (workspaces.length === 0) return false; // single-package project
+
+    const firstWeb = workspaces.find((w) => w.isWeb) ?? workspaces[0];
+    setPendingMonorepoPick({
+      project,
+      workspaces,
+      selectedPick: { kind: 'app', relativePath: firstWeb.relativePath },
+    });
+    return true;
+  };
+
+  const handleSelectProject = async (
+    project: Project,
+    opts: { skipWorkspaceGate?: boolean } = {}
+  ) => {
     const windowLabel = getWindowLabel();
     const totalStart = performance.now();
     let stepStart = performance.now();
+
+    // Pre-flight monorepo gate: runs BEFORE we claim a navigation slot so
+    // pausing for the picker doesn't bump the version counter or set the
+    // "opening" ref — both would make a concurrent open look superseded
+    // when nothing actually opened. `skipWorkspaceGate` lets re-entry from
+    // the picker confirm skip the gate without recursion.
+    if (!opts.skipWorkspaceGate) {
+      const paused = await runMonorepoGate(project);
+      if (paused) return;
+    }
 
     // Claim a new navigation version — any prior handleSelectProject or handleBackToProjects
     // that captured an older version will know it's been superseded.
@@ -598,6 +690,115 @@ export function useProjectLifecycle({
     openingProjectPathRef.current = null;
   };
 
+  const handleSelectMonorepoPick = (pick: WorkspacePick) => {
+    setPendingMonorepoPick((prev) => (prev ? { ...prev, selectedPick: pick } : prev));
+  };
+
+  const handleConfirmMonorepoPick = async () => {
+    if (!pendingMonorepoPick) return;
+    const { project, selectedPick } = pendingMonorepoPick;
+    if (!selectedPick) return;
+    // Root pick → empty string so we never re-prompt; app pick → its subpath.
+    const subpathToSave = selectedPick.kind === 'root' ? '' : selectedPick.relativePath;
+    try {
+      await setWorkspaceSubpath(project.path, subpathToSave);
+    } catch (err) {
+      trackError('monorepo_pick_save', err, 'Dashboard');
+      logger.error('[OpenProject] Failed to save workspace subpath', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      showToast(
+        `Couldn't save workspace pick: ${formatCommandError(asCommandError(err))}`,
+        'error'
+      );
+      return; // leave modal open so user can retry / cancel explicitly
+    }
+    setPendingMonorepoPick(null);
+    // Skip the gate on re-entry — subpath is now persisted, but avoiding the
+    // extra read also rules out any pathological recursion if the get/set
+    // round-trip ever lags.
+    void handleSelectProject(project, { skipWorkspaceGate: true });
+  };
+
+  const handleRunInstall = (projectPath: string, packageManager: string) => {
+    setInstallTerminalConfig({
+      projectPath,
+      packageManager,
+      cwd: projectPath,
+      args: ['install'],
+    });
+    setInstallTerminalExited(false);
+    void trackEvent('install_dependencies_started', {
+      package_manager: packageManager,
+      $screen_name: 'Workspace',
+    });
+  };
+
+  const handleCloseInstallTerminal = () => {
+    setInstallTerminalConfig(null);
+    setInstallTerminalExited(false);
+  };
+
+  const handleInstallTerminalExit = async (exitCode: number | null) => {
+    const cfg = installTerminalConfig;
+    if (!cfg) return;
+    setInstallTerminalExited(true);
+    // null = killed mid-run; treat as failure (don't auto-restart).
+    if (exitCode !== 0) {
+      void trackEvent('install_dependencies_failed', {
+        package_manager: cfg.packageManager,
+        exit_code: exitCode ?? -1,
+        $screen_name: 'Workspace',
+      });
+      showToast(
+        `Install exited with code ${exitCode ?? 'null'}. Check the terminal for details.`,
+        'error'
+      );
+      return; // keep overlay open so user can read stderr + close manually
+    }
+    void trackEvent('install_dependencies_succeeded', {
+      package_manager: cfg.packageManager,
+      $screen_name: 'Workspace',
+    });
+    clearNeedsInstall(cfg.projectPath);
+    setInstallTerminalConfig(null);
+    setInstallTerminalExited(false);
+    showToast('Dependencies installed — starting dev server', 'success');
+    // restartDevServer is a no-op when nothing is currently running, but it
+    // kicks the full project-type-detect → spawn cycle which is exactly what
+    // we want here.
+    try {
+      await restartDevServer(cfg.projectPath);
+    } catch (err) {
+      logger.error('[Install] Post-install dev server restart failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const handleCancelMonorepoPick = async () => {
+    const pending = pendingMonorepoPick;
+    setPendingMonorepoPick(null);
+    if (!pending) return;
+
+    // The picker only fires for projects that don't yet have a workspace
+    // subpath saved, so cancelling here means the project has never been
+    // configured. For external projects, roll back the registration so the
+    // user can re-import cleanly — otherwise re-running "Import Local Folder"
+    // hits "already registered" and they're stuck.
+    try {
+      const external = await isProjectExternal(pending.project.path);
+      if (external) {
+        await unregisterExternalProject(pending.project.path);
+        showToast('Import cancelled', 'success');
+      }
+    } catch (err) {
+      logger.warn('[OpenProject] Cancel rollback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   const handleCreateProject = () => {
     setShowCreateModal(true);
   };
@@ -643,7 +844,12 @@ export function useProjectLifecycle({
       }
     } catch (error) {
       trackError('local_folder_import', error, 'Dashboard');
-      showToast(String(error), 'error');
+      const message = formatCommandError(asCommandError(error));
+      logger.error('[ImportLocalFolder] failed', { error: message });
+      const friendly = message.includes('already registered')
+        ? "This folder is already in Ship Studio. To work on a different workspace from the same folder, clone the repo again via 'Import from GitHub' (each clone is independent), or duplicate the folder on disk first."
+        : message;
+      showToast(friendly, 'error');
     }
   };
 
@@ -753,6 +959,15 @@ export function useProjectLifecycle({
     setShowCreateModal,
     importView,
     setImportView,
+    pendingMonorepoPick,
+    handleSelectMonorepoPick,
+    handleConfirmMonorepoPick,
+    handleCancelMonorepoPick,
+    installTerminalConfig,
+    installTerminalExited,
+    handleRunInstall,
+    handleCloseInstallTerminal,
+    handleInstallTerminalExit,
     setCurrentPreviewPage,
     isPublishing,
     setIsPublishing,
