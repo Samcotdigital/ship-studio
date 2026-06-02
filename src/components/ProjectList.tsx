@@ -22,6 +22,7 @@ import {
   getProjectThumbnail,
   uploadProjectThumbnail,
   deleteProject,
+  renameProject,
   exportProjectAsTemplate,
 } from '../lib/project';
 import { unregisterExternalProject } from '../lib/external-projects';
@@ -44,6 +45,7 @@ import { AgentsPanel } from './AgentsPanel';
 import { IntegrationBar } from './IntegrationBar';
 import { NewFolderModal } from './NewFolderModal';
 import { ProjectGridView } from './ProjectGridView';
+import { RenameProjectModal } from './RenameProjectModal';
 import { SearchAndSort } from './SearchAndSort';
 import { FolderBreadcrumb } from './FolderBreadcrumb';
 import { MoveFolderModal } from './MoveFolderModal';
@@ -127,6 +129,7 @@ export function ProjectList({
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<DashboardProject | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<DashboardProject | null>(null);
 
   // Folder navigation state
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -311,6 +314,24 @@ export function ProjectList({
       alert('Failed to delete project: ' + String(error));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Performs the rename and refreshes the dashboard. Throws on failure so the
+  // modal can render the backend's reason inline (e.g. "Close this project
+  // before renaming it.").
+  const handleRename = async (newName: string) => {
+    if (!renameTarget) return;
+    try {
+      await renameProject(renameTarget.path, newName);
+      void trackEvent('project_renamed', { $screen_name: 'Dashboard' });
+      await loadAll();
+    } catch (error) {
+      trackError('project_rename', error, 'Dashboard');
+      logger.error('Failed to rename project', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   };
 
@@ -568,6 +589,7 @@ export function ProjectList({
           filteredProjects={filteredProjects}
           onSelectProject={(project) => onSelectProject(project)}
           onDeleteProject={(project) => setDeleteConfirm(project)}
+          onRenameProject={(project) => setRenameTarget(project)}
           onToggleMainBranchWarning={(path, hidden) =>
             void handleToggleMainBranchWarning(path, hidden)
           }
@@ -681,6 +703,14 @@ export function ProjectList({
           onSelect={handleMoveProject}
           projectName={moveProject?.name || ''}
           currentFolderId={moveProjectFolderId}
+        />
+
+        {/* Rename Project Modal */}
+        <RenameProjectModal
+          isOpen={renameTarget !== null}
+          onClose={() => setRenameTarget(null)}
+          currentName={renameTarget?.name ?? ''}
+          onRename={handleRename}
         />
 
         {/* Delete Project Confirmation Modal */}
