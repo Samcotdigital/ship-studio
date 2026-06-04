@@ -1,0 +1,171 @@
+/* Native mobile preview (iOS Simulator mirror). See components/DeviceMirror.tsx. */
+
+.device-mirror {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-secondary);
+}
+
+.device-mirror-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.device-mirror-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.device-mirror-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--spacing-md);
+  overflow: hidden;
+}
+
+/* The streamed simulator framebuffer. Constrain to the stage, preserve aspect,
+   and disable native drag/selection so pointer events map cleanly to touches. */
+.device-mirror-screen {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  background: #000;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Collapsible, interactive build panel under the mirror. Hosts BuildTerminal
+   (a real pty_session terminal) so the app build is live and its prompts are
+   answerable. Kept mounted while collapsed so the build keeps running. */
+.device-mirror-build {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header row — mirrors the dev-server-logs toolbar pattern: status on the
+   left, subtle actions on the right. */
+.device-mirror-build-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.device-mirror-build-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.device-mirror-build-toggle[data-state='failed'] {
+  color: var(--danger, #e5484d);
+}
+
+.device-mirror-build-toggle[data-state='launched'] {
+  color: var(--success, #46a758);
+}
+
+.device-mirror-build-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Subtle bordered action button — identical treatment to .dev-server-logs-send. */
+.device-mirror-build-send {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.device-mirror-build-send:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.device-mirror-build-chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.device-mirror-build-chevron:hover {
+  color: var(--text-primary);
+}
+
+.device-mirror-build-chevron svg {
+  transition: transform var(--transition);
+}
+
+.device-mirror-build-chevron.open svg {
+  transform: rotate(180deg);
+}
+
+.device-mirror-build-hint {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: 11px;
+  color: var(--warning, #f59e0b);
+}
+
+.device-mirror-build-hint code {
+  font-family: var(--font-mono, monospace);
+}
+
+/* Fixed height so xterm has a sized container to fit into. */
+.device-mirror-build-body {
+  height: 240px;
+  padding: var(--spacing-xs) var(--spacing-md) var(--spacing-sm);
+  overflow: hidden;
+}
+
+.build-terminal {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}

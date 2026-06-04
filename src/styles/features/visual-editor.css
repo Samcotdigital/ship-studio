@@ -1,0 +1,536 @@
+/* Visual editor properties panel (v1 slice).
+   Portaled to <body> as a position:fixed layer and positioned from the measured
+   canvas rect (Preview.tsx). This is the only reliable way to float over the
+   preview iframe in WebKit — any in-tree overlay gets composited under it. */
+
+.preview-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  height: 28px;
+  padding: 0 var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.preview-edit-toggle:hover {
+  color: var(--text-primary);
+}
+.preview-edit-toggle.active {
+  background: var(--action);
+  border-color: var(--action);
+  color: var(--action-text);
+}
+
+.ss-edit-panel {
+  /* Portaled to <body>; position/top/left/max-height are set inline by the
+     component (it owns drag). position:fixed at the document root is the only
+     reliable way to sit ABOVE the preview iframe in WebKit — an in-tree overlay
+     (even with z-index or a promoted layer) gets composited under it. */
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  /* Header + footer are fixed; only the body scrolls. Panel clips; max-height is
+     set inline by the component. */
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+}
+
+.ss-edit-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  /* Drag handle */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.ss-edit-panel__header:active {
+  cursor: grabbing;
+}
+
+.ss-edit-panel__title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ss-edit-panel__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 var(--spacing-xs);
+}
+.ss-edit-panel__close:hover {
+  color: var(--text-primary);
+}
+
+.ss-edit-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+.ss-edit-panel__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Pinned footer — Save / Saved is always visible regardless of scroll. */
+.ss-edit-panel__footer {
+  flex: 0 0 auto;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+/* Segmented control — a tray with inset, individually-rounded segments so the
+   active one reads as a distinct pill (not adjacent touching buttons). */
+.ss-edit-panel__segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ss-edit-panel__seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 var(--spacing-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.ss-edit-panel__seg:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.ss-edit-panel__seg.active {
+  background: var(--action);
+  color: var(--action-text);
+}
+.ss-edit-panel__seg.active:hover {
+  background: var(--action);
+}
+.ss-edit-panel__seg--icon {
+  padding: 0 6px;
+}
+
+/* Custom dropdown (trigger lives in the panel; menu is portaled to <body>). */
+.ss-dropdown__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-width: 104px;
+  height: 28px;
+  padding: 0 var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.ss-dropdown__trigger:hover {
+  border-color: var(--text-muted);
+}
+.ss-dropdown__trigger[aria-expanded='true'] {
+  border-color: var(--action);
+}
+.ss-dropdown__trigger svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.ss-dropdown__menu {
+  position: fixed;
+  z-index: calc(var(--z-modal-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: var(--spacing-xs);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.ss-dropdown__menu::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.ss-dropdown__item {
+  display: flex;
+  align-items: center;
+  padding: 6px var(--spacing-sm);
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.ss-dropdown__item:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+.ss-dropdown__item.is-active {
+  color: var(--action-text);
+  background: var(--action);
+}
+
+.ss-edit-panel__slider {
+  width: 120px;
+  accent-color: var(--action);
+  cursor: pointer;
+}
+
+/* Color swatch trigger + popover picker */
+.ss-color-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.ss-color-swatch:hover {
+  border-color: var(--text-muted);
+}
+.ss-color-swatch[aria-expanded='true'] {
+  border-color: var(--action);
+}
+.ss-color-swatch__chip {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  /* checkerboard shows through if a color ever has alpha */
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border) 25%, transparent 25%);
+  background-size: 8px 8px;
+}
+.ss-color-swatch__empty {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ss-color-popover {
+  position: fixed;
+  z-index: calc(var(--z-modal-overlay) + 1);
+  width: 216px;
+  padding: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.ss-color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+/* Size react-colorful's surface to the popover. */
+.ss-color-picker .react-colorful {
+  width: 100%;
+  height: 150px;
+}
+.ss-color-picker .react-colorful__saturation {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.ss-color-picker .react-colorful__last-control {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.ss-color-picker__row {
+  display: flex;
+}
+.ss-color-picker__row .ss-dropdown__trigger {
+  width: 100%;
+}
+
+.ss-color-picker__input {
+  width: 100%;
+  height: 26px;
+  padding: 0 var(--spacing-sm);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.ss-color-picker__input:focus {
+  outline: 1px solid var(--action);
+}
+
+.ss-edit-panel__hint,
+.ss-edit-panel__readonly {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.ss-edit-panel__muted {
+  color: var(--text-muted);
+}
+
+.ss-edit-panel__multi {
+  margin: 0;
+  padding: 6px var(--spacing-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--warning, #e0a458);
+  background: color-mix(in srgb, var(--warning, #e0a458) 12%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.ss-edit-panel__source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+.ss-edit-panel__source code {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-edit-panel__badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: default;
+}
+.ss-edit-panel__badge--approx {
+  color: var(--warning, #e0a458);
+  background: color-mix(in srgb, var(--warning, #e0a458) 14%, transparent);
+}
+
+.ss-edit-panel__control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Box-model spacing editor (margin outer, padding inner). Each side is a wide
+   "bar" filling its band, draggable anywhere along it. */
+.ss-box {
+  position: relative;
+  padding: 26px 44px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-muted) 7%, transparent);
+}
+.ss-box__inner {
+  position: relative;
+  padding: 24px 40px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+}
+.ss-box__core {
+  height: 14px;
+  border-radius: 2px;
+  background: var(--text-muted);
+  opacity: 0.35;
+}
+.ss-box__tag {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  z-index: 1;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.ss-box__field {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  /* Transparent by default (just the number) — the wide hit area is still there
+     for dragging; it only lights up on hover/focus. */
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: grab;
+}
+.ss-box__field:hover {
+  background: var(--bg-tertiary);
+}
+.ss-box__field:focus {
+  outline: 1px solid var(--action);
+  background: var(--bg-tertiary);
+}
+/* Horizontal bars (top / bottom) span the band width; vertical bars span its height. */
+.ss-box__edge--t,
+.ss-box__edge--b {
+  left: 40px;
+  right: 40px;
+  height: 15px;
+}
+/* Centered within the 26px band ((26 - 15) / 2) so the field has equal space
+   above and below — not pushed toward its edge. */
+.ss-box__edge--t {
+  top: 5.5px;
+}
+.ss-box__edge--b {
+  bottom: 5.5px;
+}
+.ss-box__edge--l,
+.ss-box__edge--r {
+  top: 28px;
+  bottom: 28px;
+  width: 34px;
+}
+/* Centered in their band too ((44 - 34) / 2; the inner 30px field in its 40px
+   band also lands at 5px), matching the top/bottom fields. */
+.ss-box__edge--l {
+  left: 5px;
+}
+.ss-box__edge--r {
+  right: 5px;
+}
+/* The inner padding band is smaller — tighten its bars to fit and re-center
+   within the 24px band ((24 - 14) / 2). */
+.ss-box__inner .ss-box__edge--t,
+.ss-box__inner .ss-box__edge--b {
+  left: 34px;
+  right: 34px;
+  height: 14px;
+}
+.ss-box__inner .ss-box__edge--t {
+  top: 5px;
+}
+.ss-box__inner .ss-box__edge--b {
+  bottom: 5px;
+}
+.ss-box__inner .ss-box__edge--l,
+.ss-box__inner .ss-box__edge--r {
+  top: 24px;
+  bottom: 24px;
+  width: 30px;
+}
+
+.ss-edit-panel__label {
+  color: var(--text-secondary);
+}
+
+.ss-edit-panel__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Non-interactive "Saved" confirmation (replaces a disabled button so there's
+   no misleading hover affordance when there's nothing to save). */
+.ss-edit-panel__saved {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: default;
+  user-select: none;
+}
+.ss-edit-panel__saved svg {
+  color: var(--action);
+}
+
+/* Editable numeric field (gap) — click to type a value. */
+.ss-edit-panel__num {
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.ss-edit-panel__num:focus {
+  outline: 1px solid var(--action);
+}
+
+.ss-edit-panel__value {
+  min-width: 24px;
+  text-align: center;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-edit-panel__classes {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  word-break: break-word;
+}

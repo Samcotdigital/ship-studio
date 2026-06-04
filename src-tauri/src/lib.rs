@@ -257,6 +257,11 @@ pub fn run() {
                     tracing::info!("Killed {} PTY processes for window {}", killed, label);
                 }
 
+                // Tear down this window's mobile previews (serve-sim daemon, app
+                // build, and any sim we booted). Runs for EVERY closing window,
+                // not just main — a non-main project window must not leak its sim.
+                commands::mobile::teardown_mobile_previews_for_window_sync(&label);
+
                 // Clean up project window registry
                 state::unregister_window_by_label(&label);
 
@@ -279,6 +284,9 @@ pub fn run() {
                     commands::setup::cleanup_auth_processes_sync();
                     proxy::stop_all_proxies();
                     static_server::stop_all_static_servers();
+                    // Mobile previews are torn down per-window above
+                    // (teardown_mobile_previews_for_window_sync), so there's no
+                    // global sim shutdown to do here.
                 }
             }
         })
@@ -336,6 +344,8 @@ pub fn run() {
             commands::projects::get_workspace_subpath,
             commands::projects::set_workspace_subpath,
             commands::projects::check_dependencies_installed,
+            commands::edit::resolve_classname_source,
+            commands::edit::apply_classname_edit,
             commands::projects::get_terminal_state,
             commands::projects::set_terminal_state,
             commands::projects::extract_template_zip,
@@ -466,6 +476,10 @@ pub fn run() {
             commands::static_server::stop_static_server,
             // Project Type Detection
             commands::projects::detect_project_type_command,
+            // Native Mobile Preview (iOS Simulator via serve-sim)
+            commands::mobile::list_booted_simulators,
+            commands::mobile::start_mobile_preview,
+            commands::mobile::get_simulator_launch_command,
             // PTY & Terminal
             commands::pty::spawn_pty,
             commands::pty::kill_pty,

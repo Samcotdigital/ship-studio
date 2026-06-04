@@ -26,6 +26,7 @@ import { Terminal } from './Terminal';
 import { DevServerLogs } from './DevServerLogs';
 import { Preview } from './Preview';
 import type { PreviewHandle, InspectTab } from './Preview';
+import { DeviceMirror } from './DeviceMirror';
 import { SplitPane } from './SplitPane';
 import { BranchIndicator } from './BranchIndicator';
 import { CodeTab } from './CodeTab';
@@ -60,7 +61,7 @@ import { PluginsDropdown } from './PluginsDropdown';
 import { getAgentById } from '../lib/agent';
 import type { AgentConfig } from '../lib/agent';
 import type { Project } from '../lib/project';
-import type { ProjectType } from '../lib/static-server';
+import { isMobileProjectType, type ProjectType } from '../lib/static-server';
 import type { TerminalTab } from '../hooks/useTerminalManagement';
 import type { TerminalHandle } from './Terminal';
 import type { Toast, ToastType } from '../hooks/useToasts';
@@ -556,9 +557,15 @@ export const WorkspaceView = memo(function WorkspaceView({
   } = lifecycle;
 
   // Cmd+Shift+S — capture viewport screenshot, Cmd+Shift+C — toggle crop mode
-  // Only active when preview is visible (not hidden, and on preview tab for web projects)
+  // Screenshot accelerators only make sense over the web iframe preview, not
+  // the device mirror (which captures a simulator, not localhost) or generic/
+  // unknown projects with no preview at all.
   const previewVisible =
-    projectType !== 'generic' && workspaceTab === 'preview' && !isPreviewHidden;
+    projectType !== 'generic' &&
+    projectType !== 'unknown' &&
+    !isMobileProjectType(projectType) &&
+    workspaceTab === 'preview' &&
+    !isPreviewHidden;
 
   // Listen for native menu accelerators (Cmd+Shift+S / Cmd+Shift+C).
   // Native accelerators work even when the cross-origin preview iframe has focus,
@@ -588,8 +595,12 @@ export const WorkspaceView = memo(function WorkspaceView({
     setIsCropMode,
   ]);
 
-  // Generic/unknown projects (Tauri apps, CLI tools, blank projects, etc.) don't have a web preview
-  const isWebProject = projectType !== 'generic' && projectType !== 'unknown';
+  // Generic/unknown (Tauri, CLI) projects have no preview pane at all. Web
+  // projects get the iframe Preview; native mobile (RN/Expo, Flutter) gets the
+  // device mirror. `hasPreview` = either kind of previewable project.
+  const isMobileProject = isMobileProjectType(projectType);
+  const isWebProject = projectType !== 'generic' && projectType !== 'unknown' && !isMobileProject;
+  const hasPreview = isWebProject || isMobileProject;
 
   // Reset the preview-side tab to its default whenever the user switches
   // projects. Web projects land on Preview; generic/unknown projects land
@@ -597,11 +608,11 @@ export const WorkspaceView = memo(function WorkspaceView({
   // project while on Branches/PRs would land you on Branches/PRs in the
   // next project too, which reads as "sticky state from the wrong place".
   useEffect(() => {
-    setWorkspaceTab(isWebProject ? 'preview' : 'code');
+    setWorkspaceTab(hasPreview ? 'preview' : 'code');
     // Only re-fire on project path change. We deliberately *don't* depend
     // on `workspaceTab` here — that would force-revert every user click.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject.path, isWebProject]);
+  }, [currentProject.path, hasPreview]);
 
   // Track terminal tab titles from PTY title changes. Titles live in the
   // session registry so (a) they're scoped per-project (tab ids are
@@ -964,10 +975,10 @@ export const WorkspaceView = memo(function WorkspaceView({
                     changedFiles={changedFiles}
                     projectPath={currentProject.path}
                     isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
-                    isWebProject={isWebProject}
+                    hasPreview={hasPreview}
                     onClick={() => {
                       if (workspaceTab === 'branches' || workspaceTab === 'prs') {
-                        setWorkspaceTab(isWebProject ? 'preview' : 'code');
+                        setWorkspaceTab(hasPreview ? 'preview' : 'code');
                       } else {
                         setWorkspaceTab('branches');
                       }
@@ -980,7 +991,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                 )}
                 <div style={{ flex: 1 }} />
                 <div className="workspace-tabs">
-                  {isWebProject && (
+                  {hasPreview && (
                     <button
                       className={`workspace-tab ${workspaceTab === 'preview' && !isPreviewHidden ? 'active' : ''}`}
                       onClick={() => {
@@ -1338,6 +1349,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             port={devServerPort}
                             projectPath={currentProject.path}
                             isStaticProject={projectType === 'statichtml'}
+                            projectType={projectType}
                             onServerReady={handlePreviewReady}
                             onPageChange={setCurrentPreviewPage}
                             isCropMode={isCropMode}
@@ -1369,6 +1381,16 @@ export const WorkspaceView = memo(function WorkspaceView({
                           />
                         </div>
                       )}
+                      {workspaceTab === 'preview' && isMobileProject && (
+                        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                          <DeviceMirror
+                            key={currentProject.path}
+                            projectName={currentProject.name}
+                            projectPath={currentProject.path}
+                            onSendToAgent={sendToClaude}
+                          />
+                        </div>
+                      )}
                       {workspaceTab === 'code' && (
                         <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
                           <CodeTab projectPath={currentProject.path} onSendToAgent={sendToClaude} />
@@ -1377,7 +1399,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                       <BranchPRTabContainer
                         workspaceTab={workspaceTab}
                         setWorkspaceTab={setWorkspaceTab}
-                        isWebProject={isWebProject}
+                        hasPreview={hasPreview}
                         integrations={integrations}
                         branches={branches}
                         openPRs={openPRs}
