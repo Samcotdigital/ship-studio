@@ -10,12 +10,14 @@ import type { ReactNode } from 'react';
 import {
   activeEnumToken,
   readLayer,
+  enumResetSpec,
   ENUM_CONTROLS,
   type EnumControl,
   type LayerContext,
+  type ResetSpec,
 } from '../../lib/edit';
 import { EnumDropdown } from './EnumDropdown';
-import { LayerDot } from './LayerDot';
+import { ResettableLabel } from './ResettableLabel';
 
 const lineProps = { strokeWidth: 2, strokeLinecap: 'round' as const };
 function Icon({ children }: { children: ReactNode }) {
@@ -145,9 +147,17 @@ interface Props {
    *  Tailwind cascade and apply at this layer (the hook adds the variant prefix). */
   layer: LayerContext;
   onApplyEnum: (token: string, style: Record<string, string>) => void;
+  /** Clear a control's value at the active breakpoint. */
+  onReset: (spec: ResetSpec) => void;
 }
 
-function Control({ control, currentClass, layer, onApplyEnum }: { control: EnumControl } & Props) {
+function Control({
+  control,
+  currentClass,
+  layer,
+  onApplyEnum,
+  onReset,
+}: { control: EnumControl } & Props) {
   const { value: active, definedAt } = readLayer(currentClass, layer, (s) =>
     activeEnumToken(s, control)
   );
@@ -190,16 +200,18 @@ function Control({ control, currentClass, layer, onApplyEnum }: { control: EnumC
 
   return (
     <div className="ss-edit-panel__control">
-      <label className="ss-edit-panel__label">
-        {control.label}
-        <LayerDot definedAt={definedAt} active={layer.bp} />
-      </label>
+      <ResettableLabel
+        label={control.label}
+        definedAt={definedAt}
+        active={layer.bp}
+        onReset={() => onReset(enumResetSpec(control))}
+      />
       {body}
     </div>
   );
 }
 
-export function EnumControls({ currentClass, layer, onApplyEnum }: Props) {
+export function EnumControls({ currentClass, layer, onApplyEnum, onReset }: Props) {
   return (
     <>
       {ENUM_CONTROLS.map((control) => (
@@ -209,6 +221,7 @@ export function EnumControls({ currentClass, layer, onApplyEnum }: Props) {
           currentClass={currentClass}
           layer={layer}
           onApplyEnum={onApplyEnum}
+          onReset={onReset}
         />
       ))}
     </>

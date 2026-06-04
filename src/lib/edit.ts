@@ -173,6 +173,65 @@ export function readLayer<T>(
 }
 
 /**
+ * Remove the tokens at one breakpoint layer whose prefix-stripped base matches
+ * `match` (used by Reset to clear a property at the active breakpoint). Only that
+ * layer is touched: at base, a known-breakpoint token like `md:p-4` is left alone,
+ * and `hover:`/other modifiers stay (their base keeps the modifier, so an anchored
+ * matcher like `/^gap-/` won't hit `hover:gap-4`).
+ */
+export function removeAtLayer(
+  className: string,
+  bp: Breakpoint,
+  known: Set<string>,
+  match: (layerBase: string) => boolean
+): string {
+  return className
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((tok) => {
+      const colon = tok.indexOf(':');
+      const lead = colon === -1 ? null : tok.slice(0, colon);
+      let layerBase: string | null;
+      if (bp.prefix === null) {
+        layerBase = lead !== null && known.has(lead) ? null : tok; // base keeps full token
+      } else {
+        layerBase = lead === bp.prefix ? tok.slice(colon + 1) : null;
+      }
+      return layerBase === null || !match(layerBase);
+    })
+    .join(' ');
+}
+
+/** Describes how to reset one control's value: which active-layer tokens to remove,
+ *  and which CSS properties to neutralize in the live preview so the reverted
+ *  (inherited or default) value shows. */
+export interface ResetSpec {
+  match: (layerBase: string) => boolean;
+  cssProps: string[];
+}
+
+/** Reset spec for a scale-or-arbitrary spacing utility (gap, opacity). Matches
+ *  `<prefix>-<n>` / `<prefix>-[…]` but not sub-utilities like `gap-x-…`. */
+export function spacingResetSpec(prefix: string, cssProp: string): ResetSpec {
+  return { match: (t) => new RegExp(`^${prefix}-(\\d+$|\\[)`).test(t), cssProps: [cssProp] };
+}
+
+/** Reset spec for an arbitrary color utility (`text-[…]` / `bg-[…]`) — only the
+ *  bracketed form, so it never touches `text-center` / `text-xl`. */
+export function colorResetSpec(prefix: string, cssProp: string): ResetSpec {
+  return { match: (t) => new RegExp(`^${prefix}-\\[`).test(t), cssProps: [cssProp] };
+}
+
+/** Reset spec for an enum control — removes whichever of its options is set, and
+ *  neutralizes every CSS property its options drive. */
+export function enumResetSpec(control: EnumControl): ResetSpec {
+  return {
+    match: (t) => control.options.some((o) => o.token === t),
+    cssProps: [...new Set(control.options.flatMap((o) => Object.keys(o.style)))],
+  };
+}
+
+/**
  * Current scale value of a Tailwind spacing utility (`<prefix>-N`) in a class
  * string, or null if absent / arbitrary (`p-[..]`). `prefix` is a plain utility
  * key like `p`, `m`, `gap` (no regex metacharacters).

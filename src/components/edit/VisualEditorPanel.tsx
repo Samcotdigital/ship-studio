@@ -19,7 +19,7 @@ import { SpacingBox } from './SpacingBox';
 import { EnumControls } from './EnumControls';
 import { EnumDropdown } from './EnumDropdown';
 import { ColorControls } from './ColorControls';
-import { LayerDot } from './LayerDot';
+import { ResettableLabel } from './ResettableLabel';
 import {
   scaleValue,
   spacingValue,
@@ -27,6 +27,7 @@ import {
   spacingDisplay,
   spacingTokenFor,
   parseSpacingInput,
+  spacingResetSpec,
   readLayer,
   breakpointPrefixes,
   type BoxType,
@@ -34,6 +35,7 @@ import {
   type Breakpoint,
   type LayerContext,
   type SpacingValue,
+  type ResetSpec,
 } from '../../lib/edit';
 import type { Selection } from '../../hooks/useVisualEditor';
 
@@ -93,25 +95,31 @@ function GapField({
   );
 }
 
-/** "Saved" confirmation badge (checkmark + label), shared by the manual and
- *  auto-save footers. */
-function SavedBadge() {
+/** Save-status badge — the SAME box whether saving or saved, so the footer never
+ *  shifts height between the two (auto-save) states. */
+function StatusBadge({ saving }: { saving: boolean }) {
   return (
     <div className="ss-edit-panel__saved" aria-live="polite">
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-      Saved
+      {saving ? (
+        'Saving…'
+      ) : (
+        <>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Saved
+        </>
+      )}
     </div>
   );
 }
@@ -139,6 +147,8 @@ interface Props {
   onSetSide: (type: BoxType, side: Side, value: SpacingValue) => void;
   /** Apply an enum option's token + inline-style preview. */
   onApplyEnum: (token: string, style: Record<string, string>) => void;
+  /** Reset a control's value at the active breakpoint. */
+  onReset: (spec: ResetSpec) => void;
   onCommit: () => void;
   onClose: () => void;
 }
@@ -164,6 +174,7 @@ export function VisualEditorPanel({
   onStepGap,
   onSetSide,
   onApplyEnum,
+  onReset,
   onCommit,
   onClose,
 }: Props) {
@@ -319,10 +330,12 @@ export function VisualEditorPanel({
             <SpacingBox currentClass={currentClass} layer={layer} onSetSide={onSetSide} />
 
             <div className="ss-edit-panel__control">
-              <label className="ss-edit-panel__label">
-                Gap
-                <LayerDot definedAt={gap.definedAt} active={activeBreakpoint} />
-              </label>
+              <ResettableLabel
+                label="Gap"
+                definedAt={gap.definedAt}
+                active={activeBreakpoint}
+                onReset={() => onReset(spacingResetSpec('gap', 'gap'))}
+              />
               <div className="ss-edit-panel__stepper">
                 <Button
                   size="sm"
@@ -347,13 +360,20 @@ export function VisualEditorPanel({
               </div>
             </div>
 
-            <EnumControls currentClass={currentClass} layer={layer} onApplyEnum={onApplyEnum} />
+            <EnumControls
+              currentClass={currentClass}
+              layer={layer}
+              onApplyEnum={onApplyEnum}
+              onReset={onReset}
+            />
 
             <div className="ss-edit-panel__control">
-              <label className="ss-edit-panel__label">
-                Opacity
-                <LayerDot definedAt={opacity.definedAt} active={activeBreakpoint} />
-              </label>
+              <ResettableLabel
+                label="Opacity"
+                definedAt={opacity.definedAt}
+                active={activeBreakpoint}
+                onReset={() => onReset(spacingResetSpec('opacity', 'opacity'))}
+              />
               <input
                 type="range"
                 className="ss-edit-panel__slider"
@@ -373,6 +393,7 @@ export function VisualEditorPanel({
               currentClass={currentClass}
               layer={layer}
               onApplyEnum={onApplyEnum}
+              onReset={onReset}
               computed={{
                 color: selection?.signature.computedColor,
                 'background-color': selection?.signature.computedBackgroundColor,
@@ -400,19 +421,13 @@ export function VisualEditorPanel({
             Auto-save
           </button>
           {autoSave ? (
-            dirty ? (
-              <span className="ss-edit-panel__saving" aria-live="polite">
-                Saving…
-              </span>
-            ) : (
-              <SavedBadge />
-            )
+            <StatusBadge saving={dirty} />
           ) : dirty ? (
             <Button size="sm" variant="primary" onClick={onCommit}>
               Save to source
             </Button>
           ) : (
-            <SavedBadge />
+            <StatusBadge saving={false} />
           )}
         </div>
       )}

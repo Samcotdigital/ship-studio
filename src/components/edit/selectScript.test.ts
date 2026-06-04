@@ -168,3 +168,39 @@ it('KEEPS a committed preview after deactivate (saved edit stays until HMR)', ()
   expect(btn.getAttribute('data-ss-sel')).toBeTruthy();
   expect(document.getElementById('ss-preview')!.textContent).toContain('@media (min-width:768px)');
 });
+
+it('accumulates preview rules across multiple properties', () => {
+  document.body.innerHTML = '<button class="acc">x</button>';
+  send({ type: 'ss:activate' });
+  document.querySelector('.acc')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const mark = document.querySelector('.acc')!.getAttribute('data-ss-sel')!;
+  // This selection's base rule body (scoped past any leftover committed entries).
+  const block = () => {
+    const css = document.getElementById('ss-preview')!.textContent ?? '';
+    const m = new RegExp(`\\[data-ss-sel="${mark}"\\]\\{([^}]*)\\}`).exec(css);
+    return m ? m[1] : '';
+  };
+
+  send({
+    type: 'ss:mutate',
+    className: 'acc p-14',
+    rules: [{ minPx: 0, decls: { padding: '3.5rem' } }],
+  });
+  send({
+    type: 'ss:mutate',
+    className: 'acc p-14 gap-10',
+    rules: [{ minPx: 0, decls: { gap: '2.5rem' } }],
+  });
+  // Both properties preview at once (the second mutate doesn't drop the first).
+  expect(block()).toContain('padding:3.5rem !important');
+  expect(block()).toContain('gap:2.5rem !important');
+
+  // A null decl resets (removes) just that one property — the other stays.
+  send({
+    type: 'ss:mutate',
+    className: 'acc gap-10',
+    rules: [{ minPx: 0, decls: { padding: null } }],
+  });
+  expect(block()).not.toContain('padding:');
+  expect(block()).toContain('gap:2.5rem !important');
+});

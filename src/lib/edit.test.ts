@@ -29,6 +29,7 @@ import {
   arbitraryToken,
   parseSpacingInput,
   stepSpacingValue,
+  removeAtLayer,
   type Breakpoint,
 } from './edit';
 
@@ -97,6 +98,30 @@ describe('resolveCascade', () => {
       resolveCascade(cls, bp, ORDERED, (s) => boxSideValue(s, 'padding', 'top'), KNOWN).value;
     expect(topAt(BP('md'))).toBe(8);
     expect(topAt(BASE_BREAKPOINT)).toBe(2);
+  });
+});
+
+describe('removeAtLayer (reset)', () => {
+  const gapMatch = (t: string) => /^gap-/.test(t);
+
+  it('removes a base-layer token, leaving breakpoint overrides', () => {
+    expect(removeAtLayer('flex gap-4 md:gap-8', BASE_BREAKPOINT, KNOWN, gapMatch)).toBe(
+      'flex md:gap-8'
+    );
+  });
+  it('removes a breakpoint-layer token, leaving the base', () => {
+    expect(removeAtLayer('flex gap-4 md:gap-8', BP('md'), KNOWN, gapMatch)).toBe('flex gap-4');
+  });
+  it('leaves non-breakpoint modifiers (hover) alone at base', () => {
+    expect(removeAtLayer('gap-4 hover:gap-2', BASE_BREAKPOINT, KNOWN, gapMatch)).toBe(
+      'hover:gap-2'
+    );
+  });
+  it('matches exact enum tokens', () => {
+    const isWeight = (t: string) => ['font-normal', 'font-bold'].includes(t);
+    expect(removeAtLayer('font-bold text-center', BASE_BREAKPOINT, KNOWN, isWeight)).toBe(
+      'text-center'
+    );
   });
 });
 

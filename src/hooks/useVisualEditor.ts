@@ -25,6 +25,7 @@ import {
   boxSidePrefix,
   withVariant,
   tokensForVariant,
+  removeAtLayer,
   breakpointPrefixes,
   SPACING_CONTROLS,
   type SpacingKind,
@@ -32,16 +33,18 @@ import {
   type Side,
   type Breakpoint,
   type SpacingValue,
+  type ResetSpec,
   type ElementSignature,
   type Resolution,
 } from '../lib/edit';
 import { logger } from '../lib/logger';
 
 /** A breakpoint-scoped slice of the live-preview stylesheet: `decls` applied at
- *  `minPx` and up (0 = base, all widths). Mirrors `select_script.html`'s contract. */
+ *  `minPx` and up (0 = base, all widths). A null value deletes that property from
+ *  the preview (Reset). Mirrors `select_script.html`'s contract. */
 interface PreviewRule {
   minPx: number;
-  decls: Record<string, string>;
+  decls: Record<string, string | null>;
 }
 
 /** Persisted opt-in for auto-save (off by default). */
@@ -229,6 +232,25 @@ export function useVisualEditor({
     [applyToken, activeBreakpoint, known]
   );
 
+  /** Reset a property at the active breakpoint: remove its tokens from that layer
+   *  and null out its preview decls so the value reverts to its inherited/default
+   *  state. The class change is dirty, so Save (or auto-save) persists the removal. */
+  const reset = useCallback(
+    (spec: ResetSpec) => {
+      const merged = removeAtLayer(currentClassRef.current, activeBreakpoint, known, spec.match);
+      if (merged === currentClassRef.current) return; // nothing to remove
+      setLiveClass(merged);
+      const decls: Record<string, string | null> = {};
+      for (const p of spec.cssProps) decls[p] = null;
+      post({
+        type: 'ss:mutate',
+        className: merged,
+        rules: [{ minPx: activeBreakpoint.minPx, decls }],
+      });
+    },
+    [post, setLiveClass, activeBreakpoint, known]
+  );
+
   /** Persist the current live class to source. `silent` suppresses the success
    *  toast (used by auto-save, which shouldn't toast on every debounced write —
    *  errors still surface). */
@@ -293,6 +315,7 @@ export function useVisualEditor({
     // Enum controls apply an absolute token (twMerge swaps the prior one) plus an
     // inline-style preview — same path as spacing, just not relative to a scale.
     applyEnum: applyToken,
+    reset,
     commit,
   };
 }

@@ -882,6 +882,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             onStepGap={(dir) => editor.stepSpacing('gap', dir)}
             onSetSide={editor.setBoxSide}
             onApplyEnum={editor.applyEnum}
+            onReset={editor.reset}
             onCommit={() => void editor.commit()}
             onClose={editor.toggleEditMode}
           />,

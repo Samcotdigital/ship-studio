@@ -161,12 +161,6 @@
   background: #ffffff;
 }
 
-/* Debounced auto-save in-progress hint. */
-.ss-edit-panel__saving {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 /* Segmented control — a tray with inset, individually-rounded segments so the
    active one reads as a distinct pill (not adjacent touching buttons). */
 .ss-edit-panel__segmented {
@@ -586,6 +580,42 @@
   display: inline-flex;
   align-items: center;
   color: var(--text-secondary);
+}
+
+/* A label that doubles as a Reset trigger: the name is a bare button, and a small
+   "Reset?" pill appears beside it when clicked. */
+.ss-edit-panel__label--resettable {
+  gap: var(--spacing-sm);
+}
+.ss-edit-panel__labelbtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.ss-edit-panel__labelbtn:hover {
+  /* Only brighten the name — override the global button:hover background. */
+  background: none;
+  color: var(--text-primary);
+}
+/* Quiet text link — no box; the green LayerDot stays the only "set" indicator. */
+.ss-edit-panel__resetbtn {
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.ss-edit-panel__resetbtn:hover {
+  background: none;
+  color: var(--action);
 }
 
 /* A box-model side whose value is inherited from a smaller breakpoint (not set

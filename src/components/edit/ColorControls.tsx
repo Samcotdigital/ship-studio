@@ -13,19 +13,23 @@ import {
   arbitraryColorRaw,
   colorClassToken,
   colorFormatOf,
+  colorResetSpec,
   readLayer,
   type ColorPrefix,
   type LayerContext,
+  type ResetSpec,
 } from '../../lib/edit';
 import { rgbaToCss, toFormat, toHex, toRgba, visibleHex } from '../../lib/color';
 import { ColorPicker } from './ColorPicker';
-import { LayerDot } from './LayerDot';
+import { ResettableLabel } from './ResettableLabel';
 
 interface Props {
   currentClass: string;
   /** Active breakpoint layer — the explicit color is read across the cascade. */
   layer: LayerContext;
   onApplyEnum: (token: string, style: Record<string, string>) => void;
+  /** Clear a color at the active breakpoint. */
+  onReset: (spec: ResetSpec) => void;
   /** Rendered colors from getComputedStyle, keyed by CSS property ('color',
    *  'background-color'), used to seed the picker when there's no explicit
    *  arbitrary value in the class. */
@@ -39,6 +43,7 @@ function ColorField({
   currentClass,
   layer,
   onApplyEnum,
+  onReset,
   computed,
 }: {
   label: string;
@@ -120,10 +125,12 @@ function ColorField({
 
   return (
     <div className="ss-edit-panel__control">
-      <label className="ss-edit-panel__label">
-        {label}
-        <LayerDot definedAt={definedAt} active={layer.bp} />
-      </label>
+      <ResettableLabel
+        label={label}
+        definedAt={definedAt}
+        active={layer.bp}
+        onReset={() => onReset(colorResetSpec(prefix, css))}
+      />
       <button
         ref={triggerRef}
         type="button"
@@ -151,7 +158,7 @@ function ColorField({
   );
 }
 
-export function ColorControls({ currentClass, layer, onApplyEnum, computed }: Props) {
+export function ColorControls({ currentClass, layer, onApplyEnum, onReset, computed }: Props) {
   return (
     <>
       {COLOR_CONTROLS.map((c) => (
@@ -163,6 +170,7 @@ export function ColorControls({ currentClass, layer, onApplyEnum, computed }: Pr
           currentClass={currentClass}
           layer={layer}
           onApplyEnum={onApplyEnum}
+          onReset={onReset}
           computed={computed}
         />
       ))}

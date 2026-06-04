@@ -29,7 +29,8 @@ function renderPanel(
   autoSave = false,
   onToggleAutoSave = vi.fn(),
   onApplyEnum = vi.fn(),
-  onSetSide = vi.fn()
+  onSetSide = vi.fn(),
+  onReset = vi.fn()
 ) {
   return render(
     <VisualEditorPanel
@@ -44,6 +45,7 @@ function renderPanel(
       onStepGap={vi.fn()}
       onSetSide={onSetSide}
       onApplyEnum={onApplyEnum}
+      onReset={onReset}
       onCommit={vi.fn()}
       onClose={vi.fn()}
     />
@@ -183,6 +185,34 @@ describe('VisualEditorPanel', () => {
     fireEvent.keyDown(gap, { key: 'Enter' });
     expect(gap).toHaveAttribute('aria-invalid', 'true');
     expect(onApplyEnum).not.toHaveBeenCalled();
+  });
+
+  it('reveals "Reset" when clicking a set value name, and resets on confirm', () => {
+    const onReset = vi.fn();
+    // gap-4 is set on Base → the Gap label is a clickable reset trigger.
+    renderPanel(
+      resolvedSelection,
+      'gap-4',
+      BASE_BREAKPOINT,
+      vi.fn(), // onSelectBreakpoint
+      false, // breakpointTooWide
+      false, // autoSave
+      vi.fn(), // onToggleAutoSave
+      vi.fn(), // onApplyEnum
+      vi.fn(), // onSetSide
+      onReset
+    );
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Gap/ })); // click the name
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' })); // confirm
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Reset for an inherited value (only set-here)', () => {
+    // gap-4 at Base, viewing md → inherited; the Gap label is plain text, no button.
+    renderPanel(resolvedSelection, 'gap-4', MD);
+    expect(screen.queryByRole('button', { name: /Gap/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Gap')).toBeInTheDocument();
   });
 
   it('applies a valid typed unit as an arbitrary gap value', () => {
