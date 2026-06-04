@@ -116,10 +116,10 @@ describe('useVisualEditor auto-save', () => {
 
     // Simulate a drag: many rapid mutations, each well within the debounce window.
     act(() => {
-      result.current.setBoxSide('padding', 'top', 4);
-      result.current.setBoxSide('padding', 'top', 5);
-      result.current.setBoxSide('padding', 'top', 6);
-      result.current.setBoxSide('padding', 'top', 7);
+      result.current.setBoxSide('padding', 'top', { kind: 'scale', n: 4 });
+      result.current.setBoxSide('padding', 'top', { kind: 'scale', n: 5 });
+      result.current.setBoxSide('padding', 'top', { kind: 'scale', n: 6 });
+      result.current.setBoxSide('padding', 'top', { kind: 'scale', n: 7 });
     });
 
     // Before the debounce elapses: nothing saved yet.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import {
   scaleValue,
   steppedScale,
@@ -19,6 +20,15 @@ import {
   breakpointPrefixes,
   BASE_BREAKPOINT,
   DEFAULT_BREAKPOINTS,
+  arbitraryValue,
+  spacingValue,
+  boxSide,
+  spacingCss,
+  spacingDisplay,
+  spacingTokenFor,
+  arbitraryToken,
+  parseSpacingInput,
+  stepSpacingValue,
   type Breakpoint,
 } from './edit';
 
@@ -87,6 +97,92 @@ describe('resolveCascade', () => {
       resolveCascade(cls, bp, ORDERED, (s) => boxSideValue(s, 'padding', 'top'), KNOWN).value;
     expect(topAt(BP('md'))).toBe(8);
     expect(topAt(BASE_BREAKPOINT)).toBe(2);
+  });
+});
+
+describe('free-form spacing values', () => {
+  it('reads an arbitrary spacing value, un-escaping underscores', () => {
+    expect(arbitraryValue('p-[10rem] flex', 'p')).toBe('10rem');
+    expect(arbitraryValue('gap-[clamp(1rem,_5vw,_4rem)]', 'gap')).toBe('clamp(1rem, 5vw, 4rem)');
+    expect(arbitraryValue('pt-[12px]', 'pt')).toBe('12px');
+    // The `-[` boundary keeps `p` from matching `px-[…]` / `gap-[…]`.
+    expect(arbitraryValue('px-[10rem]', 'p')).toBeNull();
+    expect(arbitraryValue('gap-[10rem]', 'p')).toBeNull();
+  });
+
+  it('spacingValue reads scale or arbitrary', () => {
+    expect(spacingValue('p-4', 'p')).toEqual({ kind: 'scale', n: 4 });
+    expect(spacingValue('p-[10rem]', 'p')).toEqual({ kind: 'arbitrary', raw: '10rem' });
+    expect(spacingValue('flex', 'p')).toBeNull();
+  });
+
+  it('boxSide honors the cascade across scale and arbitrary', () => {
+    // pt-[10rem] (specific, arbitrary) beats py-4 (axis, scale).
+    expect(boxSide('py-4 pt-[10rem]', 'padding', 'top')).toEqual({
+      kind: 'arbitrary',
+      raw: '10rem',
+    });
+    expect(boxSide('py-4 pt-[10rem]', 'padding', 'bottom')).toEqual({ kind: 'scale', n: 4 });
+    expect(boxSide('flex', 'margin', 'left')).toBeNull();
+  });
+
+  it('resolves a value to CSS and a display string', () => {
+    expect(spacingCss({ kind: 'scale', n: 6 })).toBe('1.5rem'); // 6 × 0.25
+    expect(spacingCss({ kind: 'arbitrary', raw: '10rem' })).toBe('10rem');
+    expect(spacingDisplay({ kind: 'scale', n: 6 })).toBe('6');
+    expect(spacingDisplay({ kind: 'arbitrary', raw: '10rem' })).toBe('10rem');
+    expect(spacingDisplay(null)).toBe('0');
+  });
+
+  it('builds scale and arbitrary tokens, escaping spaces', () => {
+    expect(spacingTokenFor('p', { kind: 'scale', n: 6 })).toBe('p-6');
+    expect(spacingTokenFor('pt', { kind: 'arbitrary', raw: '10rem' })).toBe('pt-[10rem]');
+    expect(arbitraryToken('gap', 'clamp(1rem, 5vw, 4rem)')).toBe('gap-[clamp(1rem,_5vw,_4rem)]');
+  });
+
+  describe('parseSpacingInput', () => {
+    afterEach(() => vi.unstubAllGlobals());
+    const stubCss = (ok: (v: string) => boolean) =>
+      vi.stubGlobal('CSS', { supports: (_p: string, v: string) => ok(v) });
+
+    it('treats a bare integer as a Tailwind scale step', () => {
+      expect(parseSpacingInput('6', 'padding')).toEqual({ kind: 'scale', n: 6 });
+      expect(parseSpacingInput(' 10 ', 'padding')).toEqual({ kind: 'scale', n: 10 });
+    });
+    it('treats a valid CSS value as arbitrary', () => {
+      stubCss((v) => /^[\d.]+(px|rem|%)$/.test(v));
+      expect(parseSpacingInput('10rem', 'padding')).toEqual({ kind: 'arbitrary', raw: '10rem' });
+      expect(parseSpacingInput('50%', 'padding')).toEqual({ kind: 'arbitrary', raw: '50%' });
+    });
+    it('forgives a space between number and unit ("3 rem" → "3rem")', () => {
+      stubCss((v) => /^[\d.]+(px|rem|%)$/.test(v));
+      expect(parseSpacingInput('3 rem', 'padding')).toEqual({ kind: 'arbitrary', raw: '3rem' });
+      expect(parseSpacingInput('10  px', 'padding')).toEqual({ kind: 'arbitrary', raw: '10px' });
+    });
+    it('rejects junk and empty input', () => {
+      stubCss(() => false);
+      expect(parseSpacingInput('40sdffsdf', 'padding')).toEqual({ kind: 'invalid' });
+      expect(parseSpacingInput('', 'padding')).toEqual({ kind: 'invalid' });
+    });
+  });
+
+  it('steps scale and numeric-arbitrary values, leaving calc() alone', () => {
+    expect(stepSpacingValue({ kind: 'scale', n: 5 }, 1)).toEqual({ kind: 'scale', n: 6 });
+    expect(stepSpacingValue(null, 1)).toEqual({ kind: 'scale', n: 1 });
+    expect(stepSpacingValue({ kind: 'scale', n: 0 }, -1)).toEqual({ kind: 'scale', n: 0 }); // clamp
+    expect(stepSpacingValue({ kind: 'arbitrary', raw: '10rem' }, 1)).toEqual({
+      kind: 'arbitrary',
+      raw: '11rem',
+    });
+    expect(stepSpacingValue({ kind: 'arbitrary', raw: '1.5rem' }, 1)).toEqual({
+      kind: 'arbitrary',
+      raw: '2.5rem',
+    });
+    // Non-numeric arbitraries can't be stepped — returned unchanged.
+    expect(stepSpacingValue({ kind: 'arbitrary', raw: 'clamp(1rem, 5vw, 4rem)' }, 1)).toEqual({
+      kind: 'arbitrary',
+      raw: 'clamp(1rem, 5vw, 4rem)',
+    });
   });
 });
 

@@ -22,48 +22,72 @@ import { ColorControls } from './ColorControls';
 import { LayerDot } from './LayerDot';
 import {
   scaleValue,
+  spacingValue,
+  spacingCss,
+  spacingDisplay,
+  spacingTokenFor,
+  parseSpacingInput,
   readLayer,
   breakpointPrefixes,
-  SPACING_REM,
   type BoxType,
   type Side,
   type Breakpoint,
   type LayerContext,
+  type SpacingValue,
 } from '../../lib/edit';
 import type { Selection } from '../../hooks/useVisualEditor';
 
-/** Editable numeric field for the gap value: click to type, Enter/blur to apply,
- *  stays in sync when the +/- steppers change the value externally (synced during
- *  render via the prev-value pattern — no effect). */
-function GapField({ value, onSet }: { value: number | null; onSet: (n: number) => void }) {
-  const display = value?.toString() ?? '';
+/** Editable gap value: a Tailwind scale step or any valid CSS length (10rem, 50%).
+ *  Click to type, Enter/blur to apply; bad input marks the field invalid. Stays in
+ *  sync when the +/- steppers change the value externally (prev-value pattern). */
+function GapField({
+  value,
+  onSet,
+}: {
+  value: SpacingValue | null;
+  onSet: (v: SpacingValue) => void;
+}) {
+  const display = spacingDisplay(value);
   const [text, setText] = useState(display);
   const [lastDisplay, setLastDisplay] = useState(display);
-  if (display !== lastDisplay) {
+  const [invalid, setInvalid] = useState(false);
+  if (display !== lastDisplay && !invalid) {
     setLastDisplay(display);
     setText(display);
   }
 
   const commit = () => {
-    const n = parseInt(text, 10);
-    if (!Number.isNaN(n) && n >= 0) onSet(n);
-    else setText(value?.toString() ?? '');
+    const parsed = parseSpacingInput(text, 'gap');
+    if (parsed.kind === 'invalid') {
+      setInvalid(true);
+      return false;
+    }
+    setInvalid(false);
+    onSet(parsed);
+    return true;
   };
 
   return (
     <input
-      className="ss-edit-panel__num"
-      inputMode="numeric"
+      className={`ss-edit-panel__num${invalid ? ' ss-edit-panel__num--invalid' : ''}`}
+      inputMode="text"
       aria-label="Gap"
+      aria-invalid={invalid}
+      title={invalid ? 'Use a valid value or unit (e.g. 8, 10rem, 50%)' : undefined}
       value={text}
-      onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ''))}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (invalid) setInvalid(false);
+      }}
       onFocus={(e) => e.target.select()}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
+      onBlur={() => {
+        if (!commit()) {
+          setText(display);
+          setInvalid(false);
         }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && commit()) e.currentTarget.blur();
       }}
     />
   );
@@ -111,8 +135,8 @@ interface Props {
   onToggleAutoSave: () => void;
   /** Step the gap utility one notch up (1) or down (-1). */
   onStepGap: (dir: 1 | -1) => void;
-  /** Set one side of padding/margin to an absolute value (box-model editor). */
-  onSetSide: (type: BoxType, side: Side, n: number) => void;
+  /** Set one side of padding/margin to a scale step or arbitrary value. */
+  onSetSide: (type: BoxType, side: Side, value: SpacingValue) => void;
   /** Apply an enum option's token + inline-style preview. */
   onApplyEnum: (token: string, style: Record<string, string>) => void;
   onCommit: () => void;
@@ -152,7 +176,7 @@ export function VisualEditorPanel({
     () => ({ bp: activeBreakpoint, ordered: breakpoints, known: breakpointPrefixes(breakpoints) }),
     [activeBreakpoint, breakpoints]
   );
-  const gap = readLayer(currentClass, layer, (s) => scaleValue(s, 'gap'));
+  const gap = readLayer(currentClass, layer, (s) => spacingValue(s, 'gap'));
   const opacity = readLayer(currentClass, layer, (s) => scaleValue(s, 'opacity'));
 
   // Self-owned fixed position so the panel is draggable by its header. Fully
@@ -310,7 +334,7 @@ export function VisualEditorPanel({
                 </Button>
                 <GapField
                   value={gap.value}
-                  onSet={(n) => onApplyEnum(`gap-${n}`, { gap: `${n * SPACING_REM}rem` })}
+                  onSet={(v) => onApplyEnum(spacingTokenFor('gap', v), { gap: spacingCss(v) })}
                 />
                 <Button
                   size="sm"

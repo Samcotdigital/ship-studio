@@ -257,6 +257,111 @@ export function boxInlineStyle(className: string, type: BoxType): Record<string,
   return out;
 }
 
+// ───────────────────── Free-form spacing values ─────────────────────────────
+//
+// A spacing field accepts either a Tailwind scale step (a bare integer → `p-6`)
+// or an arbitrary CSS length (`10rem`, `12px`, `50%`, `clamp(…)` → `p-[10rem]`).
+// Invalid input is rejected via CSS.supports so the field can flag a bad unit.
+
+/** A resolved spacing value: a Tailwind scale step, or an arbitrary CSS length. */
+export type SpacingValue = { kind: 'scale'; n: number } | { kind: 'arbitrary'; raw: string };
+
+/** The arbitrary value inside `<prefix>-[…]` (e.g. `p-[10rem]` → `10rem`), with
+ *  Tailwind's `_` un-escaped to spaces. Null if absent. `prefix` is a plain key
+ *  (`p`, `pt`, `gap`); the `-[` boundary keeps `p` from matching `px-[…]`. */
+export function arbitraryValue(className: string, prefix: string): string | null {
+  const m = new RegExp(`(?:^|\\s)${prefix}-\\[([^\\]]+)\\]`).exec(className);
+  return m ? m[1].replace(/_/g, ' ') : null;
+}
+
+/** The value of a spacing utility for one prefix — scale (`p-6`) or arbitrary
+ *  (`p-[10rem]`), whichever is present. Null if neither. */
+export function spacingValue(className: string, prefix: string): SpacingValue | null {
+  const n = scaleValue(className, prefix);
+  if (n !== null) return { kind: 'scale', n };
+  const raw = arbitraryValue(className, prefix);
+  return raw !== null ? { kind: 'arbitrary', raw } : null;
+}
+
+/** Effective value of one box side honoring the cascade (side > axis > all),
+ *  reading both scale and arbitrary at each level. */
+export function boxSide(className: string, type: BoxType, side: Side): SpacingValue | null {
+  const p = BOX_PREFIX[type];
+  const axis = side === 'top' || side === 'bottom' ? `${p}y` : `${p}x`;
+  return (
+    spacingValue(className, `${p}${SIDE_LETTER[side]}`) ??
+    spacingValue(className, axis) ??
+    spacingValue(className, p)
+  );
+}
+
+/** The CSS length a SpacingValue resolves to (drives the live-preview decl). */
+export function spacingCss(v: SpacingValue): string {
+  return v.kind === 'scale' ? `${v.n * SPACING_REM}rem` : v.raw;
+}
+
+/** What a value field displays: the scale integer, or the raw arbitrary value. */
+export function spacingDisplay(v: SpacingValue | null): string {
+  if (!v) return '0';
+  return v.kind === 'scale' ? String(v.n) : v.raw;
+}
+
+/** The Tailwind utility prefix for one box side (`pt`, `ml`, …). */
+export function boxSidePrefix(type: BoxType, side: Side): string {
+  return `${BOX_PREFIX[type]}${SIDE_LETTER[side]}`;
+}
+
+/** Arbitrary-value class token, escaping spaces as Tailwind requires
+ *  (`p`, `10rem` → `p-[10rem]`). */
+export function arbitraryToken(prefix: string, value: string): string {
+  return `${prefix}-[${value.trim().replace(/\s+/g, '_')}]`;
+}
+
+/** The class token for a SpacingValue at a utility prefix (`p-6` or `p-[10rem]`). */
+export function spacingTokenFor(prefix: string, v: SpacingValue): string {
+  return v.kind === 'scale' ? `${prefix}-${v.n}` : arbitraryToken(prefix, v.raw);
+}
+
+/** Whether the browser accepts `value` for `prop` — Webflow-grade unit validation
+ *  (handles px/rem/em/%/vh/clamp()/calc()…). False in environments without CSS. */
+function cssSupports(prop: string, value: string): boolean {
+  try {
+    return (
+      typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports(prop, value)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Classify typed input for a spacing field: a bare non-negative integer is a
+ *  Tailwind scale step; anything else must be a valid CSS value for `cssProp`;
+ *  otherwise invalid (the field flags a bad unit). */
+export type ParsedSpacing = SpacingValue | { kind: 'invalid' };
+export function parseSpacingInput(input: string, cssProp: string): ParsedSpacing {
+  let s = input.trim();
+  if (s === '') return { kind: 'invalid' };
+  // Forgive a space between a number and its unit ("3 rem" → "3rem"); leave
+  // function values (calc/clamp/min/max) untouched, where spaces are meaningful.
+  s = s.replace(/^(-?\d*\.?\d+)\s+([a-z%]+)$/i, '$1$2');
+  if (/^\d+$/.test(s)) return { kind: 'scale', n: Number(s) };
+  return cssSupports(cssProp, s) ? { kind: 'arbitrary', raw: s } : { kind: 'invalid' };
+}
+
+/** Step a spacing value by `delta` units: scale steps the integer (clamped at 0);
+ *  an arbitrary `<number><unit>` steps the number and keeps the unit; non-numeric
+ *  arbitraries (e.g. `calc(…)`) are returned unchanged. */
+export function stepSpacingValue(v: SpacingValue | null, delta: number): SpacingValue {
+  if (!v || v.kind === 'scale') {
+    return { kind: 'scale', n: Math.max(0, (v?.kind === 'scale' ? v.n : 0) + delta) };
+  }
+  const m = /^(-?\d*\.?\d+)(.*)$/.exec(v.raw.trim());
+  if (!m) return v;
+  const next = Math.max(0, parseFloat(m[1]) + delta);
+  const num = Number.isInteger(next) ? String(next) : String(parseFloat(next.toFixed(3)));
+  return { kind: 'arbitrary', raw: `${num}${m[2]}` };
+}
+
 /** One choice in an enum (segmented) control. `style` is a kebab-case inline
  *  patch for JIT-independent live preview, mirroring what the class resolves to. */
 export interface EnumOption {

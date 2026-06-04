@@ -27,7 +27,9 @@ function renderPanel(
   onSelectBreakpoint = vi.fn(),
   breakpointTooWide = false,
   autoSave = false,
-  onToggleAutoSave = vi.fn()
+  onToggleAutoSave = vi.fn(),
+  onApplyEnum = vi.fn(),
+  onSetSide = vi.fn()
 ) {
   return render(
     <VisualEditorPanel
@@ -40,8 +42,8 @@ function renderPanel(
       autoSave={autoSave}
       onToggleAutoSave={onToggleAutoSave}
       onStepGap={vi.fn()}
-      onSetSide={vi.fn()}
-      onApplyEnum={vi.fn()}
+      onSetSide={onSetSide}
+      onApplyEnum={onApplyEnum}
       onCommit={vi.fn()}
       onClose={vi.fn()}
     />
@@ -157,5 +159,49 @@ describe('VisualEditorPanel', () => {
     renderPanel(resolvedSelection, 'gap-2 md:gap-8', MD);
     expect(screen.getByLabelText<HTMLInputElement>('Gap').value).toBe('8');
     expect(screen.getByLabelText('Set on md')).toBeInTheDocument();
+  });
+
+  it('reads an arbitrary (free-form) value into the box field', () => {
+    renderPanel(resolvedSelection, 'pt-[10rem]');
+    expect(screen.getByLabelText<HTMLInputElement>('Padding top').value).toBe('10rem');
+  });
+
+  it('flags an invalid typed value and does not apply it', () => {
+    const onApplyEnum = vi.fn();
+    renderPanel(
+      resolvedSelection,
+      'gap-4',
+      BASE_BREAKPOINT,
+      vi.fn(),
+      false,
+      false,
+      vi.fn(),
+      onApplyEnum
+    );
+    const gap = screen.getByLabelText('Gap');
+    fireEvent.change(gap, { target: { value: '40xyz' } });
+    fireEvent.keyDown(gap, { key: 'Enter' });
+    expect(gap).toHaveAttribute('aria-invalid', 'true');
+    expect(onApplyEnum).not.toHaveBeenCalled();
+  });
+
+  it('applies a valid typed unit as an arbitrary gap value', () => {
+    vi.stubGlobal('CSS', { supports: () => true });
+    const onApplyEnum = vi.fn();
+    renderPanel(
+      resolvedSelection,
+      'gap-4',
+      BASE_BREAKPOINT,
+      vi.fn(),
+      false,
+      false,
+      vi.fn(),
+      onApplyEnum
+    );
+    const gap = screen.getByLabelText('Gap');
+    fireEvent.change(gap, { target: { value: '10rem' } });
+    fireEvent.keyDown(gap, { key: 'Enter' });
+    expect(onApplyEnum).toHaveBeenCalledWith('gap-[10rem]', { gap: '10rem' });
+    vi.unstubAllGlobals();
   });
 });

@@ -17,19 +17,21 @@ import { twMerge } from 'tailwind-merge';
 import {
   resolveClassnameSource,
   applyClassnameEdit,
-  steppedScale,
-  scaleValue,
-  boxSideToken,
-  boxSideValue,
+  spacingValue,
+  spacingTokenFor,
+  spacingCss,
+  stepSpacingValue,
+  boxSide,
+  boxSidePrefix,
   withVariant,
   tokensForVariant,
   breakpointPrefixes,
   SPACING_CONTROLS,
-  SPACING_REM,
   type SpacingKind,
   type BoxType,
   type Side,
   type Breakpoint,
+  type SpacingValue,
   type ElementSignature,
   type Resolution,
 } from '../lib/edit';
@@ -189,21 +191,19 @@ export function useVisualEditor({
     [post, setLiveClass, activeBreakpoint]
   );
 
-  /** Set one side of a box (padding/margin) at the active breakpoint. Previews
-   *  only the sides this layer actually defines (so unset sides fall through to
-   *  the real, already-compiled base CSS rather than being forced to 0). */
+  /** Set one side of a box (padding/margin) at the active breakpoint to a scale
+   *  step or arbitrary value. Previews only the sides this layer actually defines
+   *  (so unset sides fall through to the real, already-compiled base CSS). */
   const setBoxSide = useCallback(
-    (type: BoxType, side: Side, n: number) => {
-      const merged = twMerge(
-        currentClassRef.current,
-        withVariant(activeBreakpoint.prefix, boxSideToken(type, side, n))
-      );
+    (type: BoxType, side: Side, value: SpacingValue) => {
+      const token = spacingTokenFor(boxSidePrefix(type, side), value);
+      const merged = twMerge(currentClassRef.current, withVariant(activeBreakpoint.prefix, token));
       setLiveClass(merged);
       const scoped = tokensForVariant(merged, activeBreakpoint.prefix, known);
       const decls: Record<string, string> = {};
       for (const s of ['top', 'right', 'bottom', 'left'] as Side[]) {
-        const v = boxSideValue(scoped, type, s);
-        if (v !== null) decls[`${type}-${s}`] = `${v * SPACING_REM}rem`;
+        const v = boxSide(scoped, type, s);
+        if (v) decls[`${type}-${s}`] = spacingCss(v);
       }
       post({
         type: 'ss:mutate',
@@ -214,18 +214,17 @@ export function useVisualEditor({
     [post, setLiveClass, activeBreakpoint, known]
   );
 
-  /** Step a spacing utility (padding/margin/gap) by one integer at the active
+  /** Step a spacing utility (padding/margin/gap) by one unit at the active
    *  breakpoint, computed from that layer's current value (so stepping `md:` reads
-   *  the md value, not base). Drives a breakpoint-scoped preview rule (Tailwind
-   *  spacing = N × 0.25rem) so it shows even before Tailwind compiles the class. */
+   *  the md value, not base). Steps the scale integer, or a numeric arbitrary
+   *  value's magnitude (keeping its unit). Drives a breakpoint-scoped preview rule. */
   const stepSpacing = useCallback(
     (kind: SpacingKind, dir: 1 | -1) => {
       const ctrl = SPACING_CONTROLS.find((c) => c.kind === kind);
       if (!ctrl) return;
       const scoped = tokensForVariant(currentClassRef.current, activeBreakpoint.prefix, known);
-      const token = steppedScale(scoped, ctrl.prefix, dir);
-      const n = scaleValue(token, ctrl.prefix) ?? 0;
-      applyToken(token, { [ctrl.css]: `${n * SPACING_REM}rem` });
+      const next = stepSpacingValue(spacingValue(scoped, ctrl.prefix), dir);
+      applyToken(spacingTokenFor(ctrl.prefix, next), { [ctrl.css]: spacingCss(next) });
     },
     [applyToken, activeBreakpoint, known]
   );

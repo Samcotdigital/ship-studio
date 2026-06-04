@@ -1,18 +1,23 @@
 /**
  * Webflow-style box-model spacing editor: an outer margin box wrapping an inner
  * padding box, each with an editable value on all four sides. Reads the current
- * per-side value via the Tailwind cascade (side > axis > all) and writes an
- * absolute side value on change/scroll. Live preview + write-back are handled by
- * the hook's `setBoxSide`.
+ * per-side value via the Tailwind cascade (side > axis > all) and writes it on
+ * change/scroll/drag. Values can be a Tailwind scale step (a bare integer) or any
+ * valid CSS length (`10rem`, `50%`, `clamp(…)`); invalid input flags the field.
+ * Live preview + write-back are handled by the hook's `setBoxSide`.
  */
 
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  boxSideValue,
+  boxSide,
   readLayer,
+  spacingDisplay,
+  parseSpacingInput,
+  stepSpacingValue,
   type BoxType,
   type Side,
   type LayerContext,
+  type SpacingValue,
 } from '../../lib/edit';
 
 /** Drag axis + direction per side: a bar only scrubs along its own orientation,
@@ -24,9 +29,14 @@ const SIDE_DRAG: Record<Side, { axis: 'x' | 'y'; sign: 1 | -1 }> = {
   right: { axis: 'x', sign: 1 },
 };
 
+/** Pixels of drag per 1-unit change. */
+const DRAG_SENSITIVITY = 5;
+
 interface FieldProps {
-  value: number | null;
-  onSet: (n: number) => void;
+  value: SpacingValue | null;
+  onSet: (v: SpacingValue) => void;
+  /** CSS property the typed value is validated against (`padding` / `margin`). */
+  cssProp: string;
   label: string;
   className: string;
   dir: { axis: 'x' | 'y'; sign: 1 | -1 };
@@ -35,62 +45,112 @@ interface FieldProps {
   inherited?: boolean;
 }
 
-/** Pixels of drag per 1-unit change. */
-const DRAG_SENSITIVITY = 5;
+/** The numeric magnitude a drag/scroll scrubs, plus how to rebuild a value from a
+ *  new magnitude. Null when the value can't be stepped (e.g. `calc(…)`). */
+function dragBaseOf(
+  value: SpacingValue | null
+): { magnitude: number; build: (m: number) => SpacingValue } | null {
+  if (!value || value.kind === 'scale') {
+    const mag = value?.kind === 'scale' ? value.n : 0;
+    return { magnitude: mag, build: (m) => ({ kind: 'scale', n: Math.max(0, Math.round(m)) }) };
+  }
+  const match = /^(-?\d*\.?\d+)(.*)$/.exec(value.raw.trim());
+  if (!match) return null;
+  const unit = match[2];
+  return {
+    magnitude: parseFloat(match[1]),
+    build: (m) => ({ kind: 'arbitrary', raw: `${Math.max(0, m)}${unit}` }),
+  };
+}
 
 /**
  * One side value. Three ways to change it:
  *  - drag along the bar's own axis (pulls outward to grow) — like a design tool,
  *  - scroll to scrub,
- *  - click (selects all) then type to replace.
+ *  - click (selects all) then type a value or unit (10rem, 50%); Enter/blur applies.
+ * Bad input (`40xyz`) marks the field invalid and isn't applied.
  */
-function SideField({ value, onSet, label, className, dir, inherited }: FieldProps) {
-  const v = value ?? 0;
-  const drag = useRef<{ x: number; y: number; start: number } | null>(null);
+function SideField({ value, onSet, cssProp, label, className, dir, inherited }: FieldProps) {
+  const display = spacingDisplay(value);
+  const [text, setText] = useState(display);
+  const [lastDisplay, setLastDisplay] = useState(display);
+  const [invalid, setInvalid] = useState(false);
+  // Sync the field when the value changes externally (steppers, reselect) — but
+  // not while the user is mid-edit with unsaved invalid text.
+  if (display !== lastDisplay && !invalid) {
+    setLastDisplay(display);
+    setText(display);
+  }
+
+  const drag = useRef<{ x: number; y: number; base: ReturnType<typeof dragBaseOf> } | null>(null);
   const dragged = useRef(false);
+
+  /** Parse + apply the typed text; on bad input, mark invalid (keep the text). */
+  const commit = () => {
+    const parsed = parseSpacingInput(text, cssProp);
+    if (parsed.kind === 'invalid') {
+      setInvalid(true);
+      return false;
+    }
+    setInvalid(false);
+    onSet(parsed);
+    return true;
+  };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLInputElement>) => {
     if (e.button !== 0) return;
-    // Prevent the default focus/caret on press so a drag scrubs cleanly (no
-    // selection fighting the drag); we focus explicitly on a click in pointerup.
     e.preventDefault();
-    drag.current = { x: e.clientX, y: e.clientY, start: v };
+    drag.current = { x: e.clientX, y: e.clientY, base: dragBaseOf(value) };
     dragged.current = false;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLInputElement>) => {
     const d = drag.current;
-    if (!d) return;
-    // Only this bar's own axis moves it (horizontal bars scrub vertically, etc.).
+    if (!d || !d.base) return;
     const along = dir.axis === 'x' ? e.clientX - d.x : e.clientY - d.y;
     if (!dragged.current && Math.abs(along) < 3) return;
     dragged.current = true;
-    const next = Math.max(0, d.start + dir.sign * Math.round(along / DRAG_SENSITIVITY));
-    if (next !== v) onSet(next);
+    const next = d.base.magnitude + dir.sign * Math.round(along / DRAG_SENSITIVITY);
+    onSet(d.base.build(next));
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLInputElement>) => {
     const wasClick = drag.current && !dragged.current;
     drag.current = null;
-    // A click (no drag) focuses + selects so you can type a replacement; because
-    // we suppressed focus on press, nothing clears the selection on release.
     if (wasClick) e.currentTarget.focus();
   };
 
   return (
     <input
-      className={`ss-box__field ${className}${inherited ? ' ss-box__field--inherited' : ''}`}
+      className={`ss-box__field ${className}${inherited ? ' ss-box__field--inherited' : ''}${
+        invalid ? ' ss-box__field--invalid' : ''
+      }`}
       aria-label={label}
-      title={`${label} (drag or scroll to adjust)`}
-      inputMode="numeric"
-      value={String(v)}
+      aria-invalid={invalid}
+      title={
+        invalid
+          ? 'Use a valid value or unit (e.g. 8, 10rem, 50%)'
+          : `${label} (drag, scroll, or type)`
+      }
+      inputMode="text"
+      value={text}
       onChange={(e) => {
-        const n = parseInt(e.target.value, 10);
-        if (!Number.isNaN(n) && n >= 0) onSet(n);
+        setText(e.target.value);
+        if (invalid) setInvalid(false);
       }}
-      onWheel={(e) => onSet(Math.max(0, v + (e.deltaY < 0 ? 1 : -1)))}
+      onWheel={(e) => onSet(stepSpacingValue(value, e.deltaY < 0 ? 1 : -1))}
       onFocus={(e) => e.target.select()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
+      onBlur={() => {
+        // Apply if valid; otherwise drop the bad text back to the live value.
+        if (!commit()) {
+          setText(display);
+          setInvalid(false);
+        }
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -102,16 +162,17 @@ interface Props {
   currentClass: string;
   /** Active breakpoint layer — sides read their effective value across the cascade. */
   layer: LayerContext;
-  onSetSide: (type: BoxType, side: Side, n: number) => void;
+  onSetSide: (type: BoxType, side: Side, value: SpacingValue) => void;
 }
 
 export function SpacingBox({ currentClass, layer, onSetSide }: Props) {
   const field = (type: BoxType, side: Side, edge: string) => {
-    const { value, definedAt } = readLayer(currentClass, layer, (s) => boxSideValue(s, type, side));
+    const { value, definedAt } = readLayer(currentClass, layer, (s) => boxSide(s, type, side));
     return (
       <SideField
         value={value}
-        onSet={(n) => onSetSide(type, side, n)}
+        onSet={(v) => onSetSide(type, side, v)}
+        cssProp={type}
         label={`${type === 'padding' ? 'Padding' : 'Margin'} ${side}`}
         className={`ss-box__edge--${edge}`}
         dir={SIDE_DRAG[side]}

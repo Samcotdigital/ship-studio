@@ -526,6 +526,12 @@
   outline: 1px solid var(--action);
   background: var(--bg-tertiary);
 }
+/* Invalid typed value (bad unit) — flag the field; it isn't applied. */
+.ss-box__field--invalid,
+.ss-box__field--invalid:focus {
+  outline: 1px solid var(--error);
+  color: var(--error);
+}
 /* Horizontal bars (top / bottom) span the band width; vertical bars span its height. */
 .ss-box__edge--t,
 .ss-box__edge--b {
@@ -630,6 +636,13 @@
 }
 .ss-edit-panel__num:focus {
   outline: 1px solid var(--action);
+}
+/* Invalid typed gap value (bad unit) — flag the field; it isn't applied. */
+.ss-edit-panel__num--invalid,
+.ss-edit-panel__num--invalid:focus {
+  color: var(--error);
+  border-color: var(--error);
+  outline-color: var(--error);
 }
 
 .ss-edit-panel__value {
