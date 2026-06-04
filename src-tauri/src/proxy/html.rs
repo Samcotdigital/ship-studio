@@ -3,12 +3,56 @@
 //! Functions for injecting scripts and error overlays into HTML responses.
 //! Used by the preview proxy to add navigation tracking and error display.
 
-use super::{NAV_SCRIPT, SELECT_SCRIPT};
+use super::{NAV_SCRIPT, SCROLLBAR_STYLE, SELECT_SCRIPT};
 
 /// Inject the navigation tracking script + the (inert until activated) visual-
-/// editor selection layer into an HTML response body.
+/// editor selection layer into an HTML response body, plus the scrollbar-hiding
+/// style.
+///
+/// The scripts go at the *end* of `<head>` (latest, so they see the final DOM);
+/// the scrollbar style goes at the *start* of `<head>` (earliest, so the site's
+/// own scrollbar styling overrides it — see `SCROLLBAR_STYLE`).
 pub fn inject_nav_script(html: &[u8]) -> Vec<u8> {
-    inject_into_html(html, &format!("{NAV_SCRIPT}{SELECT_SCRIPT}"))
+    let with_scripts = inject_into_html(html, &format!("{NAV_SCRIPT}{SELECT_SCRIPT}"));
+    inject_at_head_start(&with_scripts, SCROLLBAR_STYLE)
+}
+
+/// Insert a snippet immediately *after* the opening `<head>` tag (falling back to
+/// after `<html>`, then the document start). Unlike `inject_into_html` (which
+/// lands at the end of `<head>`), this places the snippet *before* the site's own
+/// stylesheets in cascade order — use it for low-priority defaults a site should
+/// be able to override.
+pub fn inject_at_head_start(html: &[u8], snippet: &str) -> Vec<u8> {
+    let body = String::from_utf8_lossy(html);
+
+    // After the opening `<head …>` tag (covers `<head>` and `<head class="…">`).
+    if let Some(head) = body.find("<head") {
+        if let Some(gt) = body[head..].find('>') {
+            return splice_at(html, head + gt + 1, snippet);
+        }
+    }
+
+    // Fallback: after the opening `<html …>` tag.
+    if let Some(htmltag) = body.find("<html") {
+        if let Some(gt) = body[htmltag..].find('>') {
+            return splice_at(html, htmltag + gt + 1, snippet);
+        }
+    }
+
+    // Final fallback: prepend to the document.
+    let mut result = Vec::with_capacity(html.len() + snippet.len());
+    result.extend_from_slice(snippet.as_bytes());
+    result.extend_from_slice(html);
+    result
+}
+
+/// Splice `snippet` into `html` at byte offset `pos`.
+fn splice_at(html: &[u8], pos: usize, snippet: &str) -> Vec<u8> {
+    let mut result = Vec::with_capacity(html.len() + snippet.len());
+    result.extend_from_slice(&html[..pos]);
+    result.extend_from_slice(snippet.as_bytes());
+    result.extend_from_slice(&html[pos..]);
+    result
 }
 
 /// Inject an arbitrary HTML/CSS/JS snippet into an HTML document.
@@ -237,6 +281,48 @@ mod tests {
         assert!(SELECT_SCRIPT.contains("d.style"));
         assert!(SELECT_SCRIPT.contains("setProperty"));
         assert!(SELECT_SCRIPT.contains("ss:mutate"));
+    }
+
+    #[test]
+    fn scrollbar_style_lands_at_head_start_before_site_styles() {
+        // The scrollbar-hiding style must come *before* the site's own <link>/<style>
+        // so a site that styles its scrollbars overrides us (no hijack).
+        let html =
+            b"<html><head><link rel=\"stylesheet\" href=\"site.css\"></head><body>Hi</body></html>";
+        let result = inject_nav_script(html);
+        let s = String::from_utf8(result).unwrap();
+        let style_pos = s
+            .find("ss-hide-scrollbars")
+            .expect("scrollbar style injected");
+        let site_css_pos = s.find("site.css").expect("site css present");
+        assert!(
+            style_pos < site_css_pos,
+            "scrollbar style must precede the site's stylesheet so the site can override it"
+        );
+        // And it must sit right after the opening <head>, ahead of the site link.
+        assert!(s.contains("<head><style id=\"ss-hide-scrollbars\""));
+        // Defensive: never use display:none or !important (that would hijack sites).
+        let style = &s[style_pos..site_css_pos];
+        assert!(!style.contains("display:none"));
+        assert!(!style.contains("!important"));
+    }
+
+    #[test]
+    fn inject_at_head_start_handles_attributed_head_and_fallbacks() {
+        // <head> with attributes.
+        let with_attrs =
+            inject_at_head_start(b"<html><head class=\"x\"><title>T</title></head>", "S");
+        assert!(String::from_utf8(with_attrs)
+            .unwrap()
+            .contains("<head class=\"x\">S<title>"));
+        // No <head>: falls back to after <html>.
+        let no_head = inject_at_head_start(b"<html><body>Hi</body></html>", "S");
+        assert!(String::from_utf8(no_head)
+            .unwrap()
+            .starts_with("<html>S<body>"));
+        // No <head> or <html>: prepends.
+        let bare = inject_at_head_start(b"Hello", "S");
+        assert_eq!(String::from_utf8(bare).unwrap(), "SHello");
     }
 
     #[test]

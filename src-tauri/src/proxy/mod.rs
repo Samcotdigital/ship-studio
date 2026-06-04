@@ -44,6 +44,16 @@ const NAV_SCRIPT: &str = r#"<script>(function(){var n=function(){window.parent.p
 /// with the jsdom behavior test (`src/components/edit/selectScript.test.ts`).
 const SELECT_SCRIPT: &str = include_str!("select_script.html");
 
+/// Hides the preview iframe's *default* browser scrollbars — the chunky white
+/// macOS/WebKit bars that frame the rendered site — without hijacking sites that
+/// style their own. Injected at the very start of `<head>` (see
+/// `inject_at_head_start`) so any site stylesheet, which loads afterward, wins
+/// the cascade. We deliberately use zero-size (not `display:none`) and no
+/// `!important`, so a site's `::-webkit-scrollbar { width: … }` overrides this
+/// and its custom scrollbar still shows. Scrolling itself is unaffected — only
+/// the visual bar is suppressed. `scrollbar-width:none` covers Windows WebView2.
+const SCROLLBAR_STYLE: &str = r#"<style id="ss-hide-scrollbars">::-webkit-scrollbar{width:0;height:0;background:transparent}html{scrollbar-width:none}</style>"#;
+
 /// Boxed body type that can be either a full buffered body or a streamed body.
 type ProxyBody = BoxBody<Bytes, hyper::Error>;
 
