@@ -20,6 +20,7 @@ import { EnumControls } from './EnumControls';
 import { EnumDropdown } from './EnumDropdown';
 import { ColorControls } from './ColorControls';
 import { ResettableLabel } from './ResettableLabel';
+import { MultiSourceControl } from './MultiSourceControl';
 import {
   scaleValue,
   spacingValue,
@@ -149,6 +150,9 @@ interface Props {
   onApplyEnum: (token: string, style: Record<string, string>) => void;
   /** Reset a control's value at the active breakpoint. */
   onReset: (spec: ResetSpec) => void;
+  /** For a multi-location element: which spot(s) to write — 'all' or one index. */
+  multiTarget: 'all' | number;
+  onMultiTargetChange: (t: 'all' | number) => void;
   onCommit: () => void;
   onClose: () => void;
 }
@@ -175,11 +179,15 @@ export function VisualEditorPanel({
   onSetSide,
   onApplyEnum,
   onReset,
+  multiTarget,
+  onMultiTargetChange,
   onCommit,
   onClose,
 }: Props) {
   const resolution = selection?.resolution ?? null;
-  const dirty = resolution?.status === 'resolved' && currentClass !== resolution.class_name;
+  // Both 'resolved' (one spot) and 'multi' (several identical spots) are editable.
+  const editable = resolution?.status === 'resolved' || resolution?.status === 'multi';
+  const dirty = editable && currentClass !== resolution.class_name;
 
   // Cascade-resolution context for the active breakpoint, threaded to each control
   // so they show the effective value at this layer and which breakpoint set it.
@@ -295,36 +303,36 @@ export function VisualEditorPanel({
           <p className="ss-edit-panel__readonly">{resolution.reason}</p>
         )}
 
-        {resolution?.status === 'ambiguous' && (
-          <p className="ss-edit-panel__readonly">
-            {resolution.reason}
-            <br />
-            <span className="ss-edit-panel__muted">
-              {resolution.candidate_count} possible locations
-            </span>
-          </p>
-        )}
-
-        {resolution?.status === 'resolved' && (
+        {editable && (
           <>
-            <div className="ss-edit-panel__source">
-              <code>
-                {resolution.file}:{resolution.line}
-              </code>
-              {resolution.confidence !== 'unique' && (
-                <span
-                  className="ss-edit-panel__badge ss-edit-panel__badge--approx"
-                  title="These classes appear more than once in your code, so the source was located by surrounding context — double-check before saving."
-                >
-                  approx.
-                </span>
-              )}
-            </div>
+            {resolution.status === 'resolved' ? (
+              <>
+                <div className="ss-edit-panel__source">
+                  <code>
+                    {resolution.file}:{resolution.line}
+                  </code>
+                  {resolution.confidence !== 'unique' && (
+                    <span
+                      className="ss-edit-panel__badge ss-edit-panel__badge--approx"
+                      title="These classes appear more than once in your code, so the source was located by surrounding context — double-check before saving."
+                    >
+                      approx.
+                    </span>
+                  )}
+                </div>
 
-            {selection && selection.instanceCount > 1 && (
-              <p className="ss-edit-panel__multi">
-                Editing {selection.instanceCount} elements that share this source
-              </p>
+                {selection && selection.instanceCount > 1 && (
+                  <p className="ss-edit-panel__multi">
+                    Editing {selection.instanceCount} elements that share this source
+                  </p>
+                )}
+              </>
+            ) : (
+              <MultiSourceControl
+                locations={resolution.locations}
+                target={multiTarget}
+                onChange={onMultiTargetChange}
+              />
             )}
 
             <SpacingBox currentClass={currentClass} layer={layer} onSetSide={onSetSide} />
@@ -407,7 +415,7 @@ export function VisualEditorPanel({
         )}
       </div>
 
-      {resolution?.status === 'resolved' && (
+      {editable && (
         <div className="ss-edit-panel__footer">
           <button
             type="button"

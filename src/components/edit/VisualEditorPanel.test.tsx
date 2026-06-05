@@ -46,11 +46,26 @@ function renderPanel(
       onSetSide={onSetSide}
       onApplyEnum={onApplyEnum}
       onReset={onReset}
+      multiTarget="all"
+      onMultiTargetChange={vi.fn()}
       onCommit={vi.fn()}
       onClose={vi.fn()}
     />
   );
 }
+
+const multiSelection: Selection = {
+  signature: { className: 'flex p-4', tagName: 'div', ancestorClasses: [] },
+  resolution: {
+    status: 'multi',
+    class_name: 'flex p-4',
+    locations: [
+      { file: 'components/Hero.tsx', line: 11, column: 1 },
+      { file: 'components/Footer.tsx', line: 9, column: 1 },
+    ],
+  },
+  instanceCount: 2,
+};
 
 describe('VisualEditorPanel', () => {
   it('renders every control for a resolved element', () => {
@@ -206,6 +221,39 @@ describe('VisualEditorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Gap/ })); // click the name
     fireEvent.click(screen.getByRole('button', { name: 'Reset' })); // confirm
     expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a multi-location element as editable, defaulting to edit-all', () => {
+    renderPanel(multiSelection, 'flex p-4');
+    expect(screen.getByTestId('spacing-box')).toBeInTheDocument(); // editable, not read-only
+    expect(screen.getByText(/Editing 2 places that share these classes/)).toBeInTheDocument();
+  });
+
+  it('lets you narrow a multi edit to a single source location', () => {
+    const onMultiTargetChange = vi.fn();
+    render(
+      <VisualEditorPanel
+        selection={multiSelection}
+        currentClass="flex p-4"
+        breakpoints={BREAKPOINTS}
+        activeBreakpoint={BASE_BREAKPOINT}
+        breakpointTooWide={false}
+        onSelectBreakpoint={vi.fn()}
+        autoSave={false}
+        onToggleAutoSave={vi.fn()}
+        onStepGap={vi.fn()}
+        onSetSide={vi.fn()}
+        onApplyEnum={vi.fn()}
+        onReset={vi.fn()}
+        multiTarget="all"
+        onMultiTargetChange={onMultiTargetChange}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Just one/ }));
+    fireEvent.click(screen.getByRole('option', { name: 'components/Hero.tsx:11' }));
+    expect(onMultiTargetChange).toHaveBeenCalledWith(0);
   });
 
   it('does not offer Reset for an inherited value (only set-here)', () => {

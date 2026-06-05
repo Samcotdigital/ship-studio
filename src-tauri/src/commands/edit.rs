@@ -14,8 +14,9 @@
 //!
 //! Only **static** string classNames are indexed; dynamic ones (`clsx(...)`,
 //! props, interpolated template literals) never match a source literal and are
-//! reported read-only. Ambiguous matches also fall back to read-only — the
-//! resolver never guesses a wrong edit target.
+//! reported read-only. A class string that matches several identical source
+//! literals resolves to `Multi` — editable as a group (write all) or one at a
+//! time — so the resolver never guesses a single wrong edit target.
 
 use crate::errors::CommandError;
 use crate::utils::validate_project_path;
@@ -42,6 +43,17 @@ pub struct ElementSignature {
     pub ancestor_classes: Vec<String>,
 }
 
+/// One source location of a className literal.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Location {
+    /// Path relative to the project root, POSIX-style.
+    pub file: String,
+    /// 1-based line of the className literal's value.
+    pub line: usize,
+    /// 1-based column of the className literal's value.
+    pub column: usize,
+}
+
 /// Result of resolving an element to a source location.
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -59,10 +71,13 @@ pub enum Resolution {
         /// How the match was reached: "unique" | "tag" | "text" | "ancestor".
         confidence: String,
     },
-    /// The class string matched multiple plausible locations we couldn't separate.
-    Ambiguous {
-        reason: String,
-        candidate_count: usize,
+    /// The class string matched multiple source literals we can't tell apart — all
+    /// byte-identical, so it's still editable: write to all (default) or pick one.
+    Multi {
+        /// Every distinct source location with this class string.
+        locations: Vec<Location>,
+        /// The shared class string (identical at every location; the drift baseline).
+        class_name: String,
     },
     /// No static source match — dynamic className, or a generated/runtime class.
     ReadOnly { reason: String },
@@ -309,11 +324,22 @@ fn resolve(occurrences: &[Occurrence], sig: &ElementSignature) -> Resolution {
         }
     }
 
-    Resolution::Ambiguous {
-        reason:
-            "This class string appears in multiple places we can't tell apart — not editable in v1."
-                .into(),
-        candidate_count: distinct_locs(&pool),
+    // Multiple distinct source literals, all identical — editable as a group.
+    let mut seen = std::collections::HashSet::new();
+    let mut locations: Vec<Location> = Vec::new();
+    for o in &pool {
+        if seen.insert((o.file.clone(), o.line)) {
+            locations.push(Location {
+                file: o.file.clone(),
+                line: o.line,
+                column: o.column,
+            });
+        }
+    }
+    locations.sort_by(|a, b| (a.file.as_str(), a.line).cmp(&(b.file.as_str(), b.line)));
+    Resolution::Multi {
+        locations,
+        class_name: sig.class_name.clone(),
     }
 }
 
@@ -370,6 +396,64 @@ pub fn apply_classname_edit(
 
     std::fs::write(&abs, updated).map_err(CommandError::from)?;
     Ok(())
+}
+
+/// Surgically replace one className literal at `file:line` if it still equals
+/// `old_class`. Returns true if applied, false if the span no longer matches (drift)
+/// or the file is missing/outside the project. Used by the multi-location write-back,
+/// which skips stale spots rather than failing the whole batch.
+fn try_replace_classname(
+    root: &Path,
+    canon_root: &Path,
+    file: &str,
+    line: usize,
+    old_class: &str,
+    new_class: &str,
+) -> bool {
+    let abs = root.join(file);
+    let Ok(canon_file) = abs.canonicalize() else {
+        return false;
+    };
+    if !canon_file.starts_with(canon_root) {
+        return false;
+    }
+    let Ok(src) = std::fs::read_to_string(&abs) else {
+        return false;
+    };
+    let Some(span) = find_classname_spans(&src)
+        .into_iter()
+        .find(|s| s.line == line && s.value == old_class)
+    else {
+        return false;
+    };
+    let mut updated = String::with_capacity(src.len() + new_class.len());
+    updated.push_str(&src[..span.value_start]);
+    updated.push_str(new_class);
+    updated.push_str(&src[span.value_end..]);
+    std::fs::write(&abs, updated).is_ok()
+}
+
+/// Apply the same className edit to several source locations at once (the "edit all
+/// occurrences" path for a class string that appears in multiple places). Each spot
+/// is verified against `old_class` independently; stale ones are skipped. Returns
+/// how many were actually updated.
+#[tauri::command]
+#[tracing::instrument(skip(edits), fields(project = %project_path, count = edits.len()))]
+pub fn apply_classname_edit_multi(
+    project_path: String,
+    edits: Vec<Location>,
+    old_class: String,
+    new_class: String,
+) -> Result<usize, CommandError> {
+    let root = validate_project_path(&project_path)?;
+    let canon_root = root.canonicalize().map_err(CommandError::from)?;
+    let applied = edits
+        .iter()
+        .filter(|e| {
+            try_replace_classname(&root, &canon_root, &e.file, e.line, &old_class, &new_class)
+        })
+        .count();
+    Ok(applied)
 }
 
 // ───────────────────────────── Breakpoints ──────────────────────────────────
@@ -687,18 +771,24 @@ mod tests {
     }
 
     #[test]
-    fn unresolvable_repeats_are_ambiguous() {
+    fn unresolvable_repeats_are_multi_editable() {
         let occs = vec![
             occ("flex", "a.tsx", 1, "div"),
             occ("flex", "b.tsx", 1, "div"),
         ];
-        assert!(matches!(
-            resolve(&occs, &sig("flex", "div", &["also-not-unique"])),
-            Resolution::Ambiguous {
-                candidate_count: 2,
-                ..
+        match resolve(&occs, &sig("flex", "div", &["also-not-unique"])) {
+            Resolution::Multi {
+                locations,
+                class_name,
+            } => {
+                assert_eq!(locations.len(), 2);
+                assert_eq!(class_name, "flex");
+                // Sorted by (file, line).
+                assert_eq!(locations[0].file, "a.tsx");
+                assert_eq!(locations[1].file, "b.tsx");
             }
-        ));
+            other => panic!("expected Multi, got {other:?}"),
+        }
     }
 
     #[test]
@@ -726,6 +816,41 @@ mod tests {
 
         let after = std::fs::read_to_string(&file).unwrap();
         assert_eq!(after, "const x=1;\n<div className=\"p-6 flex\">\n");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn multi_write_back_updates_matches_skips_drift() {
+        let dir = std::env::temp_dir().join(format!("ss-multi-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let canon_root = dir.canonicalize().unwrap();
+        let a = dir.join("A.tsx");
+        let b = dir.join("B.tsx");
+        let c = dir.join("C.tsx");
+        std::fs::write(&a, "<div className=\"flex p-4\" />\n").unwrap();
+        std::fs::write(&b, "x\n<span className=\"flex p-4\" />\n").unwrap();
+        std::fs::write(&c, "<div className=\"other\" />\n").unwrap(); // drift: won't match
+
+        let replaced = |file: &str, line: usize| {
+            try_replace_classname(&dir, &canon_root, file, line, "flex p-4", "flex p-8")
+        };
+        assert!(replaced("A.tsx", 1));
+        assert!(replaced("B.tsx", 2));
+        assert!(!replaced("C.tsx", 1)); // value differs → skipped
+        assert!(!replaced("A.tsx", 99)); // wrong line → skipped
+
+        assert_eq!(
+            std::fs::read_to_string(&a).unwrap(),
+            "<div className=\"flex p-8\" />\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&b).unwrap(),
+            "x\n<span className=\"flex p-8\" />\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&c).unwrap(),
+            "<div className=\"other\" />\n"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

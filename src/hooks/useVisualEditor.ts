@@ -17,6 +17,7 @@ import { twMerge } from 'tailwind-merge';
 import {
   resolveClassnameSource,
   applyClassnameEdit,
+  applyClassnameEditMulti,
   spacingValue,
   spacingTokenFor,
   spacingCss,
@@ -123,6 +124,15 @@ export function useVisualEditor({
     setCurrentClass(value);
   }, []);
 
+  // For a 'multi' resolution (one class string at several source spots): which to
+  // write — 'all' (default) or a single location index. Reset on each new selection.
+  const [multiTarget, setMultiTargetState] = useState<'all' | number>('all');
+  const multiTargetRef = useRef<'all' | number>('all');
+  const setMultiTarget = useCallback((t: 'all' | number) => {
+    multiTargetRef.current = t;
+    setMultiTargetState(t);
+  }, []);
+
   const post = useCallback(
     (msg: unknown) => iframeRef.current?.contentWindow?.postMessage(msg, '*'),
     [iframeRef]
@@ -151,6 +161,7 @@ export function useVisualEditor({
       const instanceCount = d.count ?? 1;
       setSelection({ signature: sig, resolution: null, instanceCount });
       setLiveClass(sig.className);
+      setMultiTarget('all'); // a fresh selection defaults to editing all occurrences
       void (async () => {
         try {
           const resolution = await resolveClassnameSource(projectPath, sig);
@@ -171,7 +182,7 @@ export function useVisualEditor({
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [editMode, projectPath, onToast, setLiveClass]);
+  }, [editMode, projectPath, onToast, setLiveClass, setMultiTarget]);
 
   /**
    * Merge a Tailwind token into the live class at the active breakpoint and
@@ -257,14 +268,22 @@ export function useVisualEditor({
   const commit = useCallback(
     async (opts?: { silent?: boolean }) => {
       const sel = selection;
-      if (!sel || sel.resolution?.status !== 'resolved') return;
+      const res = sel?.resolution;
+      if (!res || (res.status !== 'resolved' && res.status !== 'multi')) return;
       const next = currentClassRef.current;
-      const { file, line, class_name } = sel.resolution;
-      if (next === class_name) return; // nothing changed
+      if (next === res.class_name) return; // nothing changed
       try {
-        await applyClassnameEdit(projectPath, file, line, class_name, next);
+        if (res.status === 'resolved') {
+          await applyClassnameEdit(projectPath, res.file, res.line, res.class_name, next);
+        } else {
+          // Multi: write to all matching source spots, or the one the user picked.
+          const target = multiTargetRef.current;
+          const edits =
+            target === 'all' ? res.locations : res.locations.filter((_, i) => i === target);
+          await applyClassnameEditMulti(projectPath, edits, res.class_name, next);
+        }
         // Advance the drift baseline so consecutive edits keep working.
-        setSelection({ ...sel, resolution: { ...sel.resolution, class_name: next } });
+        setSelection({ ...sel, resolution: { ...res, class_name: next } });
         // Tell the in-iframe script this live state is now the saved baseline, so
         // deactivating (closing the panel) doesn't revert the just-saved edit
         // before HMR re-renders it from source.
@@ -284,9 +303,9 @@ export function useVisualEditor({
   // baseline-advance inside `commit` makes the next run a no-op (no loop).
   useEffect(() => {
     if (!autoSave) return;
-    const sel = selection;
-    if (sel?.resolution?.status !== 'resolved') return;
-    if (currentClass === sel.resolution.class_name) return; // clean
+    const res = selection?.resolution;
+    if (res?.status !== 'resolved' && res?.status !== 'multi') return;
+    if (currentClass === res.class_name) return; // clean
     const id = window.setTimeout(() => void commit({ silent: true }), AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
   }, [autoSave, currentClass, selection, commit]);
@@ -308,6 +327,8 @@ export function useVisualEditor({
     toggleEditMode,
     selection,
     currentClass,
+    multiTarget,
+    setMultiTarget,
     autoSave,
     toggleAutoSave,
     stepSpacing,

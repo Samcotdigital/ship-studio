@@ -23,6 +23,13 @@ export interface ElementSignature {
   computedBackgroundColor?: string;
 }
 
+/** A source location of a className literal. */
+export interface SourceLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
 /** Outcome of resolving an element to a source location (mirrors the Rust enum). */
 export type Resolution =
   | {
@@ -34,7 +41,13 @@ export type Resolution =
       /** How the match was reached: "unique" | "tag" | "ancestor". */
       confidence: string;
     }
-  | { status: 'ambiguous'; reason: string; candidate_count: number }
+  | {
+      /** The class string appears at multiple identical source spots — editable as a
+       *  group (write all) or one at a time. */
+      status: 'multi';
+      locations: SourceLocation[];
+      class_name: string;
+    }
   | { status: 'read_only'; reason: string };
 
 /** Resolve a clicked element to its source `className` location. */
@@ -619,6 +632,22 @@ export function applyClassnameEdit(
     projectPath,
     file,
     line,
+    oldClass,
+    newClass,
+  });
+}
+
+/** Apply the same className edit to several source locations at once ("edit all
+ *  occurrences"). Stale spots are skipped; resolves with the count updated. */
+export function applyClassnameEditMulti(
+  projectPath: string,
+  edits: SourceLocation[],
+  oldClass: string,
+  newClass: string
+): Promise<number> {
+  return invoke<number>('apply_classname_edit_multi', {
+    projectPath,
+    edits,
     oldClass,
     newClass,
   });

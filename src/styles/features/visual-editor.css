@@ -430,6 +430,57 @@
   background: color-mix(in srgb, var(--warning, #e0a458) 12%, transparent);
   border-radius: var(--radius-sm);
 }
+.ss-edit-panel__multi code {
+  color: var(--text-primary);
+  font-size: 10.5px;
+}
+
+/* Inline text link (e.g. "Just one?" / "Edit all N") inside the multi note. */
+.ss-edit-panel__linkbtn {
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.ss-edit-panel__linkbtn:hover {
+  background: none;
+  color: var(--text-primary);
+}
+
+/* Location picker — choose a single source spot to edit. */
+.ss-edit-panel__loclist {
+  list-style: none;
+  margin: var(--spacing-xs) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ss-edit-panel__locitem {
+  width: 100%;
+  padding: 4px var(--spacing-sm);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.ss-edit-panel__locitem:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
 
 .ss-edit-panel__source {
   display: flex;
