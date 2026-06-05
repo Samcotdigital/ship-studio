@@ -25,6 +25,17 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.6', // v0.6.6
+    items: [
+      'Responsive breakpoint editing in the visual editor — pick a breakpoint (Base, sm, md, lg, xl, 2xl, or whatever your project defines) and the preview canvas resizes to match; edits write `md:`-style classes that preview truthfully across widths. Resizing the canvas updates the active breakpoint too, and a plain-language note explains the mobile-first cascade',
+      'Far more properties, in collapsible sections — the panel is now organized into Size & Spacing, Layout, Typography, Backgrounds & Borders, Effects, and Custom CSS, adding width/height/max-width, position, flex direction & wrap, overflow, z-index, line height, letter spacing, text transform/style/decoration, shadow, blur, cursor, and border color',
+      "Custom CSS box — type any `property: value` and it's written as a real Tailwind arbitrary-property class (e.g. `[clip-path:circle(50%)]`), validated as you type. The editor always prefers a named Tailwind token and only falls back to an arbitrary value when off-scale",
+      'Works on Astro + Tailwind — the visual editor now resolves and edits classes in `.astro` templates, not just Next.js/React',
+      "Free-form values, a floating Reset, and shared-component awareness — type exact lengths like `10rem` or `50%` in any field; click a set value's name for a floating Reset at your cursor; editing a shared component shows where else it's used across your project with click-through to the code, and ambiguous elements can be edited everywhere at once or one at a time",
+      "Optional debounced auto-save writes edits to source as you go, and the preview iframe's default scrollbars are hidden (without touching the site's own custom scrollbars)",
+    ],
+  },
+  {
     version: '0.6.5', // v0.6.5
     items: [
       'Visual editor (Beta) — toggle "Edit (Beta)" in the preview toolbar, then click any element to fine-tune its Tailwind classes visually: padding and margin (a Webflow-style box model you can drag to scrub or click to type), gap, text alignment, font size and weight, radius, display, flex justify/align, border, and opacity. Changes preview instantly and write back to your real source className when you hit "Save to source"',
