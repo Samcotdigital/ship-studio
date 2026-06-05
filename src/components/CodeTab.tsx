@@ -5,7 +5,7 @@
  * Includes a draggable divider for resizing the two panes.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFileTree } from '../hooks/useFileTree';
 import { FileTree } from './FileTree';
 import { CodeViewer } from './CodeViewer';
@@ -16,9 +16,11 @@ import { trackEvent, trackSearch } from '../lib/analytics';
 interface CodeTabProps {
   projectPath: string;
   onSendToAgent?: (text: string) => void;
+  /** Jump-to-code target: open this file and highlight/scroll to the line. */
+  revealTarget?: { file: string; line: number } | null;
 }
 
-export function CodeTab({ projectPath, onSendToAgent }: CodeTabProps) {
+export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabProps) {
   const {
     tree,
     expandedPaths,
@@ -47,6 +49,13 @@ export function CodeTab({ projectPath, onSendToAgent }: CodeTabProps) {
     void trackEvent('code_tree_refreshed');
     refreshTreeRaw();
   }, [refreshTreeRaw]);
+
+  // Jump-to-code: open the targeted file. The line is forwarded to CodeViewer
+  // (which scrolls + highlights it) independently, so re-targeting the same file
+  // still reveals the new line even though selectFile early-returns.
+  useEffect(() => {
+    if (revealTarget) selectFileRaw(revealTarget.file);
+  }, [revealTarget, selectFileRaw]);
 
   const [sidebarWidth, setSidebarWidth] = useState(250);
   const [searchQuery, setSearchQuery] = useState('');
@@ -165,6 +174,7 @@ export function CodeTab({ projectPath, onSendToAgent }: CodeTabProps) {
           isLoading={isLoadingFile}
           error={fileError}
           onSendToAgent={onSendToAgent}
+          revealLine={revealTarget?.line}
         />
       </div>
     </div>

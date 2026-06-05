@@ -297,6 +297,63 @@ describe('VisualEditorPanel', () => {
     expect(screen.getAllByText('every page').length).toBeGreaterThan(0);
   });
 
+  // Default props for inline renders that need to override a specific handler.
+  const mk = () => ({
+    breakpoints: BREAKPOINTS,
+    activeBreakpoint: BASE_BREAKPOINT,
+    breakpointTooWide: false,
+    onSelectBreakpoint: vi.fn(),
+    autoSave: false,
+    onToggleAutoSave: vi.fn(),
+    onStepGap: vi.fn(),
+    onSetSide: vi.fn(),
+    onApplyEnum: vi.fn(),
+    onReset: vi.fn(),
+    multiTarget: 'all' as const,
+    onMultiTargetChange: vi.fn(),
+    usage: null,
+    onCommit: vi.fn(),
+    onClose: vi.fn(),
+  });
+
+  it('jumps to the Code tab from the source badge', () => {
+    const onOpenInCode = vi.fn();
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-3"
+        onOpenInCode={onOpenInCode}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Open in the Code tab'));
+    expect(onOpenInCode).toHaveBeenCalledWith('components/Hero.tsx', 11);
+  });
+
+  it('jumps to the Code tab from a usage-modal line chip', () => {
+    const onOpenInCode = vi.fn();
+    const usage: UsageReport = {
+      component: 'Header',
+      selfKind: 'component',
+      sites: [
+        { file: 'app/about/page.tsx', line: 42, kind: 'page' },
+        { file: 'app/blog/page.tsx', line: 7, kind: 'page' },
+      ],
+    };
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-3"
+        usage={usage}
+        onOpenInCode={onOpenInCode}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /used in 2 places/i })); // open modal
+    fireEvent.click(screen.getByRole('button', { name: '42' })); // the line chip
+    expect(onOpenInCode).toHaveBeenCalledWith('app/about/page.tsx', 42);
+  });
+
   it('renders a multi-location element as editable, defaulting to edit-all', () => {
     renderPanel(multiSelection, 'flex p-4');
     expect(screen.getByTestId('spacing-box')).toBeInTheDocument(); // editable, not read-only

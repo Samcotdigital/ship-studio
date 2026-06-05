@@ -22,6 +22,7 @@ import { ColorControls } from './ColorControls';
 import { ResettableLabel } from './ResettableLabel';
 import { MultiSourceControl } from './MultiSourceControl';
 import { UsageScope } from './UsageScope';
+import { CodeIcon } from './CodeIcon';
 import { type UsageReport } from '../../lib/edit';
 import {
   scaleValue,
@@ -127,6 +128,28 @@ function StatusBadge({ saving }: { saving: boolean }) {
   );
 }
 
+/** Small "?" glyph that reveals a custom tooltip on hover/focus. */
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span className="ss-edit-panel__help" tabIndex={0} role="img" aria-label={text}>
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path
+          d="M5.8 6.2c0-1.2 1-2 2.2-2s2.2.8 2.2 2c0 .8-.5 1.3-1.1 1.6-.6.4-1.1.7-1.1 1.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+        <circle cx="8" cy="11.5" r="0.7" fill="currentColor" />
+      </svg>
+      <span className="ss-edit-panel__help-tip" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 interface Props {
   selection: Selection | null;
   /** The class string currently applied live (what "Save" will persist). */
@@ -157,6 +180,8 @@ interface Props {
   onMultiTargetChange: (t: 'all' | number) => void;
   /** Where the selected element's component is used project-wide (scope hint). */
   usage: UsageReport | null;
+  /** Jump to a source file:line in the Code tab. */
+  onOpenInCode?: (file: string, line: number) => void;
   onCommit: () => void;
   onClose: () => void;
 }
@@ -186,6 +211,7 @@ export function VisualEditorPanel({
   multiTarget,
   onMultiTargetChange,
   usage,
+  onOpenInCode,
   onCommit,
   onClose,
 }: Props) {
@@ -206,6 +232,12 @@ export function VisualEditorPanel({
   );
   const gap = readLayer(currentClass, layer, (s) => spacingValue(s, 'gap'));
   const opacity = readLayer(currentClass, layer, (s) => scaleValue(s, 'opacity'));
+
+  // Contextual mobile-first explainer (shown in the "?" tooltip by the label).
+  const breakpointHelp =
+    activeBreakpoint.minPx > 0
+      ? `Changes here apply from ${activeBreakpoint.minPx}px wide and up, overriding the smaller sizes.`
+      : 'Changes here apply to every screen size. Pick a breakpoint to override it from that width up.';
 
   // Self-owned fixed position so the panel is draggable by its header. Fully
   // inline (no CSS-var/measurement dependency) so it can't drift out of view.
@@ -268,7 +300,12 @@ export function VisualEditorPanel({
             tracks the live preview width. Tailwind is mobile-first: edits cascade
             up, so a value set on a breakpoint applies at that width and larger. */}
         <div className="ss-edit-panel__control">
-          <label className="ss-edit-panel__label">Breakpoint</label>
+          {/* The "?" reveals the mobile-first explainer — styles set on a breakpoint
+              apply at that width AND LARGER, which surprises desktop-first users. */}
+          <label className="ss-edit-panel__label">
+            Breakpoint
+            <HelpHint text={breakpointHelp} />
+          </label>
           <EnumDropdown
             label="Breakpoint"
             value={activeBreakpoint.name}
@@ -282,15 +319,6 @@ export function VisualEditorPanel({
             }}
           />
         </div>
-
-        {/* Plain-language explainer of the mobile-first cascade — styles set on a
-            breakpoint apply at that width AND LARGER, which surprises users coming
-            from desktop-first tools. Contextual to the active layer. */}
-        <p className="ss-edit-panel__bp-help">
-          {activeBreakpoint.minPx > 0
-            ? `Changes here apply from ${activeBreakpoint.minPx}px wide and up, overriding the smaller sizes.`
-            : 'Changes here apply to every screen size. Pick a breakpoint to override it from that width up.'}
-        </p>
 
         {breakpointTooWide && (
           <p className="ss-edit-panel__bp-note" role="note">
@@ -315,9 +343,23 @@ export function VisualEditorPanel({
             {resolution?.status === 'resolved' && (
               <>
                 <div className="ss-edit-panel__source">
-                  <code>
-                    {resolution.file}:{resolution.line}
-                  </code>
+                  {onOpenInCode ? (
+                    <button
+                      type="button"
+                      className="ss-edit-panel__srclink"
+                      title="Open in the Code tab"
+                      onClick={() => onOpenInCode(resolution.file, resolution.line)}
+                    >
+                      <code>
+                        {resolution.file}:{resolution.line}
+                      </code>
+                      <CodeIcon size={12} />
+                    </button>
+                  ) : (
+                    <code>
+                      {resolution.file}:{resolution.line}
+                    </code>
+                  )}
                   {resolution.confidence !== 'unique' && (
                     <span
                       className="ss-edit-panel__badge ss-edit-panel__badge--approx"
@@ -333,7 +375,11 @@ export function VisualEditorPanel({
                     Editing {selection.instanceCount} elements that share this source
                   </p>
                 )}
-                <UsageScope usage={usage} instanceCount={selection?.instanceCount ?? 1} />
+                <UsageScope
+                  usage={usage}
+                  instanceCount={selection?.instanceCount ?? 1}
+                  onOpenInCode={onOpenInCode}
+                />
               </>
             )}
             {resolution?.status === 'multi' && (

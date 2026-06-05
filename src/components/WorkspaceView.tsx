@@ -485,6 +485,17 @@ export const WorkspaceView = memo(function WorkspaceView({
     setWorkspaceTab,
   } = layout;
 
+  // Jump-to-code: when set, the Code tab opens this file and highlights the line.
+  // Driven by openInCode (e.g. the visual editor's source links / usage modal).
+  const [codeTarget, setCodeTarget] = useState<{ file: string; line: number } | null>(null);
+  const openInCode = useCallback(
+    (file: string, line: number) => {
+      setCodeTarget({ file, line });
+      setWorkspaceTab('code');
+    },
+    [setWorkspaceTab]
+  );
+
   // Split view is only meaningful when focus mode is on AND the current
   // project has ≥2 tabs AND the user has opted in (splitPaneTabIds set).
   const canSplit = isPreviewHidden && terminalTabs.length >= 2;
@@ -1369,6 +1380,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             onHealthOutput={handleHealthOutput}
                             needsInstall={needsInstall}
                             onRunInstall={onRunInstall}
+                            onOpenInCode={openInCode}
                             previewPlugins={
                               <PluginSlot
                                 name="preview"
@@ -1393,7 +1405,11 @@ export const WorkspaceView = memo(function WorkspaceView({
                       )}
                       {workspaceTab === 'code' && (
                         <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-                          <CodeTab projectPath={currentProject.path} onSendToAgent={sendToClaude} />
+                          <CodeTab
+                            projectPath={currentProject.path}
+                            onSendToAgent={sendToClaude}
+                            revealTarget={codeTarget}
+                          />
                         </div>
                       )}
                       <BranchPRTabContainer

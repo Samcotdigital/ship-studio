@@ -178,6 +178,8 @@ interface PreviewProps {
   needsInstall?: { packageManager: string } | null;
   /** Action wired to the install CTA — kicks off the install flow + restart. */
   onRunInstall?: () => void;
+  /** Jump to a source file:line in the Code tab (from the visual editor). */
+  onOpenInCode?: (file: string, line: number) => void;
 }
 
 /**
@@ -241,6 +243,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onHealthOutput,
     needsInstall,
     onRunInstall,
+    onOpenInCode,
   },
   ref
 ) {
@@ -886,6 +889,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             multiTarget={editor.multiTarget}
             onMultiTargetChange={editor.setMultiTarget}
             usage={editor.usage}
+            onOpenInCode={onOpenInCode}
             onCommit={() => void editor.commit()}
             onClose={editor.toggleEditMode}
           />,

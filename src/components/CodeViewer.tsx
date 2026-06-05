@@ -24,6 +24,8 @@ interface CodeViewerProps {
   isLoading: boolean;
   error: string | null;
   onSendToAgent?: (text: string) => void;
+  /** A 1-based line to highlight + scroll into view (jump-to-code). */
+  revealLine?: number | null;
 }
 
 interface SelectionInfo {
@@ -74,6 +76,7 @@ export function CodeViewer({
   isLoading,
   error,
   onSendToAgent,
+  revealLine,
 }: CodeViewerProps) {
   const { showToast } = useOptionalToast();
   const onToast = (message: string, type?: 'success' | 'error' | 'info') =>
@@ -145,6 +148,21 @@ export function CodeViewer({
     }
     dismissPopover();
   }, [filePath, dismissPopover]);
+
+  // Jump-to-code: highlight a target line and scroll it into view. Runs after the
+  // file-change scroll-to-top reset above (via rAF) so it isn't clobbered; re-runs
+  // when the target line changes within the same file.
+  useEffect(() => {
+    if (revealLine == null || !fileContent) return;
+    setHighlightedLines({ start: revealLine, end: revealLine });
+    const id = requestAnimationFrame(() => {
+      const el = codeRef.current;
+      if (!el) return;
+      const target = CODE_PADDING_TOP + (revealLine - 1) * LINE_HEIGHT;
+      el.scrollTop = Math.max(0, target - el.clientHeight / 3);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [revealLine, fileContent, filePath]);
 
   // Dismiss popover on scroll
   useEffect(() => {

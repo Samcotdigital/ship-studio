@@ -212,11 +212,50 @@
 
 /* Plain-language explainer of the active breakpoint's reach (mobile-first cascade,
    which trips up desktop-first habits). Sits just under the breakpoint dropdown. */
-.ss-edit-panel__bp-help {
-  margin: calc(-1 * var(--spacing-xs)) 0 var(--spacing-sm);
-  font-size: 10.5px;
-  line-height: 1.4;
+/* "?" help glyph + custom tooltip next to the Breakpoint label. CSS-only reveal
+   on hover/focus. The tooltip is positioned against the control ROW (which is
+   relative — see .ss-edit-panel__control) so it spans the panel width and wraps
+   instead of overflowing off the tiny icon. */
+.ss-edit-panel__help {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
   color: var(--text-muted);
+  cursor: help;
+  transition: color var(--transition);
+}
+.ss-edit-panel__help:hover,
+.ss-edit-panel__help:focus-visible {
+  color: var(--text-secondary);
+  outline: none;
+}
+.ss-edit-panel__help-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition);
+  z-index: var(--z-tooltip);
+}
+.ss-edit-panel__help:hover .ss-edit-panel__help-tip,
+.ss-edit-panel__help:focus-visible .ss-edit-panel__help-tip {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Note shown when the selected breakpoint is wider than the preview can display:
@@ -663,6 +702,18 @@
   background: var(--bg-tertiary);
   border-radius: 999px;
 }
+/* Clickable line chip — jumps to that file:line in the Code tab. */
+.ss-usage-row__line--btn {
+  border: none;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.ss-usage-row__line--btn:hover {
+  color: var(--action-text);
+  background: var(--action);
+}
 
 .ss-edit-panel__source {
   display: flex;
@@ -676,6 +727,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Source path as a subtle link that jumps into the Code tab. */
+.ss-edit-panel__srclink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.ss-edit-panel__srclink:hover {
+  background: none;
+  color: var(--action);
+}
+.ss-edit-panel__srclink code {
+  color: inherit;
+}
+.ss-edit-panel__srclink svg {
+  flex: 0 0 auto;
+  margin-top: -1px; /* optical-center the </> with the path text */
+  opacity: 0.7;
 }
 
 .ss-edit-panel__badge {
@@ -693,6 +769,7 @@
 }
 
 .ss-edit-panel__control {
+  position: relative; /* anchors the breakpoint "?" tooltip to the full row */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -812,6 +889,7 @@
 .ss-edit-panel__label {
   display: inline-flex;
   align-items: center;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 

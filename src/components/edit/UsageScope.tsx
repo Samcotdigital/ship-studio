@@ -26,7 +26,15 @@ function groupByFile(sites: UsageSite[]): { file: string; lines: number[] }[] {
   return [...map.entries()].map(([file, lines]) => ({ file, lines }));
 }
 
-function Section({ kind, sites }: { kind: FileKind; sites: UsageSite[] }) {
+function Section({
+  kind,
+  sites,
+  onOpenInCode,
+}: {
+  kind: FileKind;
+  sites: UsageSite[];
+  onOpenInCode?: (file: string, line: number) => void;
+}) {
   if (sites.length === 0) return null;
   const files = groupByFile(sites);
   return (
@@ -49,11 +57,23 @@ function Section({ kind, sites }: { kind: FileKind; sites: UsageSite[] }) {
                 <span className="ss-usage-row__name">{base}</span>
               </span>
               <span className="ss-usage-row__lines">
-                {lines.map((l) => (
-                  <span key={l} className="ss-usage-row__line" title={`line ${l}`}>
-                    {l}
-                  </span>
-                ))}
+                {lines.map((l) =>
+                  onOpenInCode ? (
+                    <button
+                      key={l}
+                      type="button"
+                      className="ss-usage-row__line ss-usage-row__line--btn"
+                      title={`Open ${base}:${l} in the Code tab`}
+                      onClick={() => onOpenInCode(file, l)}
+                    >
+                      {l}
+                    </button>
+                  ) : (
+                    <span key={l} className="ss-usage-row__line" title={`line ${l}`}>
+                      {l}
+                    </span>
+                  )
+                )}
               </span>
             </li>
           );
@@ -67,16 +87,15 @@ interface Props {
   usage: UsageReport | null;
   /** Live DOM instances on the current page (from the selection). */
   instanceCount: number;
+  /** Jump to a source file:line in the Code tab (makes line chips clickable). */
+  onOpenInCode?: (file: string, line: number) => void;
 }
 
-export function UsageScope({ usage, instanceCount }: Props) {
+export function UsageScope({ usage, instanceCount, onOpenInCode }: Props) {
   const [open, setOpen] = useState(false);
   if (!usage) return null;
 
-  // Editing a route page → scoped to that page. Editing a layout → every page.
-  if (usage.selfKind === 'page') {
-    return <p className="ss-edit-panel__scope">Only on this page.</p>;
-  }
+  // Editing a layout applies to every page — always worth flagging.
   if (usage.selfKind === 'layout') {
     return (
       <p className="ss-edit-panel__scope ss-edit-panel__scope--wide">
@@ -85,13 +104,16 @@ export function UsageScope({ usage, instanceCount }: Props) {
     );
   }
 
-  // A reusable component: surface where it renders.
+  // For everything else, only surface scope when the reach is NON-obvious — a
+  // shared component used in several places, or one rendered inside a layout
+  // (every page). A page, or a component used in just one spot, is the unsurprising
+  // "edit it here" case, so we stay quiet (no clutter).
   const { sites, component } = usage;
   const name = component ?? 'this component';
-  if (sites.length === 0) {
-    return <p className="ss-edit-panel__scope">Part of the {name} component.</p>;
-  }
   const inLayout = sites.some((s) => s.kind === 'layout');
+  if (usage.selfKind !== 'component' || (!inLayout && sites.length <= 1)) {
+    return null;
+  }
 
   return (
     <>
@@ -131,9 +153,21 @@ export function UsageScope({ usage, instanceCount }: Props) {
             project.
           </p>
           <div className="ss-usage-modal__scroll">
-            <Section kind="layout" sites={sites.filter((s) => s.kind === 'layout')} />
-            <Section kind="page" sites={sites.filter((s) => s.kind === 'page')} />
-            <Section kind="component" sites={sites.filter((s) => s.kind === 'component')} />
+            <Section
+              kind="layout"
+              sites={sites.filter((s) => s.kind === 'layout')}
+              onOpenInCode={onOpenInCode}
+            />
+            <Section
+              kind="page"
+              sites={sites.filter((s) => s.kind === 'page')}
+              onOpenInCode={onOpenInCode}
+            />
+            <Section
+              kind="component"
+              sites={sites.filter((s) => s.kind === 'component')}
+              onOpenInCode={onOpenInCode}
+            />
           </div>
         </div>
       </ModalFrame>
