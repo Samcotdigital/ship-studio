@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { VisualEditorPanel } from './VisualEditorPanel';
-import { BASE_BREAKPOINT, DEFAULT_BREAKPOINTS, type Breakpoint } from '../../lib/edit';
+import {
+  BASE_BREAKPOINT,
+  DEFAULT_BREAKPOINTS,
+  type Breakpoint,
+  type UsageReport,
+} from '../../lib/edit';
 import type { Selection } from '../../hooks/useVisualEditor';
 
 const BREAKPOINTS: Breakpoint[] = [BASE_BREAKPOINT, ...DEFAULT_BREAKPOINTS];
@@ -48,6 +53,7 @@ function renderPanel(
       onReset={onReset}
       multiTarget="all"
       onMultiTargetChange={vi.fn()}
+      usage={null}
       onCommit={vi.fn()}
       onClose={vi.fn()}
     />
@@ -223,6 +229,74 @@ describe('VisualEditorPanel', () => {
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a usage scope line and opens a modal listing render sites', () => {
+    const usage: UsageReport = {
+      component: 'Header',
+      selfKind: 'component',
+      sites: [
+        { file: 'app/about/page.tsx', line: 4, kind: 'page' },
+        { file: 'app/blog/page.tsx', line: 6, kind: 'page' },
+        { file: 'components/Nav.tsx', line: 9, kind: 'component' },
+      ],
+    };
+    render(
+      <VisualEditorPanel
+        selection={resolvedSelection}
+        currentClass="p-3"
+        breakpoints={BREAKPOINTS}
+        activeBreakpoint={BASE_BREAKPOINT}
+        breakpointTooWide={false}
+        onSelectBreakpoint={vi.fn()}
+        autoSave={false}
+        onToggleAutoSave={vi.fn()}
+        onStepGap={vi.fn()}
+        onSetSide={vi.fn()}
+        onApplyEnum={vi.fn()}
+        onReset={vi.fn()}
+        multiTarget="all"
+        onMultiTargetChange={vi.fn()}
+        usage={usage}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    const scope = screen.getByRole('button', { name: /used in 3 places/i });
+    fireEvent.click(scope);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Header')).toBeInTheDocument(); // component name in the title
+    // Rows are grouped by file (full path on the row's title).
+    expect(screen.getByTitle('app/about/page.tsx')).toBeInTheDocument();
+    expect(screen.getByTitle('components/Nav.tsx')).toBeInTheDocument();
+  });
+
+  it('warns when editing a layout (every page)', () => {
+    renderPanel(resolvedSelection); // usage defaults to null → no scope line
+    // With a layout usage, the panel surfaces the every-page warning.
+    render(
+      <VisualEditorPanel
+        selection={resolvedSelection}
+        currentClass="p-3"
+        breakpoints={BREAKPOINTS}
+        activeBreakpoint={BASE_BREAKPOINT}
+        breakpointTooWide={false}
+        onSelectBreakpoint={vi.fn()}
+        autoSave={false}
+        onToggleAutoSave={vi.fn()}
+        onStepGap={vi.fn()}
+        onSetSide={vi.fn()}
+        onApplyEnum={vi.fn()}
+        onReset={vi.fn()}
+        multiTarget="all"
+        onMultiTargetChange={vi.fn()}
+        usage={{ component: null, selfKind: 'layout', sites: [] }}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getAllByText(/applies to/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('every page').length).toBeGreaterThan(0);
+  });
+
   it('renders a multi-location element as editable, defaulting to edit-all', () => {
     renderPanel(multiSelection, 'flex p-4');
     expect(screen.getByTestId('spacing-box')).toBeInTheDocument(); // editable, not read-only
@@ -247,6 +321,7 @@ describe('VisualEditorPanel', () => {
         onReset={vi.fn()}
         multiTarget="all"
         onMultiTargetChange={onMultiTargetChange}
+        usage={null}
         onCommit={vi.fn()}
         onClose={vi.fn()}
       />

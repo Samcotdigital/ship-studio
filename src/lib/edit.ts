@@ -652,3 +652,34 @@ export function applyClassnameEditMulti(
     newClass,
   });
 }
+
+/** How a source file renders: a route page, a layout (wraps many pages), or a
+ *  reusable component. */
+export type FileKind = 'page' | 'layout' | 'component';
+
+/** One place a component is rendered in source. */
+export interface UsageSite {
+  file: string;
+  line: number;
+  kind: FileKind;
+}
+
+/** Where the component containing an edited element is used across the project —
+ *  the "this also appears in N places" scope hint. */
+export interface UsageReport {
+  /** Enclosing component name, if we could determine it. */
+  component: string | null;
+  /** Kind of the edited file itself (page = only this page; layout = every page). */
+  selfKind: FileKind;
+  /** Every `<Component>` render site found in source. */
+  sites: UsageSite[];
+}
+
+/** Find where the component containing `file:line` is rendered project-wide. */
+export function findComponentUsage(
+  projectPath: string,
+  file: string,
+  line: number
+): Promise<UsageReport> {
+  return invoke<UsageReport>('find_component_usage', { projectPath, file, line });
+}

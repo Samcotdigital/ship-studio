@@ -18,6 +18,7 @@ import {
   resolveClassnameSource,
   applyClassnameEdit,
   applyClassnameEditMulti,
+  findComponentUsage,
   spacingValue,
   spacingTokenFor,
   spacingCss,
@@ -37,6 +38,7 @@ import {
   type ResetSpec,
   type ElementSignature,
   type Resolution,
+  type UsageReport,
 } from '../lib/edit';
 import { logger } from '../lib/logger';
 
@@ -114,6 +116,10 @@ export function useVisualEditor({
   }, []);
 
   const [selection, setSelection] = useState<Selection | null>(null);
+  // Where the selected element's component is used project-wide (scope hint).
+  // Best-effort, fetched after a single-location resolve. Token guards staleness.
+  const [usage, setUsage] = useState<UsageReport | null>(null);
+  const usageTokenRef = useRef(0);
   /** The class string currently applied live in the iframe (merge baseline). */
   const [currentClass, setCurrentClass] = useState('');
   // Mirror into a ref so `applyToken`/`commit` callbacks read the latest value
@@ -162,10 +168,25 @@ export function useVisualEditor({
       setSelection({ signature: sig, resolution: null, instanceCount });
       setLiveClass(sig.className);
       setMultiTarget('all'); // a fresh selection defaults to editing all occurrences
+      setUsage(null);
+      const usageToken = ++usageTokenRef.current;
       void (async () => {
         try {
           const resolution = await resolveClassnameSource(projectPath, sig);
           setSelection({ signature: sig, resolution, instanceCount });
+          // Best-effort scope hint: where else this component is rendered.
+          if (resolution.status === 'resolved') {
+            try {
+              const report = await findComponentUsage(
+                projectPath,
+                resolution.file,
+                resolution.line
+              );
+              if (usageTokenRef.current === usageToken) setUsage(report);
+            } catch {
+              /* scope hint is optional */
+            }
+          }
         } catch (err) {
           logger.error('[VisualEditor] resolve failed', { error: String(err) });
           onToast?.(String(err), 'error');
@@ -327,6 +348,7 @@ export function useVisualEditor({
     toggleEditMode,
     selection,
     currentClass,
+    usage,
     multiTarget,
     setMultiTarget,
     autoSave,

@@ -347,6 +347,7 @@ pub fn run() {
             commands::edit::resolve_classname_source,
             commands::edit::apply_classname_edit,
             commands::edit::apply_classname_edit_multi,
+            commands::edit::find_component_usage,
             commands::edit::detect_breakpoints,
             commands::projects::get_terminal_state,
             commands::projects::set_terminal_state,

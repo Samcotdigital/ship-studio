@@ -885,6 +885,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             onReset={editor.reset}
             multiTarget={editor.multiTarget}
             onMultiTargetChange={editor.setMultiTarget}
+            usage={editor.usage}
             onCommit={() => void editor.commit()}
             onClose={editor.toggleEditMode}
           />,

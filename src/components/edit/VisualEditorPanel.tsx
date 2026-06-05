@@ -21,6 +21,8 @@ import { EnumDropdown } from './EnumDropdown';
 import { ColorControls } from './ColorControls';
 import { ResettableLabel } from './ResettableLabel';
 import { MultiSourceControl } from './MultiSourceControl';
+import { UsageScope } from './UsageScope';
+import { type UsageReport } from '../../lib/edit';
 import {
   scaleValue,
   spacingValue,
@@ -153,6 +155,8 @@ interface Props {
   /** For a multi-location element: which spot(s) to write — 'all' or one index. */
   multiTarget: 'all' | number;
   onMultiTargetChange: (t: 'all' | number) => void;
+  /** Where the selected element's component is used project-wide (scope hint). */
+  usage: UsageReport | null;
   onCommit: () => void;
   onClose: () => void;
 }
@@ -181,6 +185,7 @@ export function VisualEditorPanel({
   onReset,
   multiTarget,
   onMultiTargetChange,
+  usage,
   onCommit,
   onClose,
 }: Props) {
@@ -188,6 +193,10 @@ export function VisualEditorPanel({
   // Both 'resolved' (one spot) and 'multi' (several identical spots) are editable.
   const editable = resolution?.status === 'resolved' || resolution?.status === 'multi';
   const dirty = editable && currentClass !== resolution.class_name;
+  // Show the controls as soon as an element is selected — they only need the class
+  // string (available instantly). The source badge + Save fill in once resolved, so
+  // the panel doesn't flicker through a "Resolving…" collapse on every click.
+  const controlsVisible = !!selection && resolution?.status !== 'read_only';
 
   // Cascade-resolution context for the active breakpoint, threaded to each control
   // so they show the effective value at this layer and which breakpoint set it.
@@ -297,15 +306,13 @@ export function VisualEditorPanel({
           </p>
         )}
 
-        {selection && !resolution && <p className="ss-edit-panel__hint">Resolving source…</p>}
-
         {resolution?.status === 'read_only' && (
           <p className="ss-edit-panel__readonly">{resolution.reason}</p>
         )}
 
-        {editable && (
+        {controlsVisible && (
           <>
-            {resolution.status === 'resolved' ? (
+            {resolution?.status === 'resolved' && (
               <>
                 <div className="ss-edit-panel__source">
                   <code>
@@ -326,8 +333,10 @@ export function VisualEditorPanel({
                     Editing {selection.instanceCount} elements that share this source
                   </p>
                 )}
+                <UsageScope usage={usage} instanceCount={selection?.instanceCount ?? 1} />
               </>
-            ) : (
+            )}
+            {resolution?.status === 'multi' && (
               <MultiSourceControl
                 locations={resolution.locations}
                 target={multiTarget}
@@ -415,7 +424,7 @@ export function VisualEditorPanel({
         )}
       </div>
 
-      {editable && (
+      {controlsVisible && (
         <div className="ss-edit-panel__footer">
           <button
             type="button"
@@ -428,7 +437,10 @@ export function VisualEditorPanel({
             <span className={`ss-edit-panel__switch${autoSave ? ' is-on' : ''}`} aria-hidden />
             Auto-save
           </button>
-          {autoSave ? (
+          {!editable ? (
+            // Resolving the source location — Save isn't available yet.
+            <span className="ss-edit-panel__locating">Locating source…</span>
+          ) : autoSave ? (
             <StatusBadge saving={dirty} />
           ) : dirty ? (
             <Button size="sm" variant="primary" onClick={onCommit}>

@@ -213,6 +213,44 @@ fn nearest_tag(prefix: &str) -> String {
     String::new()
 }
 
+/// Short-lived cache of the per-project className index, so rapid element clicks
+/// don't rescan the whole project each time. A stale entry only risks a rejected
+/// save (the write-back re-verifies the source literal), never a wrong edit —
+/// explicit invalidation on our own edits plus a short TTL keep it fresh.
+static INDEX_CACHE: std::sync::LazyLock<
+    std::sync::Mutex<
+        std::collections::HashMap<
+            std::path::PathBuf,
+            (std::time::Instant, std::sync::Arc<Vec<Occurrence>>),
+        >,
+    >,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+const INDEX_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The className index for `root`, from cache when fresh, else freshly built + stored.
+fn index_occurrences_cached(root: &Path) -> std::sync::Arc<Vec<Occurrence>> {
+    let key = root.to_path_buf();
+    if let Ok(cache) = INDEX_CACHE.lock() {
+        if let Some((at, idx)) = cache.get(&key) {
+            if at.elapsed() < INDEX_TTL {
+                return idx.clone();
+            }
+        }
+    }
+    let idx = std::sync::Arc::new(index_occurrences(root));
+    if let Ok(mut cache) = INDEX_CACHE.lock() {
+        cache.insert(key, (std::time::Instant::now(), idx.clone()));
+    }
+    idx
+}
+
+/// Drop the cached index for `root` after a write so the next resolve sees source.
+fn invalidate_index_cache(root: &Path) {
+    if let Ok(mut cache) = INDEX_CACHE.lock() {
+        cache.remove(root);
+    }
+}
+
 /// Index every static className occurrence under `root` (skips node_modules,
 /// .next, .git, etc. via the `ignore` walker which also honors .gitignore).
 fn index_occurrences(root: &Path) -> Vec<Occurrence> {
@@ -351,8 +389,8 @@ pub fn resolve_classname_source(
     signature: ElementSignature,
 ) -> Result<Resolution, CommandError> {
     let root = validate_project_path(&project_path)?;
-    let occurrences = index_occurrences(&root);
-    Ok(resolve(&occurrences, &signature))
+    let occurrences = index_occurrences_cached(&root);
+    Ok(resolve(occurrences.as_slice(), &signature))
 }
 
 /// Surgically replace one className literal's value, after verifying the current
@@ -395,6 +433,7 @@ pub fn apply_classname_edit(
     updated.push_str(&src[span.value_end..]);
 
     std::fs::write(&abs, updated).map_err(CommandError::from)?;
+    invalidate_index_cache(&root);
     Ok(())
 }
 
@@ -453,6 +492,7 @@ pub fn apply_classname_edit_multi(
             try_replace_classname(&root, &canon_root, &e.file, e.line, &old_class, &new_class)
         })
         .count();
+    invalidate_index_cache(&root);
     Ok(applied)
 }
 
@@ -639,6 +679,182 @@ pub fn detect_breakpoints(project_path: String) -> Result<Vec<Breakpoint>, Comma
         .collect();
     bps.sort_by_key(|b| b.min_px);
     Ok(bps)
+}
+
+// ───────────────────────── Component usage ("where is this used") ────────────
+
+/// How a source file is rendered: a route Page, a Layout (wraps many pages), or a
+/// reusable Component.
+#[derive(Debug, PartialEq)]
+enum FileKind {
+    Page,
+    Layout,
+    Component,
+}
+
+impl FileKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            FileKind::Page => "page",
+            FileKind::Layout => "layout",
+            FileKind::Component => "component",
+        }
+    }
+}
+
+/// Classify a project-relative path by Next.js conventions (App + Pages router).
+fn classify_file(rel: &str) -> FileKind {
+    let base = rel.rsplit('/').next().unwrap_or(rel).to_ascii_lowercase();
+    if base.starts_with("page.") {
+        return FileKind::Page; // App Router route segment
+    }
+    if base.starts_with("layout.") || base.starts_with("_app.") {
+        return FileKind::Layout; // wraps every page under it
+    }
+    if rel.starts_with("pages/") && !base.starts_with('_') {
+        return FileKind::Page; // Pages Router
+    }
+    FileKind::Component
+}
+
+/// The name in a component-declaration line (`function Foo`, `const Foo =`,
+/// `class Foo`), if its first letter is uppercase (a React component).
+fn decl_name(line: &str) -> Option<String> {
+    let mut s = line.trim_start();
+    for kw in ["export ", "default ", "async ", "pub "] {
+        if let Some(rest) = s.strip_prefix(kw) {
+            s = rest.trim_start();
+        }
+    }
+    let rest = ["function ", "const ", "let ", "var ", "class "]
+        .iter()
+        .find_map(|kw| s.strip_prefix(kw))?;
+    let name: String = rest
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')
+        .collect();
+    if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+/// The component that encloses `line` (1-based): the nearest component declaration
+/// scanning upward. Heuristic, but accurate for top-level components.
+fn enclosing_component(src: &str, line: usize) -> Option<String> {
+    let lines: Vec<&str> = src.lines().collect();
+    let start = line.min(lines.len());
+    (0..start).rev().find_map(|i| decl_name(lines[i]))
+}
+
+/// Every line where `<Name` is rendered as JSX in `src` (boundary-checked so
+/// `<Header` doesn't match `<HeaderBar`).
+fn find_jsx_usages(src: &str, name: &str) -> Vec<usize> {
+    let bytes = src.as_bytes();
+    let needle = format!("<{name}");
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = src[from..].find(&needle) {
+        let i = from + rel;
+        from = i + needle.len();
+        if bytes
+            .get(i + needle.len())
+            .copied()
+            .is_some_and(is_ident_byte)
+        {
+            continue; // <HeaderBar
+        }
+        out.push(src[..i].bytes().filter(|&b| b == b'\n').count() + 1);
+    }
+    out
+}
+
+/// One place a component is rendered.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSite {
+    file: String,
+    line: usize,
+    /// "page" | "layout" | "component"
+    kind: String,
+}
+
+/// Where an edited element's component is used across the project — drives the
+/// "this also appears in N places" scope hint.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReport {
+    /// The enclosing component name, if we could determine it.
+    component: Option<String>,
+    /// Kind of the edited file itself (page = only this page; layout = every page).
+    self_kind: String,
+    /// Every `<Component>` render site found in source.
+    sites: Vec<UsageSite>,
+}
+
+/// Find where the component containing `file:line` is rendered across the project.
+/// Used to warn that editing a shared component changes it everywhere it appears.
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path, file = %file, line = line))]
+pub fn find_component_usage(
+    project_path: String,
+    file: String,
+    line: usize,
+) -> Result<UsageReport, CommandError> {
+    let root = validate_project_path(&project_path)?;
+    let src = std::fs::read_to_string(root.join(&file)).unwrap_or_default();
+    let component = enclosing_component(&src, line);
+    let self_kind = classify_file(&file).as_str().to_string();
+
+    let mut sites = Vec::new();
+    if let Some(name) = &component {
+        for entry in ignore::WalkBuilder::new(&root)
+            .standard_filters(true)
+            .build()
+            .flatten()
+        {
+            let path = entry.path();
+            let is_src = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| SOURCE_EXTS.contains(&e))
+                .unwrap_or(false);
+            if !is_src {
+                continue;
+            }
+            let Ok(s) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for ln in find_jsx_usages(&s, name) {
+                let kind = classify_file(&rel).as_str().to_string();
+                sites.push(UsageSite {
+                    file: rel.clone(),
+                    line: ln,
+                    kind,
+                });
+            }
+        }
+        sites.sort_by(|a, b| {
+            (a.kind.as_str(), a.file.as_str(), a.line).cmp(&(
+                b.kind.as_str(),
+                b.file.as_str(),
+                b.line,
+            ))
+        });
+    }
+
+    Ok(UsageReport {
+        component,
+        self_kind,
+        sites,
+    })
 }
 
 #[cfg(test)]
@@ -860,6 +1076,35 @@ mod tests {
             .iter()
             .map(|(n, p)| (n.to_string(), *p))
             .collect()
+    }
+
+    #[test]
+    fn classify_file_by_next_conventions() {
+        assert_eq!(classify_file("app/about/page.tsx"), FileKind::Page);
+        assert_eq!(classify_file("app/layout.tsx"), FileKind::Layout);
+        assert_eq!(classify_file("app/blog/layout.jsx"), FileKind::Layout);
+        assert_eq!(classify_file("components/Header.tsx"), FileKind::Component);
+        assert_eq!(classify_file("pages/about.tsx"), FileKind::Page);
+        assert_eq!(classify_file("pages/_app.tsx"), FileKind::Layout);
+    }
+
+    #[test]
+    fn enclosing_component_finds_the_wrapping_component() {
+        let src =
+            "import x;\nexport default function Hero() {\n  return <h1 className=\"a\" />;\n}\n";
+        assert_eq!(enclosing_component(src, 3).as_deref(), Some("Hero"));
+        let src2 = "const Card = () => {\n  return <div className=\"c\" />;\n};\n";
+        assert_eq!(enclosing_component(src2, 2).as_deref(), Some("Card"));
+        // A lowercase helper isn't a component.
+        let src3 = "function helper() {\n  return null;\n}\n";
+        assert_eq!(enclosing_component(src3, 2), None);
+    }
+
+    #[test]
+    fn find_jsx_usages_is_boundary_checked() {
+        let src = "<Hero />\n<HeroBar/>\n<div><Hero></Hero></div>\n";
+        assert_eq!(find_jsx_usages(src, "Hero"), vec![1, 3]); // not <HeroBar
+        assert_eq!(find_jsx_usages(src, "HeroBar"), vec![2]);
     }
 
     #[test]
