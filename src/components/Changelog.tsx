@@ -25,6 +25,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.7', // v0.6.7
+    items: [
+      "Visual editor now works on Astro + Tailwind sites — including pages built with your own custom CSS classes. Edits reliably win the cascade (using Tailwind's important modifier where needed) and save back to your `.astro` source. The editor only appears when Tailwind is actually wired into the project, so it never adds classes that wouldn't compile",
+      'Smoother Astro editing — saving an edit no longer snaps the preview back to the top of the page; it stays where you were working (Next.js already updates in place via Fast Refresh)',
+      "Clearer editor — before you select anything, a short intro explains what it does (works with any Next.js or Astro project on Tailwind, free, uses 0 tokens, updates live and saves instantly). A subtle hint flags when an element's custom CSS means edits are written with `!important`",
+      'The toolbar Support button now opens the Ship Studio community Slack directly',
+    ],
+  },
+  {
     version: '0.6.6', // v0.6.6
     items: [
       'Responsive breakpoint editing in the visual editor — pick a breakpoint (Base, sm, md, lg, xl, 2xl, or whatever your project defines) and the preview canvas resizes to match; edits write `md:`-style classes that preview truthfully across widths. Resizing the canvas updates the active breakpoint too, and a plain-language note explains the mobile-first cascade',
