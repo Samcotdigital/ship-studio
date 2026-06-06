@@ -160,11 +160,15 @@ export function useVisualEditor({
   const textTargetRef = useRef<{ file: string; line: number; column: number; text: string } | null>(
     null
   );
+  // The reason the current selection's text isn't editable (read-only resolutions),
+  // surfaced if the iframe bounces out of an optimistic edit.
+  const textTargetReasonRef = useRef<string | null>(null);
   const setTextTarget = useCallback((res: TextResolution | null) => {
     textTargetRef.current =
       res?.status === 'resolved'
         ? { file: res.file, line: res.line, column: res.column, text: res.text }
         : null;
+    textTargetReasonRef.current = res?.status === 'read_only' ? res.reason : null;
     setTextResolution(res);
   }, []);
   // The signature of the current selection, mirrored for on-demand text resolution if
@@ -201,6 +205,16 @@ export function useVisualEditor({
         text?: string;
       } | null;
       if (!d) return;
+
+      // The element turned out not to be editable (dynamic text, or it appears in
+      // several places) — the iframe bounced out of the optimistic edit. Explain why.
+      if (d.type === 'ss:textBlocked') {
+        const reason =
+          textTargetReasonRef.current ||
+          "This text can't be edited inline — it's dynamic or appears in several places.";
+        onToast?.(reason, 'error');
+        return;
+      }
 
       // Inline text edit was confirmed in the iframe — write the new text to source.
       if (d.type === 'ss:textCommit' && typeof d.text === 'string') {

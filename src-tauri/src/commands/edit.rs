@@ -944,9 +944,7 @@ fn resolve_text_by_content(
     let matches: Vec<&TextOccurrence> = text_occ.iter().filter(|o| o.norm == want).collect();
     if matches.is_empty() {
         return TextResolution::ReadOnly {
-            reason:
-                "This text isn't a static string in source (dynamic or generated) — not editable."
-                    .into(),
+            reason: "This text comes from data or code, so it can't be edited inline.".into(),
         };
     }
     if distinct_text_locs(&matches) == 1 {
