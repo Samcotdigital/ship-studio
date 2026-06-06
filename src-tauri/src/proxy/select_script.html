@@ -27,7 +27,7 @@ var pvDecls={},curMark=null,pendingMark=null,pvId=0,styleEl=null;
    restore from txtOrigHtml on cancel. txtPending holds a committed React clone kept
    visible (showing the NEW text) until HMR updates the real element, then swapped —
    so there's no original→new flash. */
-var txtEditing=false,txtEl=null,txtRealEl=null,txtOrig='',txtOrigHtml='',txtPrevDisplay='',txtCloned=false,txtEditable=true,txtPending=null,txtRevertEl=null,txtRevertHtml='';
+var txtEditing=false,txtEl=null,txtRealEl=null,txtOrig='',txtOrigHtml='',txtPrevCss='',txtCloned=false,txtEditable=true,txtPending=null,txtRevertEl=null,txtRevertHtml='';
 /* Cap on the text we report for content-search resolution — generous enough for real
    headings/paragraphs; longer text falls back to class-anchored resolution. */
 var SS_TEXT_CAP=2000;
@@ -101,6 +101,9 @@ function pickTarget(node){return textTarget(node)||editable((node&&node.nodeType
 /* Is `el` rendered/owned by React? React tags its host DOM nodes with __reactFiber$…
    / __reactProps$… keys. Astro/plain HTML have none. */
 function isReactNode(el){if(!el)return false;for(var k in el){if(k.indexOf('__react')===0)return true;}return false;}
+/* Disable entrance animations/transitions on the editing clone and its descendants so
+   they don't replay the fade/slide-in while editing. */
+function ensureNoAnimStyle(){if(document.getElementById('ss-edit-noanim'))return;var s=document.createElement('style');s.id='ss-edit-noanim';s.textContent='[data-ss-editing],[data-ss-editing] *{animation:none!important;transition:none!important}';document.head.appendChild(s);}
 /* Finish a pending React swap: remove the kept clone and unhide the (now HMR-updated)
    real element. Safe to call anytime. */
 function finalizePending(){
@@ -108,7 +111,7 @@ function finalizePending(){
   try{if(p.observer)p.observer.disconnect();}catch(e){}
   if(p.timer)clearTimeout(p.timer);
   if(p.clone&&p.clone.parentNode)p.clone.parentNode.removeChild(p.clone);
-  if(p.real)p.real.style.display=p.prevDisplay;
+  if(p.real)p.real.style.cssText=p.prevCss;
 }
 function startText(el,x,y){
   if(txtEditing||!el)return;
@@ -118,9 +121,18 @@ function startText(el,x,y){
   if(txtCloned){
     /* React: edit a clone, hide the real element behind it (same classes ⇒ same
        position/styling). React's node is never mutated, so its reconciler is happy. */
+    var cs=getComputedStyle(el);
     var clone=el.cloneNode(true);clone.removeAttribute('id');clone.removeAttribute('data-ss-sel');
+    /* Freeze the clone at the real element's settled visual state — no replayed
+       fade/slide-in when editing starts. */
+    clone.style.animation='none';clone.style.transition='none';clone.style.opacity=cs.opacity;
+    if(cs.transform&&cs.transform!=='none')clone.style.transform=cs.transform;
+    ensureNoAnimStyle();
     el.parentNode.insertBefore(clone,el.nextSibling);
-    txtPrevDisplay=el.style.display;el.style.display='none';
+    /* Hide the real element WITHOUT display:none — toggling display would restart its
+       CSS entrance animation on restore (the exit flicker). visibility+absolute keeps
+       it silent and out of flow so the clone takes its place. */
+    txtPrevCss=el.style.cssText;el.style.visibility='hidden';el.style.position='absolute';el.style.pointerEvents='none';
     txtOrigHtml='';target=clone;
   }else{
     /* Astro/plain: edit in place (no reconciler to break); restore on cancel. */
@@ -145,7 +157,7 @@ function startText(el,x,y){
    doesn't re-enter. */
 function endText(commit){
   if(!txtEditing||!txtEl)return;
-  var target=txtEl,real=txtRealEl,orig=txtOrig,cloned=txtCloned,prevDisplay=txtPrevDisplay,origHtml=txtOrigHtml;
+  var target=txtEl,real=txtRealEl,orig=txtOrig,cloned=txtCloned,prevCss=txtPrevCss,origHtml=txtOrigHtml;
   txtEditing=false;txtEl=null;txtRealEl=null;
   hideFmtBar();
   var nv=serializeInner(target).trim();
@@ -156,16 +168,16 @@ function endText(commit){
     if(!changed){
       // nothing to save — drop clone, show original (same content, no flash)
       if(target.parentNode)target.parentNode.removeChild(target);
-      if(real)real.style.display=prevDisplay;
+      if(real)real.style.cssText=prevCss;
       window.parent.postMessage({type:'ss:textCancel'},'*');
     }else{
       /* Keep the clone (showing the NEW text) over the hidden original until HMR updates
-         the original, then swap — no original→new flash. Observe the real element for
-         React's update; fall back on a timer. */
+         the original, then swap on the next frame (so React's update has painted) —
+         no original→new flash. Fall back on a timer. */
       target.style.pointerEvents='none';
-      var p={clone:target,real:real,prevDisplay:prevDisplay,observer:null,timer:null};
+      var p={clone:target,real:real,prevCss:prevCss,observer:null,timer:null};
       txtPending=p;
-      try{p.observer=new MutationObserver(finalizePending);p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
+      try{p.observer=new MutationObserver(function(){requestAnimationFrame(finalizePending);});p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
       p.timer=setTimeout(finalizePending,2500);
       window.parent.postMessage({type:'ss:textCommit',text:nv},'*');
     }
