@@ -590,30 +590,65 @@ fn line_col(src: &str, byte: usize) -> (usize, usize) {
     (line, column)
 }
 
-/// If a `<br>` / `<br/>` / `<br ... />` tag starts at byte `at`, returns the byte
-/// just past its `>`. Case-insensitive. None if `at` isn't the start of a `<br>` tag
-/// (so `<break>` or any other element is correctly rejected).
-fn br_tag_end(src: &str, at: usize) -> Option<usize> {
-    let rest = src.get(at..)?;
-    if !rest.get(..3)?.eq_ignore_ascii_case("<br") {
+/// Inline elements allowed inside editable text — `<br>` for line breaks plus the
+/// formatting tags the rich-text toolbar can apply. Anything else (a `<div>`, an
+/// `<img>`, a component) makes the content non-editable (mixed).
+const INLINE_TAGS: &[&str] = &[
+    "br", "a", "b", "i", "em", "strong", "span", "code", "sub", "sup", "mark", "small", "u",
+];
+
+/// A parsed tag starting at some `<`.
+struct TagInfo {
+    /// Lowercased tag name.
+    name: String,
+    /// Byte offset just past the tag's `>`.
+    end: usize,
+    /// `</name>` rather than `<name>`.
+    closing: bool,
+    /// `<name/>` (or void) — opens and closes in one.
+    self_closing: bool,
+}
+
+/// Parse the tag beginning at byte `at` (which must be `<`). Naive `>`-terminated
+/// scan — fine for the inline tags we allow (their attribute values never contain a
+/// raw `>`). None if it isn't a well-formed tag start.
+fn tag_at(src: &str, at: usize) -> Option<TagInfo> {
+    let bytes = src.as_bytes();
+    if bytes.get(at) != Some(&b'<') {
         return None;
     }
-    // The char after "br" must end the tag name (whitespace, `/`, or `>`).
-    match rest.as_bytes().get(3) {
-        Some(b' ' | b'\t' | b'\n' | b'\r' | b'/' | b'>') => {}
-        _ => return None,
+    let mut i = at + 1;
+    let closing = bytes.get(i) == Some(&b'/');
+    if closing {
+        i += 1;
     }
-    let gt = rest.find('>')?;
-    Some(at + gt + 1)
+    let name_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-') {
+        i += 1;
+    }
+    if i == name_start {
+        return None; // not a tag (e.g. `<` in text — but JSX text rarely has bare `<`)
+    }
+    let name = src[name_start..i].to_ascii_lowercase();
+    let gt = src[i..].find('>')? + i;
+    let self_closing = gt > 0 && bytes[gt - 1] == b'/';
+    Some(TagInfo {
+        name,
+        end: gt + 1,
+        closing,
+        self_closing,
+    })
 }
 
 /// Scan an element's inner content starting at `run_start` (just past the opening
-/// tag's `>`). Returns the trimmed text and its byte bounds, allowing `<br>` line
-/// breaks inside. Returns None for empty/whitespace-only runs, dynamic text (`{…}`),
-/// or any nested element other than `<br>` (mixed content).
+/// tag's `>`). Returns the trimmed inner (text plus any allowed inline markup) and
+/// its byte bounds. Tracks inline-tag nesting so a `</strong>` doesn't end the run
+/// early — only a closing tag at depth 0 (the element's own) does. Returns None for
+/// empty runs, dynamic text (`{…}`), or any disallowed nested element (mixed content).
 fn scan_inner(src: &str, run_start: usize) -> Option<(String, usize, usize)> {
     let bytes = src.as_bytes();
     let mut j = run_start;
+    let mut depth: i32 = 0;
     loop {
         if j >= bytes.len() {
             return None; // unterminated
@@ -621,13 +656,21 @@ fn scan_inner(src: &str, run_start: usize) -> Option<(String, usize, usize)> {
         match bytes[j] {
             b'{' => return None, // dynamic expression
             b'<' => {
-                if src[j..].starts_with("</") {
-                    break; // the element's own closing tag — end of content
+                let t = tag_at(src, j)?; // unparseable `<` → bail (treat as non-text)
+                if t.closing {
+                    if depth == 0 {
+                        break; // closes the element we're scanning — end of content
+                    }
+                    depth -= 1; // closes a nested inline tag
+                } else {
+                    if !INLINE_TAGS.contains(&t.name.as_str()) {
+                        return None; // a block/other element → mixed content
+                    }
+                    if t.name != "br" && !t.self_closing {
+                        depth += 1;
+                    }
                 }
-                match br_tag_end(src, j) {
-                    Some(end) => j = end, // a <br> — keep going
-                    None => return None,  // some other child element — mixed
-                }
+                j = t.end;
             }
             _ => j += 1,
         }
@@ -738,18 +781,19 @@ struct TextOccurrence {
     tag: String,
 }
 
-/// Replace each `<br>` tag in `s` with a single space (leaving other text intact).
-fn strip_br_to_space(s: &str) -> String {
+/// Replace every tag in `s` (`<br>`, `<strong>`, `</a>`, …) with a single space,
+/// leaving text content intact. Used to derive a plain-text match key.
+fn strip_tags(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let (mut i, mut seg) = (0usize, 0usize);
     while i < bytes.len() {
         if bytes[i] == b'<' {
-            if let Some(end) = br_tag_end(s, i) {
+            if let Some(t) = tag_at(s, i) {
                 out.push_str(&s[seg..i]);
                 out.push(' ');
-                i = end;
-                seg = end;
+                i = t.end;
+                seg = t.end;
                 continue;
             }
         }
@@ -759,10 +803,11 @@ fn strip_br_to_space(s: &str) -> String {
     out
 }
 
-/// Normalize text for content matching: `<br>`→space, collapse all whitespace, trim,
-/// lowercase. Applied to both the element's innerText and each source literal.
+/// Normalize text for content matching: strip tags→space, collapse all whitespace,
+/// trim, lowercase. Applied to both the element's innerText and each source literal so
+/// inline formatting, line breaks, and CSS text-transform don't defeat the match.
 fn normalize_text(s: &str) -> String {
-    strip_br_to_space(s)
+    strip_tags(s)
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -971,16 +1016,16 @@ pub fn resolve_text_source(
 }
 
 /// True if `s` contains markup that would break JSX/Astro text: a `{` expression, or
-/// any `<` tag other than `<br>` (which we allow for multi-line text).
+/// any tag that isn't an allowed inline element (`<br>`, `<strong>`, `<a>`, …).
 fn has_illegal_markup(s: &str) -> bool {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
             b'{' => return true,
-            b'<' => match br_tag_end(s, i) {
-                Some(end) => i = end,
-                None => return true,
+            b'<' => match tag_at(s, i) {
+                Some(t) if INLINE_TAGS.contains(&t.name.as_str()) => i = t.end,
+                _ => return true,
             },
             _ => i += 1,
         }
@@ -1791,12 +1836,25 @@ const items = [];
         assert!(text_after_class("<h1 className=\"a\">{title}</h1>").is_none());
         // Partially dynamic.
         assert!(text_after_class("<h1 className=\"a\">Total: {n}</h1>").is_none());
-        // Element-first child (mixed content).
-        assert!(text_after_class("<p className=\"a\"><b>x</b> y</p>").is_none());
+        // A non-inline (block) child element → mixed content.
+        assert!(text_after_class("<p className=\"a\"><div>x</div> y</p>").is_none());
         // Self-closing.
         assert!(text_after_class("<img className=\"a\" />").is_none());
         // Empty.
         assert!(text_after_class("<div className=\"a\"></div>").is_none());
+    }
+
+    #[test]
+    fn text_run_keeps_inline_formatting() {
+        // Inline formatting tags are part of editable text and kept verbatim.
+        let ts = text_after_class("<p className=\"a\">Hi <em>there</em> friend</p>").unwrap();
+        assert_eq!(ts.value, "Hi <em>there</em> friend");
+        let link = text_after_class("<p className=\"a\">See <a href=\"/x\">docs</a></p>").unwrap();
+        assert_eq!(link.value, "See <a href=\"/x\">docs</a>");
+        // Nested inline tags: the inner </strong> doesn't end the run early.
+        let nested =
+            text_after_class("<p className=\"a\"><strong>Bold <em>both</em></strong></p>").unwrap();
+        assert_eq!(nested.value, "<strong>Bold <em>both</em></strong>");
     }
 
     #[test]
@@ -1850,8 +1908,8 @@ const items = [];
         let src = "<h1 className=\"hero\">Elite AI Performance.<br />Powered By Trase.</h1>";
         let ts = text_after_class(src).unwrap();
         assert_eq!(ts.value, "Elite AI Performance.<br />Powered By Trase.");
-        // …but a real nested element is still mixed content.
-        assert!(text_after_class("<h1 className=\"a\">Hi <em>there</em></h1>").is_none());
+        // A non-inline element is still mixed content.
+        assert!(text_after_class("<h1 className=\"a\">Hi <div>there</div></h1>").is_none());
         // <break> must not be mistaken for <br>.
         assert!(text_after_class("<h1 className=\"a\">x<break>y</h1>").is_none());
     }
@@ -1940,11 +1998,16 @@ const items = [];
     }
 
     #[test]
-    fn illegal_markup_allows_br_only() {
+    fn illegal_markup_allows_inline_only() {
         assert!(!has_illegal_markup("Plain text"));
         assert!(!has_illegal_markup("Line one<br />Line two"));
-        assert!(!has_illegal_markup("a<br>b<br/>c"));
-        assert!(has_illegal_markup("Has <strong>tag</strong>"));
+        assert!(!has_illegal_markup(
+            "Make it <strong>bold</strong> and <em>italic</em>"
+        ));
+        assert!(!has_illegal_markup("A <a href=\"/x\">link</a>"));
+        // Block/other elements and expressions are rejected.
+        assert!(has_illegal_markup("Has <div>block</div>"));
+        assert!(has_illegal_markup("Has <img src=\"x\">"));
         assert!(has_illegal_markup("Has {expr}"));
     }
 

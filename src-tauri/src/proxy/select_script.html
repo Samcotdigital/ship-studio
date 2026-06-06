@@ -48,21 +48,38 @@ function rebuildSheet(){var css='';for(var k in pvDecls)css+=buildCss(k);ensureS
    marker). A committed selection is kept as-is — only the live pointer is released. */
 function restoreSel(){if(curMark!==null&&pendingMark===curMark){delete pvDecls[curMark];rebuildSheet();for(var i=0;i<selectedSet.length;i++){var el=selectedSet[i];if(!el)continue;if(origClasses[i]!=null)el.setAttribute('class',origClasses[i]);el.removeAttribute('data-ss-sel');}}curMark=null;pendingMark=null;selectedSet=[];origClasses=[];}
 function snapshotOrig(){origClasses=[];for(var i=0;i<selectedSet.length;i++)origClasses.push(selectedSet[i]?selectedSet[i].getAttribute('class'):null);}
-/* An element whose children are only text and <br> nodes (with some real text) — the
-   shape we can edit in place. Anything with other nested elements or a dynamic {expr}
-   child stays style-only. */
+/* The inline elements allowed inside editable text: <br> plus the formatting tags
+   the rich-text bubble can apply. Must mirror INLINE_TAGS in edit.rs. */
+var SS_INLINE=/^(A|B|I|EM|STRONG|SPAN|CODE|SUB|SUP|MARK|SMALL|U|BR)$/;
+/* An element editable in place: real text plus only inline children (recursively).
+   Any block/other element or a dynamic {expr} child makes it style-only. */
 function isEditableText(el){
   if(!el||el.nodeType!==1||!el.childNodes.length)return false;
-  var hasText=false;
-  for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];
+  var hasText=false,ok=true;
+  (function walk(node){for(var i=0;i<node.childNodes.length;i++){var n=node.childNodes[i];
     if(n.nodeType===3){if(n.nodeValue.trim()!=='')hasText=true;}
-    else if(n.nodeName!=='BR')return false;}
-  return hasText;
+    else if(n.nodeType===1){if(!SS_INLINE.test(n.nodeName)){ok=false;return;}if(n.nodeName!=='BR')walk(n);}}})(el);
+  return ok&&hasText;
 }
-/* Serialize an editable element back to source form: text verbatim, each <br> as
-   "<br />". Enter commits, so the user never adds new breaks — only the existing
-   <br> nodes are round-tripped. */
-function serializeInner(el){var out='';for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];if(n.nodeType===3)out+=n.nodeValue;else if(n.nodeName==='BR')out+='<br />';else out+=(n.textContent||'');}return out;}
+/* Serialize an editable element to source form: text verbatim, <br> as "<br />", and
+   inline formatting normalized to <strong>/<em>/<a>/… (so execCommand's <b>/<i>
+   become semantic tags). Recurses to preserve nested formatting. */
+function serializeInner(el){
+  var out='';
+  for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];
+    if(n.nodeType===3){out+=n.nodeValue;continue;}
+    if(n.nodeType!==1)continue;
+    var t=n.nodeName;
+    if(t==='BR'){out+='<br />';continue;}
+    var inner=serializeInner(n);
+    if(t==='B'||t==='STRONG')out+='<strong>'+inner+'</strong>';
+    else if(t==='I'||t==='EM')out+='<em>'+inner+'</em>';
+    else if(t==='A')out+='<a href="'+((n.getAttribute('href')||'').replace(/"/g,'&quot;'))+'">'+inner+'</a>';
+    else if(/^(SPAN|CODE|SUB|SUP|MARK|SMALL|U)$/.test(t)){var lc=t.toLowerCase();out+='<'+lc+'>'+inner+'</'+lc+'>';}
+    else out+=(n.textContent||'');
+  }
+  return out;
+}
 /* The element to text-edit for a double-click: the nearest editable-text element at
    or above the cursor. A class is NOT required — classless tags resolve by content. */
 function textTarget(node){var el=(node&&node.nodeType===3)?node.parentElement:node;while(el&&el!==document.body){if(isEditableText(el))return el;el=el.parentElement;}return null;}
@@ -73,10 +90,12 @@ function pickTarget(node){var el=(node&&node.nodeType===3)?node.parentElement:no
 function startText(el,x,y){
   if(txtEditing||!el)return;
   txtEditing=true;txtEl=el;txtOrig=serializeInner(el);txtOrigHtml=el.innerHTML;
-  /* Re-enable selection on just this element (the doc has it off in edit mode so plain
-     clicks don't highlight), make it editable, and kill the native focus ring. */
-  el.style.userSelect='text';el.style.webkitUserSelect='text';el.style.outline='none';
-  try{el.setAttribute('contenteditable','plaintext-only');}catch(e){el.setAttribute('contenteditable','true');}
+  /* Re-enable selection + a text cursor on just this element (the doc has selection off
+     and a crosshair in edit mode), make it richly editable (so bold/italic/link work),
+     and kill the native focus ring. */
+  el.style.userSelect='text';el.style.webkitUserSelect='text';el.style.outline='none';el.style.cursor='text';
+  el.setAttribute('contenteditable','true');
+  try{document.execCommand('styleWithCSS',false,false);}catch(e){}
   el.setAttribute('data-ss-editing','1');el.focus();
   /* Drop the caret where the user double-clicked rather than selecting all the text. */
   var s=window.getSelection();s.removeAllRanges();
@@ -94,21 +113,56 @@ function startText(el,x,y){
 function endText(commit){
   if(!txtEditing||!txtEl)return;
   var el=txtEl,orig=txtOrig,origHtml=txtOrigHtml;txtEditing=false;txtEl=null;
+  hideFmtBar();
   var nv=serializeInner(el).trim();
   el.removeAttribute('contenteditable');el.removeAttribute('data-ss-editing');
-  el.style.userSelect='';el.style.webkitUserSelect='';el.style.outline='';
+  el.style.userSelect='';el.style.webkitUserSelect='';el.style.outline='';el.style.cursor='';
   lastTxtEl=el;lastTxtHtml=origHtml;
   if(commit&&nv!==''&&nv!==orig.trim()){window.parent.postMessage({type:'ss:textCommit',text:nv},'*');}
   else{el.innerHTML=origHtml;window.parent.postMessage({type:'ss:textCancel'},'*');}
   place(hoverBox,null);placeSet(); // hide blue editing box, restore orange selection box
 }
+/* ── Rich-text bubble (bold / italic / link), shown over a non-empty selection ── */
+var fmtBar=null;
+function ensureFmtBar(){
+  if(fmtBar)return fmtBar;
+  fmtBar=document.createElement('div');fmtBar.setAttribute('data-ss-overlay','1');
+  fmtBar.style.cssText='position:fixed;z-index:2147483647;display:none;align-items:center;gap:2px;padding:4px;background:#1c1c1f;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);pointer-events:auto;font-family:-apple-system,system-ui,sans-serif';
+  var defs=[['bold','B','font-weight:700'],['italic','I','font-style:italic'],['link','🔗','']];
+  for(var i=0;i<defs.length;i++){var b=document.createElement('button');b.setAttribute('data-cmd',defs[i][0]);b.textContent=defs[i][1];b.style.cssText='all:unset;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#e7e7ea;font-size:13px;'+defs[i][2];b.onmouseenter=function(){this.style.background='rgba(255,255,255,.1)';};b.onmouseleave=function(){this.style.background='';};fmtBar.appendChild(b);}
+  /* mousedown must not steal focus from the editable (that would blur→commit). */
+  fmtBar.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();},true);
+  fmtBar.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-cmd]');if(b){e.preventDefault();e.stopPropagation();applyFmt(b.getAttribute('data-cmd'));}},true);
+  document.body.appendChild(fmtBar);return fmtBar;
+}
+function hideFmtBar(){if(fmtBar)fmtBar.style.display='none';}
+function applyFmt(cmd){
+  if(!txtEditing)return;
+  if(cmd==='bold')document.execCommand('bold');
+  else if(cmd==='italic')document.execCommand('italic');
+  else if(cmd==='link'){var url=window.prompt('Link URL');if(url){url=url.trim();if(/^(https?:\/\/|mailto:|tel:|\/|#)/i.test(url))document.execCommand('createLink',false,url);}}
+  if(txtEl)place(hoverBox,txtEl);updateFmtBar();
+}
+function updateFmtBar(){
+  if(!txtEditing||!txtEl){hideFmtBar();return;}
+  var s=window.getSelection();
+  if(!s||s.isCollapsed||!s.rangeCount){hideFmtBar();return;}
+  var rng=s.getRangeAt(0);
+  if(!txtEl.contains(rng.commonAncestorContainer)){hideFmtBar();return;}
+  var rect=rng.getBoundingClientRect();if(!rect.width&&!rect.height){hideFmtBar();return;}
+  var bar=ensureFmtBar();bar.style.display='flex';
+  var bw=bar.offsetWidth||96,bh=bar.offsetHeight||34;
+  var top=rect.top-bh-8;if(top<4)top=rect.bottom+8;
+  var left=Math.max(4,Math.min(rect.left+rect.width/2-bw/2,window.innerWidth-bw-4));
+  bar.style.top=top+'px';bar.style.left=left+'px';
+}
 function onDbl(e){if(!active||txtEditing)return;var el=textTarget(e.target);if(!el||!txtEditable)return;e.preventDefault();e.stopPropagation();startText(el,e.clientX,e.clientY);}
-function onMove(e){if(!active||txtEditing)return;ensureHover();var t=pickTarget(e.target);if(t&&selectedSet.indexOf(t)!==-1)t=null;place(hoverBox,t);}
+function onMove(e){if(!active||txtEditing)return;ensureHover();var t=pickTarget(e.target);document.documentElement.style.cursor=(t&&isEditableText(t))?'text':'crosshair';if(t&&selectedSet.indexOf(t)!==-1)t=null;place(hoverBox,t);}
 function onClick(e){if(!active||txtEditing)return;var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
 function reposition(){if(txtEditing)place(hoverBox,txtEl);else if(active)placeSet();}
 window.addEventListener('message',function(e){var d=e.data||{};
 if(d.type==='ss:activate'){active=true;ensureHover();var de=document.documentElement;de.style.cursor='crosshair';de.style.userSelect='none';de.style.webkitUserSelect='none';}
-else if(d.type==='ss:deactivate'){endText(false);active=false;restoreSel();place(hoverBox,null);for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],null);var de=document.documentElement;de.style.cursor='';de.style.userSelect='';de.style.webkitUserSelect='';}
+else if(d.type==='ss:deactivate'){endText(false);hideFmtBar();active=false;restoreSel();place(hoverBox,null);for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],null);var de=document.documentElement;de.style.cursor='';de.style.userSelect='';de.style.webkitUserSelect='';}
 /* Parent's verdict on whether the current selection's text is editable in source. */
 else if(d.type==='ss:textInfo'){txtEditable=!!d.editable;}
 /* Source write was rejected — put the last-edited element's text back. */
@@ -122,14 +176,20 @@ else if(d.type==='ss:commit'){pendingMark=null;snapshotOrig();window.__ssSuppres
 document.addEventListener('mousemove',onMove,true);
 document.addEventListener('click',onClick,true);
 document.addEventListener('dblclick',onDbl,true);
-/* Enter commits, Esc reverts while inline-editing text. */
-document.addEventListener('keydown',function(e){if(!txtEditing)return;if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();endText(true);}else if(e.key==='Escape'){e.preventDefault();endText(false);}},true);
+/* Enter inserts a line break (<br>); Cmd/Ctrl+Enter commits; Esc reverts. Clicking
+   away (blur) also commits. */
+document.addEventListener('keydown',function(e){if(!txtEditing)return;
+  if(e.key==='Enter'){e.preventDefault();if(e.metaKey||e.ctrlKey){endText(true);}else{if(!document.execCommand('insertLineBreak'))document.execCommand('insertHTML',false,'<br>');place(hoverBox,txtEl);}}
+  else if(e.key==='Escape'){e.preventDefault();endText(false);}},true);
 /* Clicking away (blur) commits. */
 document.addEventListener('focusout',function(e){if(txtEditing&&e.target===txtEl)endText(true);},true);
 /* Block characters that would break JSX/Astro markup before they're typed. */
 document.addEventListener('beforeinput',function(e){if(txtEditing&&e.data&&/[<{]/.test(e.data))e.preventDefault();},true);
-/* Keep the blue editing box sized to the element as its text grows/shrinks. */
-document.addEventListener('input',function(){if(txtEditing)place(hoverBox,txtEl);},true);
+/* Paste as plain text — rich contentEditable would otherwise inject foreign markup. */
+document.addEventListener('paste',function(e){if(!txtEditing)return;e.preventDefault();var t=(e.clipboardData||window.clipboardData).getData('text/plain');if(t)document.execCommand('insertText',false,t);},true);
+/* Keep the blue editing box sized to the element, and reposition the format bubble. */
+document.addEventListener('input',function(){if(txtEditing){place(hoverBox,txtEl);updateFmtBar();}},true);
+document.addEventListener('selectionchange',function(){if(txtEditing)updateFmtBar();});
 window.addEventListener('scroll',reposition,true);
 window.addEventListener('resize',reposition,true);
 })()</script>
