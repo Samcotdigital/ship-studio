@@ -110,6 +110,7 @@ function finalizePending(){
   if(!txtPending)return;var p=txtPending;txtPending=null;
   try{if(p.observer)p.observer.disconnect();}catch(e){}
   if(p.timer)clearTimeout(p.timer);
+  if(p.debounce)clearTimeout(p.debounce);
   if(p.clone&&p.clone.parentNode)p.clone.parentNode.removeChild(p.clone);
   if(p.real)p.real.style.cssText=p.prevCss;
 }
@@ -175,9 +176,11 @@ function endText(commit){
          the original, then swap on the next frame (so React's update has painted) —
          no original→new flash. Fall back on a timer. */
       target.style.pointerEvents='none';
-      var p={clone:target,real:real,prevCss:prevCss,observer:null,timer:null};
+      var p={clone:target,real:real,prevCss:prevCss,observer:null,timer:null,debounce:null};
       txtPending=p;
-      try{p.observer=new MutationObserver(function(){requestAnimationFrame(finalizePending);});p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
+      /* Swap only once React's update settles: debounce on its mutations (each one
+         resets a short timer), then swap on the next painted frame. */
+      try{p.observer=new MutationObserver(function(){if(p.debounce)clearTimeout(p.debounce);p.debounce=setTimeout(function(){requestAnimationFrame(finalizePending);},50);});p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
       p.timer=setTimeout(finalizePending,2500);
       window.parent.postMessage({type:'ss:textCommit',text:nv},'*');
     }
