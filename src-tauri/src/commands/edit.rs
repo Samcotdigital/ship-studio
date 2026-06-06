@@ -1052,6 +1052,18 @@ fn has_illegal_markup(s: &str) -> bool {
     false
 }
 
+/// The in-iframe serializer emits inline markup with the DOM attribute `class`, but
+/// JSX/TSX source needs `className`. Convert so re-inserted inline elements (a bolded
+/// span, a styled link) keep their classes. Astro templates use `class` — left as-is.
+fn jsxify_class_attr(text: &str, file: &str) -> String {
+    let ext = file.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    if ext == "tsx" || ext == "jsx" {
+        text.replace(" class=\"", " className=\"")
+    } else {
+        text.to_string()
+    }
+}
+
 /// Surgically replace one static text run's value, after verifying the current text
 /// still equals `old_text` (drift guard). The `column` pins the exact run when an
 /// identical text appears more than once on the same line. Only the trimmed run is
@@ -1074,6 +1086,8 @@ pub fn apply_text_edit(
                 .into(),
         });
     }
+    // DOM serialization uses `class`; JSX needs `className`.
+    let new_text = jsxify_class_attr(&new_text, &file);
     let root = validate_project_path(&project_path)?;
     let abs = root.join(&file);
     // Defense in depth: the edited file must stay inside the project.
@@ -2030,6 +2044,25 @@ const items = [];
             resolve_text_by_content(&[], &texts, &sig),
             TextResolution::ReadOnly { .. }
         ));
+    }
+
+    #[test]
+    fn jsxify_class_attr_maps_class_for_jsx_only() {
+        // JSX/TSX: class -> className so re-inserted inline elements keep their styling.
+        assert_eq!(
+            jsxify_class_attr("a <span class=\"x y\">b</span>", "page.tsx"),
+            "a <span className=\"x y\">b</span>"
+        );
+        assert_eq!(
+            jsxify_class_attr("<a href=\"/x\" class=\"btn\">go</a>", "Hero.jsx"),
+            "<a href=\"/x\" className=\"btn\">go</a>"
+        );
+        // Astro keeps `class`; plain text is untouched.
+        assert_eq!(
+            jsxify_class_attr("<span class=\"x\">b</span>", "index.astro"),
+            "<span class=\"x\">b</span>"
+        );
+        assert_eq!(jsxify_class_attr("just text", "page.tsx"), "just text");
     }
 
     #[test]

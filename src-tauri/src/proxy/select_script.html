@@ -73,6 +73,10 @@ function isEditableText(el){
 /* Serialize an editable element to source form: text verbatim, <br> as "<br />", and
    inline formatting normalized to <strong>/<em>/<a>/… (so execCommand's <b>/<i>
    become semantic tags). Recurses to preserve nested formatting. */
+/* Serialize an element's attributes back to source, verbatim (so a nested element's
+   class/href/etc. survive a save). Our own editing attributes are skipped. The DOM
+   uses `class`; the Rust write-back maps it to `className` for JSX files. */
+function serializeAttrs(el){var s='';for(var i=0;i<el.attributes.length;i++){var a=el.attributes[i];if(a.name==='contenteditable'||a.name==='data-ss-editing'||a.name==='data-ss-sel')continue;s+=' '+a.name+'="'+String(a.value).replace(/"/g,'&quot;')+'"';}return s;}
 function serializeInner(el){
   var out='';
   for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];
@@ -80,12 +84,9 @@ function serializeInner(el){
     if(n.nodeType!==1)continue;
     var t=n.nodeName;
     if(t==='BR'){out+='<br />';continue;}
-    var inner=serializeInner(n);
-    if(t==='B'||t==='STRONG')out+='<strong>'+inner+'</strong>';
-    else if(t==='I'||t==='EM')out+='<em>'+inner+'</em>';
-    else if(t==='A')out+='<a href="'+((n.getAttribute('href')||'').replace(/"/g,'&quot;'))+'">'+inner+'</a>';
-    else if(/^(SPAN|CODE|SUB|SUP|MARK|SMALL|U)$/.test(t)){var lc=t.toLowerCase();out+='<'+lc+'>'+inner+'</'+lc+'>';}
-    else out+=(n.textContent||'');
+    // Normalize execCommand's <b>/<i> to semantic tags; keep all other inline tags as-is.
+    var name=(t==='B'?'strong':t==='I'?'em':t.toLowerCase());
+    out+='<'+name+serializeAttrs(n)+'>'+serializeInner(n)+'</'+name+'>';
   }
   return out;
 }
@@ -100,7 +101,7 @@ function textTarget(node){var el=(node&&node.nodeType===3)?node.parentElement:no
 function pickTarget(node){return textTarget(node)||editable((node&&node.nodeType===3)?node.parentElement:node);}
 /* Is `el` rendered/owned by React? React tags its host DOM nodes with __reactFiber$…
    / __reactProps$… keys. Astro/plain HTML have none. */
-function isReactNode(el){if(!el)return false;for(var k in el){if(k.indexOf('__react')===0)return true;}return false;}
+function isReactNode(el){if(!el)return false;var ks=Object.getOwnPropertyNames(el);for(var i=0;i<ks.length;i++){if(ks[i].indexOf('__react')===0)return true;}return false;}
 /* Disable entrance animations/transitions on the editing clone and its descendants so
    they don't replay the fade/slide-in while editing. */
 function ensureNoAnimStyle(){if(document.getElementById('ss-edit-noanim'))return;var s=document.createElement('style');s.id='ss-edit-noanim';s.textContent='[data-ss-editing],[data-ss-editing] *{animation:none!important;transition:none!important}';document.head.appendChild(s);}
@@ -110,7 +111,6 @@ function finalizePending(){
   if(!txtPending)return;var p=txtPending;txtPending=null;
   try{if(p.observer)p.observer.disconnect();}catch(e){}
   if(p.timer)clearTimeout(p.timer);
-  if(p.debounce)clearTimeout(p.debounce);
   if(p.clone&&p.clone.parentNode)p.clone.parentNode.removeChild(p.clone);
   if(p.real)p.real.style.cssText=p.prevCss;
   placeSet(); // re-snap the selection box to the now-restored real element
@@ -121,20 +121,22 @@ function startText(el,x,y){
   txtEditing=true;txtRealEl=el;txtCloned=isReactNode(el);
   var target;
   if(txtCloned){
-    /* React: edit a clone, hide the real element behind it (same classes ⇒ same
-       position/styling). React's node is never mutated, so its reconciler is happy. */
-    var cs=getComputedStyle(el);
+    /* React: edit a body-level clone overlaid on the real element. The clone lives on
+       <body>, NOT inside React's managed parent, so React's reconciler never sees a
+       foreign child. The real element stays in flow but visibility:hidden — it holds
+       its layout (no shift) and its CSS animation doesn't restart (display isn't
+       toggled). The clone carries the real element's inherited typography so it matches
+       even outside its original DOM context. */
+    var rect=el.getBoundingClientRect(),cs=getComputedStyle(el);
     var clone=el.cloneNode(true);clone.removeAttribute('id');clone.removeAttribute('data-ss-sel');
-    /* Freeze the clone at the real element's settled visual state — no replayed
-       fade/slide-in when editing starts. */
+    clone.style.position='absolute';clone.style.left=(rect.left+window.scrollX)+'px';clone.style.top=(rect.top+window.scrollY)+'px';clone.style.width=rect.width+'px';clone.style.margin='0';clone.style.zIndex='2147483646';
+    var inherit=['fontFamily','fontSize','fontWeight','fontStyle','fontVariant','lineHeight','letterSpacing','wordSpacing','textAlign','textTransform','textIndent','whiteSpace','color','direction','boxSizing','padding'];
+    for(var ci=0;ci<inherit.length;ci++)clone.style[inherit[ci]]=cs[inherit[ci]];
     clone.style.animation='none';clone.style.transition='none';clone.style.opacity=cs.opacity;
     if(cs.transform&&cs.transform!=='none')clone.style.transform=cs.transform;
     ensureNoAnimStyle();
-    el.parentNode.insertBefore(clone,el.nextSibling);
-    /* Hide the real element WITHOUT display:none — toggling display would restart its
-       CSS entrance animation on restore (the exit flicker). visibility+absolute keeps
-       it silent and out of flow so the clone takes its place. */
-    txtPrevCss=el.style.cssText;el.style.visibility='hidden';el.style.position='absolute';el.style.pointerEvents='none';
+    document.body.appendChild(clone);
+    txtPrevCss=el.style.cssText;el.style.visibility='hidden';
     txtOrigHtml='';target=clone;
   }else{
     /* Astro/plain: edit in place (no reconciler to break); restore on cancel. */
@@ -177,12 +179,13 @@ function endText(commit){
          the original, then swap on the next frame (so React's update has painted) —
          no original→new flash. Fall back on a timer. */
       target.style.pointerEvents='none';
-      var p={clone:target,real:real,prevCss:prevCss,observer:null,timer:null,debounce:null};
+      var p={clone:target,real:real,prevCss:prevCss,nv:nv,observer:null,timer:null};
       txtPending=p;
-      /* Swap only once React's update settles: debounce on its mutations (each one
-         resets a short timer), then swap on the next painted frame. */
-      try{p.observer=new MutationObserver(function(){if(p.debounce)clearTimeout(p.debounce);p.debounce=setTimeout(function(){requestAnimationFrame(finalizePending);},50);});p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
-      p.timer=setTimeout(finalizePending,2500);
+      /* Swap only once the real element ACTUALLY shows the new text (HMR applied our
+         change) — ignores unrelated descendant mutations and never swaps to stale text.
+         The timer is a pure leak-guard for the rare case HMR never lands. */
+      try{p.observer=new MutationObserver(function(){try{if(serializeInner(real).trim()===p.nv)requestAnimationFrame(finalizePending);}catch(e){}});p.observer.observe(real,{childList:true,subtree:true,characterData:true});}catch(e){}
+      p.timer=setTimeout(finalizePending,8000);
       window.parent.postMessage({type:'ss:textCommit',text:nv},'*');
     }
   }else{
