@@ -64,6 +64,13 @@ var SS_INLINE=/^(A|B|I|EM|STRONG|SPAN|CODE|SUB|SUP|MARK|SMALL|U|BR)$/;
    Any block/other element or a dynamic {expr} child makes it style-only. */
 function isEditableText(el){
   if(!el||el.nodeType!==1||!el.childNodes.length)return false;
+  /* A layout container of multiple element children with no direct text (e.g. a flex
+     row of two buttons) is not a text block — don't scoop it up as one editable run. */
+  var topEls=0,topText=false;
+  for(var i=0;i<el.childNodes.length;i++){var c=el.childNodes[i];
+    if(c.nodeType===3){if(c.nodeValue.trim()!=='')topText=true;}
+    else if(c.nodeType===1&&c.nodeName!=='BR')topEls++;}
+  if(topEls>=2&&!topText)return false;
   var hasText=false,ok=true;
   (function walk(node){for(var i=0;i<node.childNodes.length;i++){var n=node.childNodes[i];
     if(n.nodeType===3){if(n.nodeValue.trim()!=='')hasText=true;}
@@ -288,7 +295,10 @@ document.addEventListener('dblclick',onDbl,true);
 /* Enter inserts a line break (<br>); Cmd/Ctrl+Enter commits; Esc reverts. Clicking
    away (blur) also commits. */
 document.addEventListener('keydown',function(e){if(!txtEditing)return;
-  if(e.key==='Enter'){e.preventDefault();if(e.metaKey||e.ctrlKey){endText(true);}else{if(!document.execCommand('insertLineBreak'))document.execCommand('insertHTML',false,'<br>');place(hoverBox,txtEl);}}
+  var mod=e.metaKey||e.ctrlKey;
+  if(mod&&(e.key==='z'||e.key==='Z')){e.preventDefault();document.execCommand(e.shiftKey?'redo':'undo');place(hoverBox,txtEl);return;}
+  if(mod&&(e.key==='y'||e.key==='Y')){e.preventDefault();document.execCommand('redo');place(hoverBox,txtEl);return;}
+  if(e.key==='Enter'){e.preventDefault();if(mod){endText(true);}else{if(!document.execCommand('insertLineBreak'))document.execCommand('insertHTML',false,'<br>');place(hoverBox,txtEl);}}
   else if(e.key==='Escape'){e.preventDefault();endText(false);}},true);
 /* Clicking away commits — but not when focus moves into the format bubble (e.g. the
    link input) and not while the href is being edited. */

@@ -663,16 +663,65 @@ fn tag_at(src: &str, at: usize) -> Option<TagInfo> {
 /// its byte bounds. Tracks inline-tag nesting so a `</strong>` doesn't end the run
 /// early — only a closing tag at depth 0 (the element's own) does. Returns None for
 /// empty runs, dynamic text (`{…}`), or any disallowed nested element (mixed content).
+/// If a JSX expression beginning at `{` (byte `at`) is a pure string literal —
+/// `{" "}`, `{'text'}`, `` {`text`} `` with no `${…}` interpolation — return the byte
+/// just past its `}`. These render to static text, so they don't disqualify a run.
+/// None for any other expression (variable, call, interpolation).
+fn string_expr_end(src: &str, at: usize) -> Option<usize> {
+    let bytes = src.as_bytes();
+    let mut i = at + 1;
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
+        i += 1;
+    }
+    let q = *bytes.get(i)?;
+    if q != b'"' && q != b'\'' && q != b'`' {
+        return None;
+    }
+    i += 1;
+    let mut closed = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if q == b'`' && b == b'$' && bytes.get(i + 1) == Some(&b'{') {
+            return None; // template interpolation — dynamic
+        }
+        if b == b'\\' {
+            i += 2;
+            continue;
+        }
+        if b == q {
+            i += 1;
+            closed = true;
+            break;
+        }
+        i += 1;
+    }
+    if !closed {
+        return None;
+    }
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
+        i += 1;
+    }
+    (bytes.get(i) == Some(&b'}')).then_some(i + 1)
+}
+
 fn scan_inner(src: &str, run_start: usize) -> Option<(String, usize, usize)> {
     let bytes = src.as_bytes();
     let mut j = run_start;
     let mut depth: i32 = 0;
+    // Top-level (depth-0) element count and whether there's any direct text — a run
+    // with several element children and no direct text is a layout container (e.g. a
+    // flex row of buttons), not a text block, so it's not editable as one run.
+    let mut top_elems = 0usize;
+    let mut top_text = false;
     loop {
         if j >= bytes.len() {
             return None; // unterminated
         }
         match bytes[j] {
-            b'{' => return None, // dynamic expression
+            b'{' => match string_expr_end(src, j) {
+                Some(end) => j = end, // a string-literal expression like {" "} — static
+                None => return None,  // a real (dynamic) expression
+            },
             b'<' => {
                 let t = tag_at(src, j)?; // unparseable `<` → bail (treat as non-text)
                 if t.closing {
@@ -687,14 +736,26 @@ fn scan_inner(src: &str, run_start: usize) -> Option<(String, usize, usize)> {
                     if src[j..t.end].contains('{') {
                         return None; // dynamic attribute (e.g. <a href={url}>) — not static
                     }
+                    if depth == 0 && t.name != "br" {
+                        top_elems += 1;
+                    }
                     if t.name != "br" && !t.self_closing {
                         depth += 1;
                     }
                 }
                 j = t.end;
             }
-            _ => j += 1,
+            b' ' | b'\t' | b'\n' | b'\r' => j += 1,
+            _ => {
+                if depth == 0 {
+                    top_text = true;
+                }
+                j += 1;
+            }
         }
+    }
+    if top_elems >= 2 && !top_text {
+        return None; // layout container, not a text element
     }
     let run = &src[run_start..j];
     let trimmed = run.trim();
@@ -827,8 +888,92 @@ fn strip_tags(s: &str) -> String {
 /// Normalize text for content matching: strip tags→space, collapse all whitespace,
 /// trim, lowercase. Applied to both the element's innerText and each source literal so
 /// inline formatting, line breaks, and CSS text-transform don't defeat the match.
+/// Replace pure string-literal JSX expressions (`{" "}`, `{'x'}`) with their inner
+/// text, so source matches the rendered DOM. Other `{…}` are left as-is. Copies
+/// slices (UTF-8 safe); `{` only ever appears as a standalone ASCII byte.
+fn replace_string_exprs(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut i, mut seg) = (0usize, 0usize);
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            if let Some(end) = string_expr_end(s, i) {
+                out.push_str(&s[seg..i]);
+                let inner = &s[i..end];
+                if let (Some(a), Some(b)) =
+                    (inner.find(['"', '\'', '`']), inner.rfind(['"', '\'', '`']))
+                {
+                    if b > a {
+                        out.push_str(&inner[a + 1..b]);
+                    }
+                }
+                i = end;
+                seg = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&s[seg..]);
+    out
+}
+
+/// Decode the handful of HTML entities common in prose so encoded source matches the
+/// rendered DOM (innerText gives the real character). Covers named essentials plus
+/// numeric (`&#8212;`). Copies slices (UTF-8 safe).
+fn decode_entities(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut i, mut seg) = (0usize, 0usize);
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            if let Some(semi) = s[i..].find(';').map(|p| i + p) {
+                if semi - i <= 10 {
+                    let ch = match &s[i + 1..semi] {
+                        "amp" => Some('&'),
+                        "lt" => Some('<'),
+                        "gt" => Some('>'),
+                        "quot" => Some('"'),
+                        "apos" | "#39" => Some('\''),
+                        "nbsp" | "#160" => Some(' '),
+                        "mdash" | "#8212" => Some('—'),
+                        "ndash" | "#8211" => Some('–'),
+                        "hellip" | "#8230" => Some('…'),
+                        "rsquo" | "#8217" => Some('’'),
+                        "lsquo" | "#8216" => Some('‘'),
+                        "rdquo" | "#8221" => Some('”'),
+                        "ldquo" | "#8220" => Some('“'),
+                        "copy" => Some('©'),
+                        "reg" => Some('®'),
+                        "trade" => Some('™'),
+                        "deg" => Some('°'),
+                        ent => ent
+                            .strip_prefix('#')
+                            .and_then(|n| n.parse::<u32>().ok())
+                            .and_then(char::from_u32),
+                    };
+                    if let Some(c) = ch {
+                        out.push_str(&s[seg..i]);
+                        out.push(c);
+                        i = semi + 1;
+                        seg = i;
+                        continue;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&s[seg..]);
+    out
+}
+
+/// Normalize text for content matching: decode string-expressions + HTML entities,
+/// strip tags→space, `<br>`→space, collapse whitespace, trim, lowercase — so an
+/// element's rendered innerText matches the encoded source literal.
 fn normalize_text(s: &str) -> String {
-    strip_tags(s)
+    let decoded = decode_entities(&strip_tags(&replace_string_exprs(s)));
+    decoded
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -2044,6 +2189,41 @@ const items = [];
             resolve_text_by_content(&[], &texts, &sig),
             TextResolution::ReadOnly { .. }
         ));
+    }
+
+    #[test]
+    fn text_run_rejects_multi_element_container() {
+        // A flex row of two buttons (two element children, no direct text) is a layout
+        // container, not an editable text block.
+        assert!(text_after_class(
+            "<div className=\"flex\"><a href=\"/a\">One</a><a href=\"/b\">Two</a></div>"
+        )
+        .is_none());
+        // But prose with multiple inline links (has direct text) stays editable.
+        assert!(text_after_class(
+            "<p className=\"x\">See <a href=\"/a\">one</a> or <a href=\"/b\">two</a></p>"
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn text_run_allows_string_literal_expression() {
+        // {" "} is static text, not a dynamic expression — the run stays editable.
+        let ts = text_after_class("<p className=\"x\">Hello{\" \"}world</p>").unwrap();
+        assert_eq!(ts.value, "Hello{\" \"}world");
+        // A real expression still disqualifies it.
+        assert!(text_after_class("<p className=\"x\">Hello {name}</p>").is_none());
+    }
+
+    #[test]
+    fn normalize_matches_entities_and_string_exprs() {
+        // Rendered innerText (decoded, real spaces) matches encoded source.
+        assert_eq!(
+            normalize_text("right rep &mdash; based{\" \"}on intent"),
+            normalize_text("right rep — based on intent")
+        );
+        assert_eq!(normalize_text("Tom &amp; Jerry"), "tom & jerry");
+        assert_eq!(normalize_text("a &#8212; b"), "a — b");
     }
 
     #[test]
