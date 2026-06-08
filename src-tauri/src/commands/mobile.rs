@@ -375,20 +375,31 @@ pub fn reap_orphaned_serve_sim() {
 /// simulator, based on the project type. Reads project files (not pure) and is
 /// unit-tested via `build_launch_command`; the frontend runs the returned
 /// command in the embedded `BuildTerminal` (a backend `pty_session`).
-fn build_launch_command(project_path: &std::path::Path, udid: &str) -> Option<String> {
+fn build_launch_command(
+    project_path: &std::path::Path,
+    platform: crate::state::Platform,
+    device_id: &str,
+) -> Option<String> {
     use crate::commands::projects::{detect_project_type, is_expo_project};
+    use crate::state::Platform;
     match detect_project_type(project_path) {
-        crate::types::ProjectType::Flutter => Some(format!("flutter run -d {udid}")),
+        // `flutter run -d <id>` targets by device id on both platforms (UDID / serial).
+        crate::types::ProjectType::Flutter => Some(format!("flutter run -d {device_id}")),
         crate::types::ProjectType::Reactnative => {
-            // Expo apps build/launch via `expo run:ios`; bare RN via the RN CLI.
-            // Both target the specific booted device by udid. `--yes` stops npx
-            // from prompting "Ok to proceed?" (which would hang the read-only
-            // build log) when a package isn't present locally.
-            if is_expo_project(project_path) {
-                Some(format!("npx --yes expo run:ios --device {udid}"))
-            } else {
-                Some(format!("npx --yes react-native run-ios --udid {udid}"))
-            }
+            // Expo builds via `run:ios`/`run:android`; bare RN via the RN CLI. iOS
+            // targets the specific device by id; Android `run:android`/`run-android`
+            // target the single booted emulator (we boot exactly one, like iOS).
+            // `--yes` stops npx prompting "Ok to proceed?" (which would hang the
+            // read-only build log) when a package isn't present locally.
+            let expo = is_expo_project(project_path);
+            Some(match (platform, expo) {
+                (Platform::Ios, true) => format!("npx --yes expo run:ios --device {device_id}"),
+                (Platform::Ios, false) => {
+                    format!("npx --yes react-native run-ios --udid {device_id}")
+                }
+                (Platform::Android, true) => "npx --yes expo run:android".to_string(),
+                (Platform::Android, false) => "npx --yes react-native run-android".to_string(),
+            })
         }
         _ => None,
     }
@@ -400,12 +411,13 @@ fn build_launch_command(project_path: &std::path::Path, udid: &str) -> Option<St
 #[tracing::instrument]
 pub async fn get_simulator_launch_command(
     project_path: String,
+    platform: crate::state::Platform,
     udid: String,
 ) -> Result<String, CommandError> {
     let project = crate::utils::validate_project_path(&project_path)?;
     let workspace = crate::utils::resolve_workspace_path(&project);
-    build_launch_command(&workspace, &udid)
-        .ok_or_else(|| "This project type can't be launched on a simulator yet.".into())
+    build_launch_command(&workspace, platform, &udid)
+        .ok_or_else(|| "This project type can't be launched on this device yet.".into())
 }
 
 /// Kill the serve-sim daemon for one device (best-effort; ignores non-zero exit).
@@ -707,6 +719,7 @@ async fn establish_mirror(
     crate::state::register_mobile_session(
         project_path.to_string(),
         crate::state::MobileSession {
+            platform: crate::state::Platform::Ios,
             udid: udid.to_string(),
             booted_by_us,
             serve_sim_port: info.port,
@@ -738,8 +751,15 @@ async fn establish_mirror(
 pub async fn start_mobile_preview(
     project_path: String,
     window_label: String,
+    platform: crate::state::Platform,
     preferred: Option<String>,
 ) -> Result<MirrorInfo, CommandError> {
+    // Android boot + mirror transport (emulator + scrcpy bridge) land in a later
+    // phase; iOS is the supported path today. Routing here keeps the seam explicit.
+    if platform == crate::state::Platform::Android {
+        return Err("Android preview is coming soon.".into());
+    }
+
     // Serialize per project so two concurrent starts can't both boot a sim.
     let lock = crate::state::boot_lock_for(&project_path);
     let _guard = lock.lock().await;
@@ -947,10 +967,11 @@ mod tests {
 
     #[test]
     fn build_launch_command_for_expo_flutter_and_unsupported() {
+        use crate::state::Platform::{Android, Ios};
         use std::fs;
         use tempfile::TempDir;
 
-        // Expo
+        // Expo — iOS targets by device, Android runs on the single booted emulator.
         let expo = TempDir::new().unwrap();
         fs::write(
             expo.path().join("package.json"),
@@ -958,8 +979,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            build_launch_command(expo.path(), "UDID").as_deref(),
+            build_launch_command(expo.path(), Ios, "UDID").as_deref(),
             Some("npx --yes expo run:ios --device UDID")
+        );
+        assert_eq!(
+            build_launch_command(expo.path(), Android, "EMU").as_deref(),
+            Some("npx --yes expo run:android")
         );
 
         // Bare React Native (metro, no expo)
@@ -971,11 +996,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            build_launch_command(rn.path(), "UDID").as_deref(),
+            build_launch_command(rn.path(), Ios, "UDID").as_deref(),
             Some("npx --yes react-native run-ios --udid UDID")
         );
+        assert_eq!(
+            build_launch_command(rn.path(), Android, "EMU").as_deref(),
+            Some("npx --yes react-native run-android")
+        );
 
-        // Flutter
+        // Flutter — `-d <id>` works for both platforms (UDID / emulator serial).
         let flutter = TempDir::new().unwrap();
         fs::write(
             flutter.path().join("pubspec.yaml"),
@@ -983,14 +1012,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            build_launch_command(flutter.path(), "X").as_deref(),
+            build_launch_command(flutter.path(), Ios, "X").as_deref(),
             Some("flutter run -d X")
         );
+        assert_eq!(
+            build_launch_command(flutter.path(), Android, "emulator-5554").as_deref(),
+            Some("flutter run -d emulator-5554")
+        );
 
-        // Unsupported (plain web)
+        // Unsupported (plain web) — neither platform.
         let web = TempDir::new().unwrap();
         fs::write(web.path().join("next.config.js"), "module.exports={}").unwrap();
-        assert_eq!(build_launch_command(web.path(), "X"), None);
+        assert_eq!(build_launch_command(web.path(), Ios, "X"), None);
+        assert_eq!(build_launch_command(web.path(), Android, "X"), None);
     }
 
     #[test]

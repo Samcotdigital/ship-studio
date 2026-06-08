@@ -124,7 +124,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
     const resolveBuild = async (udid: string) => {
       let cmd: string;
       try {
-        cmd = await getSimulatorLaunchCommand(projectPath, udid);
+        cmd = await getSimulatorLaunchCommand(projectPath, 'ios', udid);
       } catch {
         if (!cancelled) setLaunchStatus('unsupported');
         return;
@@ -156,7 +156,8 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
       setBuildAlive(false);
       try {
         logger.info('[DeviceMirror] starting backend mobile preview');
-        const info = await startMobilePreview(projectPath, getWindowLabel());
+        // Phase 5 swaps this fixed 'ios' for the platform the user selects.
+        const info = await startMobilePreview(projectPath, getWindowLabel(), 'ios');
         if (cancelled) return;
         logger.info('[DeviceMirror] preview started', { stream: info.stream_url });
         channel = connectInputChannel(info.ws_url);

@@ -13,6 +13,10 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+/** Which mobile platform a preview targets. Serializes to the Rust `Platform`
+ *  enum (`"ios"` / `"android"`). */
+export type Platform = 'ios' | 'android';
+
 /** A booted iOS simulator that can be mirrored. */
 export interface MobileSimulator {
   udid: string;
@@ -63,12 +67,13 @@ export async function hideSimulator(): Promise<void> {
   return invoke<void>('hide_simulator');
 }
 
-/** The command that launches the project's app onto a booted simulator. */
+/** The command that launches the project's app onto a booted device. */
 export async function getSimulatorLaunchCommand(
   projectPath: string,
+  platform: Platform,
   udid: string
 ): Promise<string> {
-  return invoke<string>('get_simulator_launch_command', { projectPath, udid });
+  return invoke<string>('get_simulator_launch_command', { projectPath, platform, udid });
 }
 
 /**
@@ -82,11 +87,13 @@ export async function getSimulatorLaunchCommand(
 export async function startMobilePreview(
   projectPath: string,
   windowLabel: string,
+  platform: Platform,
   preferred?: string
 ): Promise<MirrorInfo> {
   return invoke<MirrorInfo>('start_mobile_preview', {
     projectPath,
     windowLabel,
+    platform,
     preferred: preferred ?? null,
   });
 }
