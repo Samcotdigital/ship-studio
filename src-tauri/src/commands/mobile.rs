@@ -24,6 +24,9 @@ const SERVE_SIM_TIMEOUT_SECS: u64 = 90;
 /// Booting a cold simulator can take a while; `bootstatus -b` blocks until the
 /// device is fully ready, so give it room.
 const BOOT_WAIT_TIMEOUT_SECS: u64 = 150;
+/// A one-shot AppleScript (e.g. hiding Simulator.app) should be near-instant;
+/// cap it low so a wedged osascript can't stall the caller.
+const OSASCRIPT_TIMEOUT_SECS: u64 = 5;
 
 /// A booted iOS simulator that can be mirrored.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -267,6 +270,105 @@ pub async fn list_booted_simulators() -> Result<Vec<MobileSimulator>, CommandErr
     let sims = parse_booted_simulators(&stdout)?;
     tracing::info!("list_booted_simulators: {} booted", sims.len());
     Ok(sims)
+}
+
+/// Whether a user-facing app is currently running on the booted simulator.
+///
+/// This is the ground-truth "did the app launch" signal, and crucially it is
+/// independent of *which* process built it. Ship Studio's embedded BuildTerminal
+/// only sees its own build; when the user hands a failed build to the agent, the
+/// agent rebuilds in its OWN terminal, invisible to the build-log classifier. The
+/// preview panel polls this so it can resolve from "failed" to "launched" after an
+/// out-of-band rebuild instead of staying stuck on a stale failure.
+///
+/// A launched UIKit app appears in the simulator's launchd as
+/// `UIKitApplication:<bundle-id>`; SpringBoard and system daemons do not.
+///
+/// When `bundle_id` is known (the frontend parses it from the build log) we match
+/// it exactly — unambiguous even on a simulator the user pre-booted with other
+/// apps. When it isn't, we fall back to "any non-Apple UIKit app", which is
+/// reliable on a sim WE booted (the project's app is the only third-party app) but
+/// can false-positive on a pre-booted sim that already has another third-party app
+/// running. Either way Apple's own UIKit apps (Safari = `com.apple.mobilesafari`,
+/// etc.) are excluded.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn simulator_app_running(
+    udid: String,
+    bundle_id: Option<String>,
+) -> Result<bool, CommandError> {
+    let stdout = simctl_stdout(
+        &["spawn", udid.as_str(), "launchctl", "list"],
+        "xcrun simctl spawn launchctl list",
+        SIMCTL_TIMEOUT_SECS,
+    )
+    .await?;
+    let running = match bundle_id.as_deref() {
+        Some(id) => stdout.contains(&format!("UIKitApplication:{id}")),
+        None => stdout
+            .lines()
+            .any(|l| l.contains("UIKitApplication:") && !l.contains("UIKitApplication:com.apple.")),
+    };
+    Ok(running)
+}
+
+/// Hide the iOS Simulator's GUI window.
+///
+/// We boot the simulator headlessly (`simctl boot`) and mirror it via serve-sim's
+/// framebuffer capture, so Simulator.app's window is never needed — but the build
+/// tool (`expo run:ios` / `react-native run-ios`) opens and foregrounds it, where it
+/// lands on top of Ship Studio. Hiding the app (AppleScript, like Cmd+H) keeps the
+/// simulator booted and the mirror live while getting the window out of the way.
+///
+/// Best-effort: if Simulator isn't running, or the user hasn't granted automation
+/// permission, this is a no-op — the window simply stays, exactly as before.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn hide_simulator() -> Result<(), CommandError> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = create_command("osascript");
+        cmd.args([
+            "-e",
+            "tell application \"System Events\" to set visible of process \"Simulator\" to false",
+        ]);
+        // Ignore the result entirely — a missing process or denied automation
+        // permission must not surface as a preview error.
+        let _ = crate::external_command::run_with_timeout(
+            tokio::process::Command::from(cmd),
+            "osascript hide Simulator",
+            OSASCRIPT_TIMEOUT_SECS,
+        )
+        .await;
+    }
+    Ok(())
+}
+
+/// Reap orphaned serve-sim mirror daemons left by a previous hard crash.
+///
+/// serve-sim runs with `--detach`, reparenting to launchd (ppid 1). On a clean exit
+/// we kill it via the session registry, but a hard crash (SIGKILL / force-quit)
+/// leaves the daemon running — pinning its port (base 3100) and forcing every later
+/// start onto an ever-higher orphan port, one new orphan per crash. The in-memory
+/// registry is empty after a restart, so the only way to find these is by process.
+/// A freshly-started app owns no mirror, so any orphaned (ppid == 1) serve-sim is
+/// safe to reap. Best-effort, synchronous, called once at startup.
+#[cfg(target_os = "macos")]
+pub fn reap_orphaned_serve_sim() {
+    // Match `serve-sim … --detach` specifically — the exact shape WE spawn
+    // (spawn_serve_sim always passes `--detach`) — so we don't kill a bare
+    // `serve-sim` a user launched by hand. ppid == 1 means reparented to launchd,
+    // i.e. a detached daemon whose owner died; it also spares this very `sh` (its
+    // parent is us, not launchd) and any serve-sim a live process still manages.
+    let script = r#"
+        for pid in $(pgrep -f 'serve-sim.*--detach' 2>/dev/null); do
+            ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+            if [ "$ppid" = "1" ]; then
+                kill "$pid" 2>/dev/null
+            fi
+        done
+    "#;
+    let _ = create_command("sh").args(["-c", script]).output();
 }
 
 /// Determine the command that launches the project's app onto a booted
@@ -584,13 +686,17 @@ async fn establish_mirror(
         }
     };
 
-    // serve-sim may have stepped past our reserved port — re-key the reservation
-    // to the port it actually bound so dev servers avoid it.
-    let mut port_was_reserved = true;
-    if info.port != reserved && !crate::state::reserve_port(window_label, project_path, info.port) {
+    // serve-sim may have stepped past our reserved port (ours got grabbed by a
+    // non-Ship-Studio process between reserve and bind). serve-sim physically owns
+    // the port it bound, so re-key our reservation to it — never leave a live mirror
+    // on an unreserved port a dev server could be handed. `port_was_reserved` must
+    // reflect whether the claim actually succeeded (it can fail on a poisoned lock).
+    let port_was_reserved = if info.port != reserved {
         crate::state::release_port_for_project(window_label, project_path);
-        port_was_reserved = false;
-    }
+        crate::state::reserve_port_force(window_label, project_path, info.port)
+    } else {
+        true
+    };
 
     info.device_name = device_name.clone();
     info.device_runtime = device_runtime.clone();
@@ -682,7 +788,8 @@ pub async fn start_mobile_preview(
 
         // Sim is gone (or the respawn failed) — fully tear down the stale session
         // and fall through to a fresh boot. The build can't survive a dead sim.
-        crate::state::take_mobile_session(&project_path);
+        // Kill the underlying processes BEFORE dropping the registry entry, so an
+        // interruption here can't orphan them with no record left to find them by.
         if let Some(build_id) = &existing.build_session_id {
             let _ = crate::commands::pty_session::pty_session_kill(build_id.clone());
         }
@@ -694,6 +801,7 @@ pub async fn start_mobile_preview(
             )
             .await;
         }
+        crate::state::take_mobile_session(&project_path);
     }
 
     // Fresh start: ensure a simulator (correct preference), then establish the

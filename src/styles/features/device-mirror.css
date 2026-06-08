@@ -68,6 +68,13 @@
   padding: var(--spacing-xs) var(--spacing-md);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+/* Hovering anywhere on the bar highlights the whole bar — the toggle/chevron
+   suppress their own button-hover background below so it reads as one surface. */
+.device-mirror-build-header:hover {
+  background: var(--bg-tertiary);
 }
 
 .device-mirror-build-toggle {
@@ -84,6 +91,11 @@
   color: var(--text-secondary);
   cursor: pointer;
   text-align: left;
+}
+
+/* Suppress the global button:hover background — the bar's own hover handles it. */
+.device-mirror-build-toggle:hover {
+  background: none;
 }
 
 .device-mirror-build-toggle[data-state='failed'] {
@@ -136,6 +148,7 @@
 
 .device-mirror-build-chevron:hover {
   color: var(--text-primary);
+  background: none;
 }
 
 .device-mirror-build-chevron svg {

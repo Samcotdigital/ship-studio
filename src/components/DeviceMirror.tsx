@@ -26,10 +26,13 @@ import {
   connectInputChannel,
   buildSessionId,
   classifyBuildOutput,
+  simulatorAppRunning,
+  hideSimulator,
   type MirrorInfo,
 } from '../lib/mobile';
+import { usePolling } from '../hooks/usePolling';
 import { checkDependenciesInstalled } from '../lib/project';
-import { attachPtySession } from '../lib/ptySession';
+import { attachPtySession, writePtySession } from '../lib/ptySession';
 import { getWindowLabel } from '../lib/window';
 import { SpinnerIcon, ResetIcon, ChevronIcon } from './icons';
 import { Button } from './primitives/Button';
@@ -60,6 +63,19 @@ type LaunchStatus = 'none' | 'building' | 'launched' | 'failed' | 'exited' | 'un
  *  is sufficient and bounds memory on a long, chatty build. */
 const BUILD_LOG_SCAN_CAP = 262144;
 
+/** Pull the app's bundle id out of the build log (Expo prints
+ *  `› Opening on iPhone 17 Pro (com.anonymous.my-app)`). Lets the simulator poll
+ *  match our exact app instead of "any third-party app". */
+const BUNDLE_ID_RE = /Opening on .*?\(([A-Za-z0-9.-]+)\)/;
+
+/** Auto-heal budget for a dropped mirror: reconnect with exponential backoff,
+ *  then give up to the error view rather than looping forever. The budget resets
+ *  once the stream is healthy again (a frame loads, or it stays connected for
+ *  HEAL_STABLE_MS), so isolated blips over a long session don't exhaust it. */
+const MAX_HEAL_ATTEMPTS = 3;
+const HEAL_BASE_DELAY_MS = 1500;
+const HEAL_STABLE_MS = 5000;
+
 export function DeviceMirror({ projectName, projectPath, onSendToAgent }: DeviceMirrorProps) {
   const [status, setStatus] = useState<Status>('starting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -68,10 +84,20 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
   const [buildCommand, setBuildCommand] = useState<string | null>(null);
   const [buildOpen, setBuildOpen] = useState(true);
   const [needsInstall, setNeedsInstall] = useState(false);
+  // Whether the build command is still running. Expo (`expo run:ios`) and Flutter
+  // (`flutter run`) stay attached to their bundler, so 'r' reloads work and the
+  // process never exits. Bare RN (`react-native run-ios`) exits after launching —
+  // Metro runs detached — so reload-via-PTY is impossible and the clean exit must
+  // not be mistaken for a failed/ended preview.
+  const [buildAlive, setBuildAlive] = useState(false);
 
   const inputRef = useRef<InputChannel | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const isPointerDown = useRef(false);
+  // Auto-heal retry budget — declared up here (not next to the heal callbacks)
+  // because the connect effect's stable-timer closes over it; a forward reference
+  // would also trip the react-hooks immutability rule.
+  const healAttemptsRef = useRef(0);
 
   // Accumulated build-log tail + a mirror of launchStatus, both read inside the
   // output handler (which must stay identity-stable so BuildTerminal's setup
@@ -93,6 +119,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
   useEffect(() => {
     let cancelled = false;
     let channel: InputChannel | null = null;
+    let stableTimer: number | null = null;
 
     const resolveBuild = async (udid: string) => {
       let cmd: string;
@@ -115,6 +142,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
       buildTextRef.current = '';
       setBuildCommand(cmd);
       setBuildOpen(true);
+      setBuildAlive(true);
       setLaunchStatus('building');
     };
 
@@ -125,6 +153,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
       setLaunchStatus('none');
       setBuildCommand(null);
       setNeedsInstall(false);
+      setBuildAlive(false);
       try {
         logger.info('[DeviceMirror] starting backend mobile preview');
         const info = await startMobilePreview(projectPath, getWindowLabel());
@@ -134,6 +163,13 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
         inputRef.current = channel;
         setMirror(info);
         setStatus('connected');
+
+        // Stayed connected this long → mirror is healthy; refill the heal budget
+        // so blips spread across a long session don't exhaust it (and we don't
+        // depend on the MJPEG <img> firing onLoad to reset it).
+        stableTimer = window.setTimeout(() => {
+          healAttemptsRef.current = 0;
+        }, HEAL_STABLE_MS);
 
         // Auto-launch the app build into the embedded terminal.
         void resolveBuild(info.udid);
@@ -152,23 +188,110 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
     return () => {
       cancelled = true;
       isPointerDown.current = false;
+      if (stableTimer !== null) clearTimeout(stableTimer);
       channel?.close();
       if (inputRef.current === channel) inputRef.current = null;
       // No native teardown here — the backend owns the session lifecycle.
     };
   }, [attempt, projectPath]);
 
-  const restart = useCallback(() => setAttempt((a) => a + 1), []);
+  // Manual restart (button / "Try again") is a fresh user intent — refill the
+  // heal budget so auto-heal gets its full allowance again.
+  const restart = useCallback(() => {
+    healAttemptsRef.current = 0;
+    setAttempt((a) => a + 1);
+  }, []);
 
-  // Move from 'building' to a terminal status exactly once. Later transitions are
-  // ignored so a torn-down Metro (which exits non-zero) can't flip a launched app
-  // to 'failed', and a late marker can't override an exit verdict.
+  // Auto-heal: the MJPEG <img> fires onError when the stream drops (serve-sim
+  // died). Rather than freeze on the last frame until the user clicks Restart, we
+  // reconnect — which re-runs startMobilePreview and the backend respawns the dead
+  // mirror. Bounded: exponential backoff and a hard attempt cap, after which we
+  // surface the error instead of looping (an unrecoverable sim would otherwise
+  // re-trigger a boot every cycle). The budget refills once the mirror is healthy
+  // again (onMirrorLoad, or HEAL_STABLE_MS connected — see the connect effect).
+  const healTimerRef = useRef<number | null>(null);
+  const cancelHeal = useCallback(() => {
+    if (healTimerRef.current !== null) {
+      clearTimeout(healTimerRef.current);
+      healTimerRef.current = null;
+    }
+  }, []);
+  const scheduleHeal = useCallback(() => {
+    if (healTimerRef.current !== null) return; // a heal is already pending
+    if (healAttemptsRef.current >= MAX_HEAL_ATTEMPTS) {
+      // Mirror won't come back on its own — stop looping and let the user act.
+      setErrorMsg('Lost the connection to the simulator mirror.');
+      setStatus('error');
+      return;
+    }
+    const delay = HEAL_BASE_DELAY_MS * 2 ** healAttemptsRef.current; // 1.5s, 3s, 6s
+    healAttemptsRef.current += 1;
+    healTimerRef.current = window.setTimeout(() => {
+      healTimerRef.current = null;
+      setAttempt((a) => a + 1); // reconnect; backend respawns the mirror
+    }, delay);
+  }, []);
+  // A healthy frame means the stream recovered — drop any pending heal and refill
+  // the budget so future blips get a fresh allowance.
+  const onMirrorLoad = useCallback(() => {
+    healAttemptsRef.current = 0;
+    cancelHeal();
+  }, [cancelHeal]);
+  useEffect(() => cancelHeal, [cancelHeal]);
+
+  // Reload the JS bundle without a full rebuild: Metro (`expo run:ios` /
+  // `react-native run-ios`) and `flutter run` all reload on an 'r' keystroke. We
+  // write it straight to the build PTY the app is running in.
+  const reloadApp = useCallback(() => {
+    void writePtySession(buildSessionId(projectPath), 'r');
+  }, [projectPath]);
+
+  // Settle the build verdict. 'launched' is ground truth — the app is actually on
+  // the simulator — so it always wins, even over a prior 'failed'. That's what lets
+  // an agent's out-of-band rebuild (which our BuildTerminal can't see) resolve a
+  // failed panel to launched. Other verdicts settle only from the initial
+  // 'building', so a torn-down Metro (which exits non-zero) can't flip a launched
+  // app to 'failed', and a stale 'failed' stays put until the app genuinely comes up.
   const settleLaunchStatus = useCallback((next: 'launched' | 'failed' | 'exited') => {
-    if (launchStatusRef.current !== 'building') return;
+    if (launchStatusRef.current === 'launched') return;
+    if (next !== 'launched' && launchStatusRef.current !== 'building') return;
     launchStatusRef.current = next;
     setLaunchStatus(next);
-    if (next === 'launched') setBuildOpen(false); // app is up — collapse the log
+    if (next === 'launched') {
+      setBuildOpen(false); // app is up — collapse the log
+      // The build tool foregrounded Simulator.app over Ship Studio; the mirror is
+      // headless so the window is redundant — tuck it away. Best-effort.
+      void hideSimulator();
+    }
   }, []);
+
+  // Ground-truth launch detection: poll the simulator for our actually-running app.
+  // This is the authoritative "did it launch" signal and covers two gaps the
+  // build-log classifier can't: (1) it misses some frameworks' success banners
+  // (Expo's "iOS Bundled" / "Opening on …" aren't markers), and (2) it can't see a
+  // build the agent ran in its OWN terminal after "Send to agent". So it resolves
+  // both 'building' → 'launched' (normal build) and 'failed' → 'launched' (agent
+  // rescue). We pass the bundle id parsed from the log when we have it, so a stale
+  // app on a pre-booted sim can't cause a false launch. Enabled only while a verdict
+  // is still pending; usePolling backs off on error (sim booting / mid-teardown).
+  usePolling(
+    async () => {
+      const udid = mirror?.udid;
+      if (!udid) return;
+      const bundleId = buildTextRef.current.match(BUNDLE_ID_RE)?.[1];
+      if (await simulatorAppRunning(udid, bundleId)) settleLaunchStatus('launched');
+    },
+    {
+      intervalMs: 3000,
+      // Include 'exited': bare RN's `react-native run-ios` exits 0 right after
+      // launching, so the app is up but the build process is gone — the poll is
+      // what upgrades that clean exit to 'launched'.
+      enabled:
+        status === 'connected' &&
+        (launchStatus === 'building' || launchStatus === 'failed' || launchStatus === 'exited'),
+      name: 'simulator-app-running',
+    }
+  );
 
   // Classify build progress from the embedded terminal's output. A successful
   // `expo run:ios` / `flutter run` never exits (it stays attached to Metro), so
@@ -195,6 +318,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
   // emitting a marker we recognize (e.g. a failed `pod install`) still resolves.
   const onBuildExit = useCallback(
     (exitCode: number) => {
+      setBuildAlive(false); // bundler is gone — no reload-via-PTY past this point
       settleLaunchStatus(exitCode === 0 ? 'exited' : 'failed');
     },
     [settleLaunchStatus]
@@ -271,6 +395,11 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
               ? `${mirror.device_name}${mirror.device_runtime ? ` · ${mirror.device_runtime}` : ''} · live`
               : 'iOS Simulator · live'}
           </span>
+          {launchStatus === 'launched' && buildAlive && (
+            <Button variant="ghost" size="sm" onClick={reloadApp}>
+              <ResetIcon size={14} /> Reload
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={restart}>
             <ResetIcon size={14} /> Restart
           </Button>
@@ -286,6 +415,8 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onError={scheduleHeal}
+            onLoad={onMirrorLoad}
           />
         </div>
         {buildCommand && launchStatus !== 'unsupported' && (

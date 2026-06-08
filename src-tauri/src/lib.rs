@@ -92,6 +92,14 @@ pub fn run() {
     cleanup_agent_processes();
     tracing::debug!("Orphaned agent processes cleaned up");
 
+    // Reap serve-sim mirror daemons orphaned by a previous hard crash — they pin
+    // the mirror port and would otherwise accumulate one per crash.
+    #[cfg(target_os = "macos")]
+    {
+        commands::mobile::reap_orphaned_serve_sim();
+        tracing::debug!("Orphaned serve-sim mirrors reaped");
+    }
+
     // Hydrate the default agent cache from persisted AppState
     let app_state = commands::setup::read_app_state();
     agent::init_default_agent(app_state.default_agent_id.as_deref());
@@ -486,6 +494,8 @@ pub fn run() {
             commands::mobile::list_booted_simulators,
             commands::mobile::start_mobile_preview,
             commands::mobile::get_simulator_launch_command,
+            commands::mobile::simulator_app_running,
+            commands::mobile::hide_simulator,
             // PTY & Terminal
             commands::pty::spawn_pty,
             commands::pty::kill_pty,

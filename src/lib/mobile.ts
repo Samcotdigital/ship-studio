@@ -45,6 +45,24 @@ export async function listBootedSimulators(): Promise<MobileSimulator[]> {
   return invoke<MobileSimulator[]>('list_booted_simulators');
 }
 
+/** Whether the project's app is currently running on the booted simulator. This
+ *  is the ground-truth "did it launch" signal — true regardless of whether Ship
+ *  Studio or the agent built it — so the preview panel can resolve even when the
+ *  build-log classifier misses (Expo's success banner) or can't see the build
+ *  (a "Send to agent" rebuild in the agent's own terminal). Pass `bundleId` when
+ *  known (parsed from the build log) for an exact match. */
+export async function simulatorAppRunning(udid: string, bundleId?: string): Promise<boolean> {
+  return invoke<boolean>('simulator_app_running', { udid, bundleId: bundleId ?? null });
+}
+
+/** Hide the Simulator.app GUI window (best-effort). The sim is mirrored
+ *  headlessly, so the window is redundant; the build tool foregrounds it over Ship
+ *  Studio, so we hide it once the app is up. A no-op if Simulator isn't running or
+ *  automation permission is denied. */
+export async function hideSimulator(): Promise<void> {
+  return invoke<void>('hide_simulator');
+}
+
 /** The command that launches the project's app onto a booted simulator. */
 export async function getSimulatorLaunchCommand(
   projectPath: string,

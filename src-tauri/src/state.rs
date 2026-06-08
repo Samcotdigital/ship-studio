@@ -259,6 +259,49 @@ pub fn reserve_port(window_label: &str, project_path: &str, port: u16) -> bool {
     }
 }
 
+/// Reserve `port` for `(window, project)`, evicting any other holder of that port.
+///
+/// Used when serve-sim has *physically bound* a port we didn't reserve (it stepped
+/// past ours): reality wins, so we claim it unconditionally rather than leaving a
+/// live mirror on an unreserved port that a dev server could later be handed.
+///
+/// Returns true once the port is reserved to this pair; false only if the locks
+/// couldn't be acquired (poisoned) — the caller must treat that as "not reserved"
+/// rather than assuming success.
+///
+/// NOTE: Lock ordering is RESERVED_PORTS then RESERVED_PORT_SET (same as reserve_port).
+pub fn reserve_port_force(window_label: &str, project_path: &str, port: u16) -> bool {
+    let (Ok(mut ports), Ok(mut port_set)) = (RESERVED_PORTS.lock(), RESERVED_PORT_SET.lock())
+    else {
+        tracing::error!("reserve_port_force: failed to acquire locks");
+        return false;
+    };
+    // Evict any stale holder of this exact port — serve-sim owns it now.
+    let stale: Vec<(String, String)> = ports
+        .iter()
+        .filter(|(_, &p)| p == port)
+        .map(|(k, _)| k.clone())
+        .collect();
+    for key in stale {
+        ports.remove(&key);
+        tracing::warn!(
+            "reserve_port_force: evicted stale reservation of port {} from ({}, {})",
+            port,
+            key.0,
+            key.1
+        );
+    }
+    port_set.insert(port);
+    ports.insert((window_label.to_string(), project_path.to_string()), port);
+    tracing::info!(
+        "reserve_port_force: claimed port {} for ({}, {})",
+        port,
+        window_label,
+        project_path
+    );
+    true
+}
+
 /// Check if a port is already reserved by any window.
 pub fn is_port_reserved(port: u16) -> bool {
     RESERVED_PORT_SET
@@ -579,6 +622,23 @@ mod mobile_session_tests {
         // win-Y untouched.
         assert!(get_mobile_session("/tmp/ms-w-c").is_some());
         take_mobile_session("/tmp/ms-w-c"); // cleanup
+    }
+
+    #[test]
+    fn reserve_port_force_evicts_stale_holder() {
+        // High, unlikely-contended port so parallel tests don't collide.
+        let port = 39111;
+        assert!(reserve_port("win-A", "/tmp/pf-a", port));
+        assert!(is_port_reserved(port));
+        // A different (window, project) force-claims the same port — serve-sim bound
+        // it, so the stale holder is evicted and the new owner takes it.
+        reserve_port_force("win-B", "/tmp/pf-b", port);
+        assert!(is_port_reserved(port));
+        assert_eq!(get_reserved_port("win-B", "/tmp/pf-b"), Some(port));
+        assert_eq!(get_reserved_port("win-A", "/tmp/pf-a"), None);
+        // cleanup
+        release_port_for_project("win-B", "/tmp/pf-b");
+        assert!(!is_port_reserved(port));
     }
 
     #[test]
