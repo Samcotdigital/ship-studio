@@ -9,7 +9,7 @@
  *   - Hand the problem to the agent with the logs attached (Fix with agent).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './primitives/Button';
 import { stripAnsi } from '../lib/ansi';
 
@@ -53,11 +53,29 @@ export function DevServerStatus({
   onFixWithAgent,
 }: DevServerStatusProps) {
   const [logsOpen, setLogsOpen] = useState(true);
+  const logBodyRef = useRef<HTMLPreElement>(null);
+  // Whether the view is pinned to the bottom — true until the user scrolls up to
+  // read older output, so streaming logs auto-follow without yanking them away.
+  const stickToBottomRef = useRef(true);
 
   const logTail = useMemo(() => {
     if (!devServerOutput) return '';
     return stripAnsi(devServerOutput).split('\n').slice(-LOG_TAIL_LINES).join('\n').trim();
   }, [devServerOutput]);
+
+  // Follow the tail as new lines arrive (unless the user scrolled up).
+  useEffect(() => {
+    const el = logBodyRef.current;
+    if (el && logsOpen && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [logTail, logsOpen]);
+
+  const handleLogScroll = () => {
+    const el = logBodyRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
 
   return (
     <div className={`preview-status preview-status--${phase}`}>
@@ -132,9 +150,27 @@ export function DevServerStatus({
             onClick={() => setLogsOpen((v) => !v)}
             aria-expanded={logsOpen}
           >
-            {logsOpen ? '▾' : '▸'} Logs
+            <svg
+              className={`preview-status__chevron${logsOpen ? ' open' : ''}`}
+              width="10"
+              height="10"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+            Logs
           </button>
-          {logsOpen && <pre className="preview-status__logs-body">{logTail}</pre>}
+          {logsOpen && (
+            <pre ref={logBodyRef} className="preview-status__logs-body" onScroll={handleLogScroll}>
+              {logTail}
+            </pre>
+          )}
         </div>
       )}
     </div>

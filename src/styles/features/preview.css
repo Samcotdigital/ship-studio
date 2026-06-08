@@ -954,6 +954,9 @@
 }
 .preview-status__logs-toggle {
   all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
@@ -962,6 +965,13 @@
 }
 .preview-status__logs-toggle:hover {
   color: var(--text-primary);
+}
+.preview-status__chevron {
+  flex-shrink: 0;
+  transition: transform var(--transition);
+}
+.preview-status__chevron.open {
+  transform: rotate(90deg);
 }
 .preview-status__logs-body {
   margin: var(--spacing-xs) 0 0;
