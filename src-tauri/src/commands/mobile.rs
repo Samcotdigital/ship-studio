@@ -27,6 +27,8 @@ const BOOT_WAIT_TIMEOUT_SECS: u64 = 150;
 /// A one-shot AppleScript (e.g. hiding Simulator.app) should be near-instant;
 /// cap it low so a wedged osascript can't stall the caller.
 const OSASCRIPT_TIMEOUT_SECS: u64 = 5;
+/// `adb` queries are local and fast; cap them so a wedged adb server can't stall.
+const ADB_TIMEOUT_SECS: u64 = 20;
 
 /// A booted iOS simulator that can be mirrored.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -369,6 +371,202 @@ pub fn reap_orphaned_serve_sim() {
         done
     "#;
     let _ = create_command("sh").args(["-c", script]).output();
+}
+
+// ============ Android (emulator + adb) ============
+
+/// Locate the Android SDK root: `$ANDROID_HOME`, then `$ANDROID_SDK_ROOT`, then the
+/// macOS default (`~/Library/Android/sdk`). `None` means Android tooling isn't
+/// installed — callers surface that as a clear "set up Android" error.
+fn android_sdk_root() -> Option<std::path::PathBuf> {
+    for var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
+        if let Ok(p) = std::env::var(var) {
+            let path = std::path::PathBuf::from(p);
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+    }
+    let default = dirs::home_dir()?.join("Library/Android/sdk");
+    default.is_dir().then_some(default)
+}
+
+/// Build a command for an Android SDK tool (`adb`, `emulator`), resolving it from
+/// the SDK root when present, else from PATH. Extends PATH like the xcrun/npx
+/// helpers so a Finder-launched app still finds brew- and SDK-managed tools.
+fn android_tool_command(tool: &str, sdk_subdir: &str) -> Command {
+    let mut cmd = match android_sdk_root().map(|r| r.join(sdk_subdir).join(tool)) {
+        Some(bin) if bin.is_file() => create_command(bin.to_string_lossy().as_ref()),
+        _ => match find_executable(tool) {
+            Some(path) => create_command(path),
+            None => create_command(tool),
+        },
+    };
+    cmd.env("PATH", get_extended_path());
+    cmd
+}
+
+fn adb_command() -> Command {
+    android_tool_command("adb", "platform-tools")
+}
+
+fn emulator_command() -> Command {
+    android_tool_command("emulator", "emulator")
+}
+
+/// A connected Android device or running emulator that can be mirrored.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AndroidDevice {
+    /// adb serial, e.g. `emulator-5554` — the `-s` target and scrcpy device id.
+    pub serial: String,
+    /// Friendly name (the AVD name once booted; the serial until then).
+    pub name: String,
+    /// True for emulators (serial begins `emulator-`), false for physical devices.
+    pub is_emulator: bool,
+}
+
+/// Parse `adb devices` output into the list of *ready* devices. Skips the header
+/// line and any entry that isn't in the `device` state (offline / unauthorized /
+/// no-permissions), so callers only ever see something they can actually drive.
+fn parse_adb_devices(stdout: &str) -> Vec<AndroidDevice> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let serial = parts.next()?;
+            // The header is "List of devices attached" → second token "of" ≠ "device".
+            if parts.next()? != "device" {
+                return None;
+            }
+            Some(AndroidDevice {
+                serial: serial.to_string(),
+                name: serial.to_string(),
+                is_emulator: serial.starts_with("emulator-"),
+            })
+        })
+        .collect()
+}
+
+/// List currently-connected, ready Android devices/emulators. Empty vec when none
+/// are running (or adb is absent); errors only on an unexpected adb failure.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn list_android_devices() -> Result<Vec<AndroidDevice>, CommandError> {
+    let mut cmd = adb_command();
+    cmd.arg("devices");
+    let stdout = run_to_stdout(
+        tokio::process::Command::from(cmd),
+        "adb devices",
+        ADB_TIMEOUT_SECS,
+    )
+    .await
+    .unwrap_or_default();
+    Ok(parse_adb_devices(&stdout))
+}
+
+/// List installed AVDs via `emulator -list-avds`. Empty when none exist or the
+/// emulator binary is missing.
+async fn list_avds() -> Vec<String> {
+    let mut cmd = emulator_command();
+    cmd.arg("-list-avds");
+    run_to_stdout(
+        tokio::process::Command::from(cmd),
+        "emulator -list-avds",
+        ADB_TIMEOUT_SECS,
+    )
+    .await
+    .map(|out| {
+        out.lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Ensure an Android emulator is booted and ready; returns its device and whether
+/// **we** booted it (so teardown only kills emulators we started). Reuses a running
+/// device if one exists; otherwise boots `preferred` (or the first AVD) detached and
+/// blocks until `sys.boot_completed` — the Android analog of `simctl bootstatus`.
+async fn ensure_emulator(preferred: Option<String>) -> Result<(AndroidDevice, bool), CommandError> {
+    // Reuse a device that's already up (booted_by_us = false).
+    if let Some(dev) = list_android_devices().await?.into_iter().next() {
+        return Ok((dev, false));
+    }
+
+    let avds = list_avds().await;
+    let avd = preferred
+        .filter(|p| avds.contains(p))
+        .or_else(|| avds.into_iter().next())
+        .ok_or("No Android Virtual Device found. Create one in Android Studio › Device Manager.")?;
+
+    // Boot detached — the emulator runs for the session; teardown uses `adb emu kill`.
+    let mut emu = emulator_command();
+    emu.args(["-avd", &avd, "-no-snapshot-save", "-no-boot-anim"]);
+    emu.stdout(std::process::Stdio::null());
+    emu.stderr(std::process::Stdio::null());
+    emu.spawn()
+        .map_err(|e| format!("Failed to launch the Android emulator: {e}"))?;
+
+    // Poll until a freshly-booted emulator reports the OS as fully up.
+    let mut waited = 0u64;
+    loop {
+        if let Some(dev) = list_android_devices()
+            .await?
+            .into_iter()
+            .find(|d| d.is_emulator)
+        {
+            if emulator_boot_completed(&dev.serial).await {
+                return Ok((AndroidDevice { name: avd, ..dev }, true));
+            }
+        }
+        if waited >= BOOT_WAIT_TIMEOUT_SECS {
+            return Err("The Android emulator did not finish booting in time.".into());
+        }
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        waited += 2;
+    }
+}
+
+/// Whether the emulator's OS has finished booting (`getprop sys.boot_completed`).
+async fn emulator_boot_completed(serial: &str) -> bool {
+    let mut cmd = adb_command();
+    cmd.args(["-s", serial, "shell", "getprop", "sys.boot_completed"]);
+    run_to_stdout(
+        tokio::process::Command::from(cmd),
+        "adb getprop sys.boot_completed",
+        ADB_TIMEOUT_SECS,
+    )
+    .await
+    .map(|out| out.trim() == "1")
+    .unwrap_or(false)
+}
+
+/// Whether the project's app is currently running on the emulator — the Android
+/// analog of [`simulator_app_running`]. `pidof <app_id>` exits 0 with the pid iff
+/// the process is alive. The app id (Gradle `applicationId`) comes from the build
+/// log; without it we can't tell our app from others, so report not-running.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn android_app_running(
+    serial: String,
+    app_id: Option<String>,
+) -> Result<bool, CommandError> {
+    let Some(app_id) = app_id else {
+        return Ok(false);
+    };
+    let mut cmd = adb_command();
+    cmd.args(["-s", &serial, "shell", "pidof", &app_id]);
+    // pidof exits 1 (→ run_to_stdout Err) when not found; treat that as not-running.
+    let out = run_to_stdout(
+        tokio::process::Command::from(cmd),
+        "adb shell pidof",
+        ADB_TIMEOUT_SECS,
+    )
+    .await
+    .unwrap_or_default();
+    Ok(!out.trim().is_empty())
 }
 
 /// Determine the command that launches the project's app onto a booted
@@ -963,6 +1161,33 @@ mod tests {
         }"#;
         // Booted beats newer-but-shutdown.
         assert_eq!(choose_default_simulator(json).unwrap().udid, "RUNNING");
+    }
+
+    #[test]
+    fn parse_adb_devices_keeps_only_ready_devices() {
+        let out = "List of devices attached\n\
+                   emulator-5554\tdevice\n\
+                   emulator-5556\toffline\n\
+                   ZY223abc\tunauthorized\n\
+                   192.168.1.5:5555\tdevice\n\
+                   \n";
+        let devices = parse_adb_devices(out);
+        assert_eq!(
+            devices.len(),
+            2,
+            "offline/unauthorized/header/blank dropped"
+        );
+        assert_eq!(devices[0].serial, "emulator-5554");
+        assert!(devices[0].is_emulator);
+        // A networked physical device is ready but not an emulator.
+        assert_eq!(devices[1].serial, "192.168.1.5:5555");
+        assert!(!devices[1].is_emulator);
+    }
+
+    #[test]
+    fn parse_adb_devices_empty_when_none_attached() {
+        assert!(parse_adb_devices("List of devices attached\n\n").is_empty());
+        assert!(parse_adb_devices("").is_empty());
     }
 
     #[test]
