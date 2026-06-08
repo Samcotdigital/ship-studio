@@ -977,8 +977,63 @@ fn build_launch_command(
     }
 }
 
+/// Locate a usable JDK for Gradle (the Android build needs `JAVA_HOME`). The build
+/// runs in a login shell, so it inherits the user's profile — but `JAVA_HOME` is
+/// often unset there even when a JDK exists. We probe the common install locations
+/// (filesystem only, no shelling) and return the first with a real `bin/java`.
+fn detect_jdk_home() -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(jh) = std::env::var("JAVA_HOME") {
+        candidates.push(std::path::PathBuf::from(jh));
+    }
+    // Android Studio's bundled JBR — the canonical JDK for Android builds.
+    candidates.push("/Applications/Android Studio.app/Contents/jbr/Contents/Home".into());
+    // Homebrew openjdk.
+    candidates.push("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home".into());
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join("android-jdk/Contents/Home"));
+    }
+    // System- and user-installed JDKs (e.g. Temurin) live under JavaVirtualMachines.
+    let vm_dirs = [
+        std::path::PathBuf::from("/Library/Java/JavaVirtualMachines"),
+        dirs::home_dir()
+            .map(|h| h.join("Library/Java/JavaVirtualMachines"))
+            .unwrap_or_default(),
+    ];
+    for base in vm_dirs {
+        if let Ok(entries) = std::fs::read_dir(&base) {
+            for e in entries.flatten() {
+                candidates.push(e.path().join("Contents/Home"));
+            }
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|p| p.join("bin/java").is_file())
+}
+
+/// Wrap an Android build command so Gradle can find a JDK: export `JAVA_HOME`
+/// (falling back to the detected one only if the login shell didn't already set it,
+/// so a user's own setup wins) and put its `bin` on `PATH`. iOS commands pass through
+/// untouched. No JDK found → return the command unchanged so it surfaces Gradle's own
+/// "install Java" error rather than a confusing wrapper failure.
+fn with_android_java_env(platform: crate::state::Platform, cmd: String) -> String {
+    if platform != crate::state::Platform::Android {
+        return cmd;
+    }
+    match detect_jdk_home() {
+        Some(jdk) => format!(
+            "export JAVA_HOME=\"${{JAVA_HOME:-{}}}\"; export PATH=\"$JAVA_HOME/bin:$PATH\"; {}",
+            jdk.display(),
+            cmd
+        ),
+        None => cmd,
+    }
+}
+
 /// Get the launch command for a project's app on a given simulator, or an error
-/// if the project type isn't a supported native mobile app.
+/// if the project type isn't a supported native mobile app. Android commands are
+/// wrapped to provide `JAVA_HOME` for Gradle (see [`with_android_java_env`]).
 #[tauri::command]
 #[tracing::instrument]
 pub async fn get_simulator_launch_command(
@@ -988,8 +1043,11 @@ pub async fn get_simulator_launch_command(
 ) -> Result<String, CommandError> {
     let project = crate::utils::validate_project_path(&project_path)?;
     let workspace = crate::utils::resolve_workspace_path(&project);
-    build_launch_command(&workspace, platform, &udid)
-        .ok_or_else(|| "This project type can't be launched on this device yet.".into())
+    let cmd =
+        build_launch_command(&workspace, platform, &udid).ok_or_else(|| -> CommandError {
+            "This project type can't be launched on this device yet.".into()
+        })?;
+    Ok(with_android_java_env(platform, cmd))
 }
 
 /// Kill the serve-sim daemon for one device (best-effort; ignores non-zero exit).

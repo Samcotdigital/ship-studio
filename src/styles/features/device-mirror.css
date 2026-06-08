@@ -53,7 +53,7 @@
 
 .device-mirror-platform-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--action-text); /* --accent is #fff in this theme → needs dark text */
 }
 
 .device-mirror-stage {
