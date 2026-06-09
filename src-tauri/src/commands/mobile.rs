@@ -636,9 +636,9 @@ pub struct MobilePlatformSupport {
     pub android: bool,
 }
 
-/// Is Xcode's command line toolchain installed? `xcode-select -p` resolves the
-/// developer dir only when it is (the bare `xcrun` stub exists even without it).
-async fn ios_tooling_available() -> bool {
+/// Are Xcode's command line tools installed? `xcode-select -p` resolves the developer
+/// dir only when they are (the bare `xcrun` stub exists even without them).
+async fn xcode_clt_installed() -> bool {
     let mut cmd = create_command("xcode-select");
     cmd.arg("-p");
     cmd.env("PATH", get_extended_path());
@@ -652,13 +652,50 @@ async fn ios_tooling_available() -> bool {
     .unwrap_or(false)
 }
 
-/// Report which mobile platforms this machine can preview (toolchain present).
+/// Whether there's an iOS simulator to preview on — one already booted, or one
+/// available to boot. The CLT alone isn't enough (a full Xcode + a runtime are needed).
+async fn ios_simulator_available() -> bool {
+    if list_booted_simulators()
+        .await
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    simctl_stdout(
+        &["list", "devices", "available", "--json"],
+        "xcrun simctl list available",
+        SIMCTL_TIMEOUT_SECS,
+    )
+    .await
+    .map(|json| choose_default_simulator(&json).is_some())
+    .unwrap_or(false)
+}
+
+/// Whether this machine can actually preview iOS: the CLT AND a simulator to run on.
+async fn ios_tooling_available() -> bool {
+    xcode_clt_installed().await && ios_simulator_available().await
+}
+
+/// Whether this machine can actually preview Android: the SDK, a JDK for Gradle, AND
+/// something to boot (an AVD, or a device already attached). A bare SDK directory
+/// isn't enough — without an AVD/JDK the preview would dead-end at boot or build.
+async fn android_tooling_available() -> bool {
+    if android_sdk_root().is_none() || detect_jdk_home().is_none() {
+        return false;
+    }
+    !list_avds().await.is_empty() || !list_android_devices().await.unwrap_or_default().is_empty()
+}
+
+/// Report which mobile platforms this machine can actually preview — not just which
+/// toolchain is partially present, but which can boot/build something. The frontend
+/// offers only these; the rest route to agent-driven setup.
 #[tauri::command]
 #[tracing::instrument]
 pub async fn mobile_platform_support() -> Result<MobilePlatformSupport, CommandError> {
     Ok(MobilePlatformSupport {
         ios: ios_tooling_available().await,
-        android: android_sdk_root().is_some(),
+        android: android_tooling_available().await,
     })
 }
 

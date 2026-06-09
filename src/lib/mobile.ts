@@ -196,6 +196,34 @@ export function classifyBuildOutput(text: string): BuildOutcome | null {
   return null;
 }
 
+/** iOS bundle id from the build log (Expo prints
+ *  `› Opening on iPhone 17 Pro (com.anonymous.my-app)`). Lets the launch poll match
+ *  our exact app instead of "any third-party app". */
+const IOS_BUNDLE_ID_RE = /Opening on .*?\(([A-Za-z0-9.-]+)\)/;
+
+/** Android applicationId from the build log, across launch styles:
+ *  - bare RN `run-android` → `am start` logs `Starting: Intent { … cmp=com.x/.Act }`
+ *  - Expo `run:android` → dev-client deep link `Opening com.x://expo-development-client/…`
+ *    (no `cmp=`, so the bare-RN regex alone left Expo's launch poll stuck forever).
+ *  Both require a dotted package so a plain `http://` URL can't match. */
+const ANDROID_APP_ID_RES: RegExp[] = [
+  /cmp=([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\//,
+  /Opening ([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+):\/\//,
+];
+
+/** The app id (iOS bundle id / Android applicationId) for the launch poll, parsed
+ *  per platform from the accumulated build-log text. `undefined` when not yet seen. */
+export function appIdFromLog(platform: Platform, log: string): string | undefined {
+  if (platform === 'android') {
+    for (const re of ANDROID_APP_ID_RES) {
+      const m = log.match(re);
+      if (m) return m[1];
+    }
+    return undefined;
+  }
+  return log.match(IOS_BUNDLE_ID_RE)?.[1];
+}
+
 /** A normalized (0..1) touch event sent over the serve-sim WebSocket. */
 export type TouchPhase = 'down' | 'move' | 'up';
 

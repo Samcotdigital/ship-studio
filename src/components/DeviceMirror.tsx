@@ -31,6 +31,7 @@ import {
   hideSimulator,
   detectMobileTargets,
   mobilePlatformSupport,
+  appIdFromLog,
   type MirrorInfo,
   type Platform,
   type MobileTargets,
@@ -70,33 +71,6 @@ type LaunchStatus = 'none' | 'building' | 'launched' | 'failed' | 'exited' | 'un
  *  is sufficient and bounds memory on a long, chatty build. */
 const BUILD_LOG_SCAN_CAP = 262144;
 
-/** Pull the app's bundle id out of the build log (Expo prints
- *  `› Opening on iPhone 17 Pro (com.anonymous.my-app)`). Lets the simulator poll
- *  match our exact app instead of "any third-party app". */
-const BUNDLE_ID_RE = /Opening on .*?\(([A-Za-z0-9.-]+)\)/;
-
-/** Pull the Android applicationId from the build log, across launch styles:
- *  - bare RN `run-android` → `am start` logs `Starting: Intent { … cmp=com.x/.Act }`
- *  - Expo `run:android` → dev-client deep link `Opening com.x://expo-development-client/…`
- *    (no `cmp=`, so the bare-RN regex alone left Expo's launch poll stuck forever).
- *  Both require a dotted package so a plain `http://` URL can't match. */
-const ANDROID_APP_ID_RES: RegExp[] = [
-  /cmp=([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\//,
-  /Opening ([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+):\/\//,
-];
-
-/** The app id (bundle id / applicationId) for the launch poll, parsed per platform. */
-function appIdFromLog(platform: Platform, log: string): string | undefined {
-  if (platform === 'android') {
-    for (const re of ANDROID_APP_ID_RES) {
-      const m = log.match(re);
-      if (m) return m[1];
-    }
-    return undefined;
-  }
-  return log.match(BUNDLE_ID_RE)?.[1];
-}
-
 /** Per-platform UI copy so one component serves both without scattered ternaries. */
 const PLATFORM_COPY: Record<Platform, { device: string; surface: string; startHint: string }> = {
   ios: {
@@ -125,7 +99,7 @@ const MOBILE_SETUP: Record<Platform, { need: string; prompt: string }> = {
       'tools (`xcode-select --install`) if missing, verify `xcrun simctl list devices` ' +
       'works, and make sure at least one iOS Simulator runtime + device is available ' +
       '(walk me through any Xcode GUI steps that need me). When it works, tell me to click ' +
-      '“Try again”.',
+      '"Try again".',
   },
   android: {
     need: 'Previewing Android apps needs the Android SDK, a JDK, and an emulator (AVD).',
@@ -136,7 +110,7 @@ const MOBILE_SETUP: Record<Platform, { need: string; prompt: string }> = {
       'emulator), a recent system image, and a JDK 17 for Gradle; create an emulator (AVD); ' +
       'and set ANDROID_HOME. If Homebrew is owned by another user, install to my home ' +
       'directory without sudo instead. Verify `adb devices` and `emulator -list-avds` work. ' +
-      'When it works, tell me to click “Try again”.',
+      'When it works, tell me to click "Try again".',
   },
 };
 
@@ -514,6 +488,31 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
     if (p) inputRef.current?.sendTouch('up', p.x, p.y);
   };
 
+  // Shared card for the setup / tooling-error states: heading + detail (+ optional
+  // extra line) + an optional "Set up with AI" agent hand-off + "Try again". Used by
+  // both the proactive (no-toolchain) and reactive (tooling-error) paths so they
+  // don't drift. `setup` null → no agent button (a generic, non-tooling failure).
+  const renderSetupCard = (
+    heading: string,
+    detail: string,
+    setup: Platform | null,
+    extra?: string
+  ) => (
+    <div className="preview-install-prompt">
+      <h3>{heading}</h3>
+      <p className="hint">{detail}</p>
+      {extra && <p className="hint">{extra}</p>}
+      {setup && onSendToAgent && (
+        <Button variant="primary" size="sm" onClick={() => handleAgentSetup(setup)}>
+          Set up with AI
+        </Button>
+      )}
+      <Button variant="secondary" size="sm" onClick={restart}>
+        <ResetIcon size={14} /> Try again
+      </Button>
+    </div>
+  );
+
   // A platform is usable only if the project targets it AND this machine can build
   // it; null means detection is still running.
   const available =
@@ -529,22 +528,11 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
     const setupPlatform: Platform | null = targets.ios ? 'ios' : targets.android ? 'android' : null;
     if (setupPlatform) {
       const platformName = setupPlatform === 'android' ? 'Android' : 'iOS';
-      return (
-        <div className="preview-install-prompt">
-          <h3>Set up {platformName} previews</h3>
-          <p className="hint">{MOBILE_SETUP[setupPlatform].need}</p>
-          {onSendToAgent && (
-            <>
-              <p className="hint">Let the agent install and configure it for you.</p>
-              <Button variant="primary" size="sm" onClick={() => handleAgentSetup(setupPlatform)}>
-                Set up with AI
-              </Button>
-            </>
-          )}
-          <Button variant="secondary" size="sm" onClick={restart}>
-            <ResetIcon size={14} /> Try again
-          </Button>
-        </div>
+      return renderSetupCard(
+        `Set up ${platformName} previews`,
+        MOBILE_SETUP[setupPlatform].need,
+        setupPlatform,
+        onSendToAgent ? 'Let the agent install and configure it for you.' : undefined
       );
     }
   }
@@ -686,35 +674,20 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
 
   // ---- Error ----
   if (status === 'error') {
-    const needsXcode = /xcrun|xcode|command line tools/i.test(errorMsg ?? '');
-    // Android tooling gaps: no SDK/adb/emulator, or no AVD created yet.
-    const needsAndroid = /\b(adb|emulator|android sdk|avd|virtual device)\b/i.test(errorMsg ?? '');
-    const title = needsXcode
-      ? 'iOS tooling unavailable'
-      : needsAndroid
-        ? 'Android tooling unavailable'
-        : "Couldn't start the preview";
-    // A tooling gap is fixable by the agent — offer the same hand-off as the proactive
-    // setup view rather than telling the user to go install things by hand.
-    const setupPlatform: Platform | null = needsXcode ? 'ios' : needsAndroid ? 'android' : null;
+    // A tooling error is fixable by the agent — set up the platform we were actually
+    // attempting (`platform`), not one re-derived from the error text. The keyword
+    // match only classifies tooling-vs-generic so we know whether to offer setup.
+    const isToolingError =
+      /xcrun|xcode|command line tools/i.test(errorMsg ?? '') ||
+      /\b(adb|emulator|android sdk|avd|virtual device|java runtime)\b/i.test(errorMsg ?? '');
+    const setupPlatform: Platform | null = isToolingError ? platform : null;
+    const heading = setupPlatform
+      ? `${setupPlatform === 'android' ? 'Android' : 'iOS'} tooling unavailable`
+      : "Couldn't start the preview";
     const detail = setupPlatform
       ? MOBILE_SETUP[setupPlatform].need
       : `Ship Studio couldn't start a ${PLATFORM_COPY[platform ?? 'ios'].surface} preview for ${projectName}.`;
-    return (
-      <div className="preview-install-prompt">
-        <h3>{title}</h3>
-        <p className="hint">{detail}</p>
-        {errorMsg && <p className="hint">{errorMsg}</p>}
-        {setupPlatform && onSendToAgent && (
-          <Button variant="primary" size="sm" onClick={() => handleAgentSetup(setupPlatform)}>
-            Set up with AI
-          </Button>
-        )}
-        <Button variant="secondary" size="sm" onClick={restart}>
-          <ResetIcon size={14} /> Try again
-        </Button>
-      </div>
-    );
+    return renderSetupCard(heading, detail, setupPlatform, errorMsg ?? undefined);
   }
 
   // ---- Progress (starting) ----
