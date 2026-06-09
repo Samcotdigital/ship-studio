@@ -1763,28 +1763,50 @@ fn detect_jdk_home() -> Option<std::path::PathBuf> {
         .find(|p| p.join("bin/java").is_file())
 }
 
-/// Wrap an Android build command so Gradle can find a JDK: export `JAVA_HOME`
-/// (falling back to the detected one only if the login shell didn't already set it,
-/// so a user's own setup wins) and put its `bin` on `PATH`. iOS commands pass through
-/// untouched. No JDK found → return the command unchanged so it surfaces Gradle's own
-/// "install Java" error rather than a confusing wrapper failure.
-fn with_android_java_env(platform: crate::state::Platform, cmd: String) -> String {
+/// Build the env-export prefix for an Android build command from the detected
+/// JDK and SDK locations. Pure for testing. `${VAR:-…}` keeps a user's own
+/// login-shell `JAVA_HOME`/`ANDROID_HOME` winning over the detected paths.
+fn android_build_env_prefix(
+    jdk: Option<&std::path::Path>,
+    sdk: Option<&std::path::Path>,
+) -> String {
+    let mut prefix = String::new();
+    if let Some(jdk) = jdk {
+        prefix.push_str(&format!(
+            "export JAVA_HOME=\"${{JAVA_HOME:-{}}}\"; export PATH=\"$JAVA_HOME/bin:$PATH\"; ",
+            jdk.display()
+        ));
+    }
+    if let Some(sdk) = sdk {
+        prefix.push_str(&format!(
+            "export ANDROID_HOME=\"${{ANDROID_HOME:-{}}}\"; ",
+            sdk.display()
+        ));
+    }
+    prefix
+}
+
+/// Wrap an Android build command so Gradle can find its toolchain: export
+/// `JAVA_HOME` (+ its `bin` on PATH) and `ANDROID_HOME`. The SDK export matters
+/// because the build runs in a login shell where `ANDROID_HOME` is usually
+/// UNSET — we resolve adb/emulator from the default SDK path ourselves, but
+/// Gradle's "SDK location not found" check can't, so any project without an
+/// `android/local.properties` fails at `./gradlew app:installDebug`. iOS
+/// commands pass through untouched. Nothing detected → return the command
+/// unchanged so Gradle's own error surfaces rather than a wrapper failure.
+fn with_android_build_env(platform: crate::state::Platform, cmd: String) -> String {
     if platform != crate::state::Platform::Android {
         return cmd;
     }
-    match detect_jdk_home() {
-        Some(jdk) => format!(
-            "export JAVA_HOME=\"${{JAVA_HOME:-{}}}\"; export PATH=\"$JAVA_HOME/bin:$PATH\"; {}",
-            jdk.display(),
-            cmd
-        ),
-        None => cmd,
-    }
+    let prefix =
+        android_build_env_prefix(detect_jdk_home().as_deref(), android_sdk_root().as_deref());
+    format!("{prefix}{cmd}")
 }
 
 /// Get the launch command for a project's app on a given simulator, or an error
 /// if the project type isn't a supported native mobile app. Android commands are
-/// wrapped to provide `JAVA_HOME` for Gradle (see [`with_android_java_env`]).
+/// wrapped to provide `JAVA_HOME`/`ANDROID_HOME` for Gradle (see
+/// [`with_android_build_env`]).
 #[tauri::command]
 #[tracing::instrument]
 pub async fn get_simulator_launch_command(
@@ -1798,7 +1820,7 @@ pub async fn get_simulator_launch_command(
         build_launch_command(&workspace, platform, &udid).ok_or_else(|| -> CommandError {
             "This project type can't be launched on this device yet.".into()
         })?;
-    Ok(with_android_java_env(platform, cmd))
+    Ok(with_android_build_env(platform, cmd))
 }
 
 /// Kill the serve-sim daemon for one device (best-effort; ignores non-zero exit).
@@ -2904,6 +2926,30 @@ mod tests {
             1
         );
         assert!(control_to_scrcpy_msgs(&ControlMsg::Tap { x: 0.1, y: 0.1 }).is_empty());
+    }
+
+    #[test]
+    fn android_build_env_prefix_exports_jdk_and_sdk() {
+        use std::path::Path;
+        let jdk = Path::new("/opt/jdk");
+        let sdk = Path::new("/Users/x/Library/Android/sdk");
+        // Both detected → both exported, login-shell values winning via ${VAR:-}.
+        let p = android_build_env_prefix(Some(jdk), Some(sdk));
+        assert_eq!(
+            p,
+            "export JAVA_HOME=\"${JAVA_HOME:-/opt/jdk}\"; \
+             export PATH=\"$JAVA_HOME/bin:$PATH\"; \
+             export ANDROID_HOME=\"${ANDROID_HOME:-/Users/x/Library/Android/sdk}\"; "
+        );
+        // SDK alone still exports — a missing ANDROID_HOME is what breaks
+        // Gradle's "SDK location not found" check on projects without a
+        // local.properties.
+        assert_eq!(
+            android_build_env_prefix(None, Some(sdk)),
+            "export ANDROID_HOME=\"${ANDROID_HOME:-/Users/x/Library/Android/sdk}\"; "
+        );
+        // Nothing detected → empty prefix (command runs unchanged).
+        assert_eq!(android_build_env_prefix(None, None), "");
     }
 
     #[test]
