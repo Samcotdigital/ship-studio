@@ -1,16 +1,17 @@
 /**
  * AndroidMirrorStage — the Android half of {@link DeviceMirror}'s live stage.
  *
- * Where iOS embeds a serve-sim MJPEG `<img>` and streams continuous down/move/up
- * touches, Android has no such daemon: the Rust bridge streams screenrecord H.264
- * over a WebSocket, which {@link createAndroidMirror} decodes onto a `<canvas>` with
- * WebCodecs. Input is discrete (`adb shell input` can't stream a drag cheaply), so
- * a press→release becomes a tap or, if it moved, a swipe — synthesized here from the
- * pointer's start/end points and elapsed time.
+ * Where iOS embeds a serve-sim MJPEG `<img>`, the Android bridge streams H.264
+ * over a WebSocket, which {@link createAndroidMirror} decodes onto a `<canvas>`
+ * with WebCodecs. Input mirrors iOS: every pointer down/move/up is handed to the
+ * mirror handle, which streams it live over scrcpy's control socket (real drags
+ * and long-presses) — or, on the screenrecord fallback, synthesizes the gesture
+ * into a discrete tap/swipe. The mode is the handle's concern; this stage just
+ * reports what the pointer did.
  *
  * Self-contained: it owns the canvas, the decoder/socket handle, and its pointer
- * gestures. The parent ({@link DeviceMirror}) keeps the shared toolbar, build panel,
- * and launch detection.
+ * wiring. The parent ({@link DeviceMirror}) keeps the shared toolbar, build
+ * panel, and launch detection.
  *
  * @module components/AndroidMirrorStage
  */
@@ -28,13 +29,12 @@ interface AndroidMirrorStageProps {
   onFirstFrame: () => void;
 }
 
-/** Below this normalized move distance a press→release is a tap, not a swipe. */
-const TAP_SLOP = 0.02;
-
 export function AndroidMirrorStage({ wsUrl, onError, onFirstFrame }: AndroidMirrorStageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<AndroidMirrorHandle | null>(null);
-  const downRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  // Last pointer position while down — pointercancel must release the streamed
+  // touch SOMEWHERE, or the device is left with a finger held down forever.
+  const downAtRef = useRef<{ x: number; y: number } | null>(null);
 
   // Connect the decoder once per wsUrl. A new session (Restart / heal) changes the
   // URL and re-runs this; onError/onFirstFrame are stable (parent useCallback) so a
@@ -61,25 +61,32 @@ export function AndroidMirrorStage({ wsUrl, onError, onFirstFrame }: AndroidMirr
   const onPointerDown = (e: React.PointerEvent) => {
     const p = norm(e);
     if (!p) return;
-    downRef.current = { ...p, t: e.timeStamp };
+    downAtRef.current = p;
     e.currentTarget.setPointerCapture?.(e.pointerId);
+    handleRef.current?.sendTouch('down', p.x, p.y);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!downAtRef.current) return;
+    const p = norm(e);
+    if (!p) return;
+    downAtRef.current = p;
+    handleRef.current?.sendTouch('move', p.x, p.y);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
-    const start = downRef.current;
-    downRef.current = null;
-    const handle = handleRef.current;
-    if (!start || !handle) return;
-    const p = norm(e);
-    if (!p) return;
-    const moved = Math.hypot(p.x - start.x, p.y - start.y);
-    if (moved < TAP_SLOP) {
-      handle.sendTap(start.x, start.y);
-    } else {
-      // Match the gesture's real duration so a flick scrolls and a slow drag drags.
-      const ms = Math.max(50, Math.min(800, Math.round(e.timeStamp - start.t)));
-      handle.sendSwipe(start.x, start.y, p.x, p.y, ms);
-    }
+    if (!downAtRef.current) return;
+    const p = norm(e) ?? downAtRef.current;
+    downAtRef.current = null;
+    handleRef.current?.sendTouch('up', p.x, p.y);
+  };
+
+  const onPointerCancel = () => {
+    // Release the touch at its last known point so a cancelled gesture (e.g.
+    // the OS stealing the pointer) can't strand a held-down finger on-device.
+    const last = downAtRef.current;
+    downAtRef.current = null;
+    if (last) handleRef.current?.sendTouch('up', last.x, last.y);
   };
 
   return (
@@ -87,10 +94,9 @@ export function AndroidMirrorStage({ wsUrl, onError, onFirstFrame }: AndroidMirr
       ref={canvasRef}
       className="device-mirror-screen"
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        downRef.current = null;
-      }}
+      onPointerCancel={onPointerCancel}
     />
   );
 }

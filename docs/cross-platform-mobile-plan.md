@@ -79,6 +79,18 @@ it owns the adb forward, reads the scrcpy video/control sockets, and exposes the
 the frontend as **one WebSocket** (H.264 frames out, touch/key events in). The
 frontend decodes H.264 with **WebCodecs `VideoDecoder`** onto a `<canvas>`.
 
+> **Shipped (v4.0 server, vendored):** the video socket runs `raw_stream=true`
+> (pure Annex-B), and the **control socket is real** — pointer down/move/up
+> stream as scrcpy `INJECT_TOUCH_EVENT` messages (32-byte wire format, verified
+> against the v4.0 server source), keys as `INJECT_KEYCODE`, text as
+> `INJECT_TEXT` (full UTF-8, no sanitizing needed). Touch coordinates are sent
+> in the **decoded video size** — scrcpy's `PositionMapper` requires the claimed
+> size to equal the encoder's video size and maps the point back onto the
+> display itself, which also makes rotation self-correcting. The bridge
+> announces its input mode in a JSON hello as the first WebSocket message;
+> on the screenrecord fallback (`"adb"`) the frontend synthesizes discrete
+> taps/swipes instead.
+
 Properties that make this the right call:
 - **No new external service** — the bridge is ~one Rust module; we already
   reverse-engineered serve-sim's binary touch protocol, so scrcpy's is in scope.
@@ -134,10 +146,15 @@ not two bolted-together panes.
   `ios/` folder is iOS-only, etc.). The toolbar shows only what the project + the
   machine can actually run (iOS needs Xcode; Android needs the SDK + an AVD).
 - **A single segmented control in the `DeviceMirror` toolbar: `[ iOS | Android ]`**,
-  shown only when both are available. Switching platform swaps the active session
-  (each platform has its own backend session in the registry, keyed by
-  `(project_path, platform)`) — the other keeps running in the background, exactly
-  like our pinned-session model, so a switch is instant on return.
+  shown only when both are available.
+
+  > **Shipped (simplified):** sessions stay keyed by `project_path` — **one
+  > active platform per project**. Switching tears the other platform's session
+  > down (via the platform-dispatched teardown) before booting the new one,
+  > rather than keeping both alive. Running a simulator + an emulator + two
+  > native builds concurrently per project costs more than the instant-switch
+  > is worth; revisit `(project_path, platform)` keying only if users actually
+  > ask for simultaneous platforms.
 - **Device picker** (second control) lists that platform's devices (iPhone 17 / SE /
   iPad; Pixel 8 / tablet) — the same control for both, populated per-platform.
 - **Everything else is identical across platforms:** the build log panel, "App
@@ -146,8 +163,8 @@ not two bolted-together panes.
 - **No surprise windows:** Android's emulator window is hidden the same way we hide
   Simulator.app (the mirror is what they look at).
 
-Registry change: key mobile sessions by `(project_path, platform)` instead of
-`project_path`, so iOS and Android previews for the same project coexist.
+Registry: keyed by `project_path` (see the shipped note above) — iOS and Android
+previews for the same project do NOT coexist; a switch is a clean teardown + boot.
 
 ---
 

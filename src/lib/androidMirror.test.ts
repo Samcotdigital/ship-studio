@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseNalUnits, nalType, codecString, buildAvcC, toAvcc } from './androidMirror';
+import {
+  parseNalUnits,
+  nalType,
+  codecString,
+  buildAvcC,
+  toAvcc,
+  parseBridgeHello,
+  synthesizeGesture,
+} from './androidMirror';
 
 /** Build an Annex-B buffer from NAL bodies, each prefixed with a 4-byte start code. */
 function annexB(...nals: number[][]): Uint8Array {
@@ -94,5 +102,38 @@ describe('toAvcc', () => {
   it('prefixes each NAL with a 4-byte big-endian length', () => {
     const out = toAvcc([new Uint8Array([0xaa, 0xbb]), new Uint8Array([0xcc])]);
     expect(Array.from(out)).toEqual([0, 0, 0, 2, 0xaa, 0xbb, 0, 0, 0, 1, 0xcc]);
+  });
+});
+
+describe('parseBridgeHello', () => {
+  it('recognizes both input modes', () => {
+    expect(parseBridgeHello('{"type":"mode","input":"scrcpy"}')).toBe('scrcpy');
+    expect(parseBridgeHello('{"type":"mode","input":"adb"}')).toBe('adb');
+  });
+
+  it('rejects non-hello and malformed payloads', () => {
+    expect(parseBridgeHello('{"type":"mode","input":"telnet"}')).toBeNull();
+    expect(parseBridgeHello('{"type":"other"}')).toBeNull();
+    expect(parseBridgeHello('not json')).toBeNull();
+    expect(parseBridgeHello('null')).toBeNull();
+  });
+});
+
+describe('synthesizeGesture', () => {
+  it('classifies a press-release within the slop as a tap at the START point', () => {
+    const g = synthesizeGesture({ x: 0.5, y: 0.5 }, { x: 0.505, y: 0.5 }, 120);
+    expect(g).toEqual({ type: 'tap', x: 0.5, y: 0.5 });
+  });
+
+  it('classifies real movement as a swipe with the clamped real duration', () => {
+    const g = synthesizeGesture({ x: 0.2, y: 0.8 }, { x: 0.2, y: 0.3 }, 432.6);
+    expect(g).toEqual({ type: 'swipe', x1: 0.2, y1: 0.8, x2: 0.2, y2: 0.3, ms: 433 });
+  });
+
+  it('clamps the duration so a flick still scrolls and a stall does not hang adb', () => {
+    const flick = synthesizeGesture({ x: 0, y: 1 }, { x: 0, y: 0 }, 8);
+    expect(flick.type === 'swipe' && flick.ms).toBe(50);
+    const stall = synthesizeGesture({ x: 0, y: 1 }, { x: 0, y: 0 }, 30_000);
+    expect(stall.type === 'swipe' && stall.ms).toBe(800);
   });
 });

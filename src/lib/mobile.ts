@@ -61,6 +61,9 @@ export interface MobileSimulator {
   runtime: string | null;
 }
 
+/** A build verdict, as stored on the backend session. */
+export type MobileLaunchStatus = 'building' | 'launched' | 'failed' | 'exited';
+
 /** Connection details for an active serve-sim mirror. */
 export interface MirrorInfo {
   udid: string;
@@ -74,6 +77,10 @@ export interface MirrorInfo {
   device_name: string;
   /** Friendly runtime label (e.g. "iOS 26.1"), best-effort. */
   device_runtime: string | null;
+  /** The session's last reported build verdict — present only on the reuse path
+   *  (tab-return), so the panel can restore "App running" instantly instead of
+   *  re-deriving it from a replayed (possibly truncated) build log. */
+  launch_status: MobileLaunchStatus | null;
 }
 
 /**
@@ -131,6 +138,17 @@ export async function startMobilePreview(
     platform,
     preferred: preferred ?? null,
   });
+}
+
+/** Report the settled build verdict to the backend session, so a later reuse
+ *  (tab-return) restores it instantly — the pty ring buffer may have dropped the
+ *  log marker the verdict came from. Fire-and-forget; a race with teardown is
+ *  harmless (the next session starts fresh). */
+export async function setMobileLaunchStatus(
+  projectPath: string,
+  status: MobileLaunchStatus
+): Promise<void> {
+  return invoke<void>('set_mobile_launch_status', { projectPath, status });
 }
 
 /**

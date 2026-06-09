@@ -32,7 +32,9 @@ import {
   detectMobileTargets,
   mobilePlatformSupport,
   appIdFromLog,
+  setMobileLaunchStatus,
   type MirrorInfo,
+  type MobileLaunchStatus,
   type Platform,
   type MobileTargets,
   type MobilePlatformSupport,
@@ -203,7 +205,11 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
     let channel: InputChannel | null = null;
     let stableTimer: number | null = null;
 
-    const resolveBuild = async (activePlatform: Platform, udid: string) => {
+    const resolveBuild = async (
+      activePlatform: Platform,
+      udid: string,
+      seededStatus: MobileLaunchStatus | null
+    ) => {
       let cmd: string;
       try {
         cmd = await getSimulatorLaunchCommand(projectPath, activePlatform, udid);
@@ -223,9 +229,22 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
       if (cancelled) return;
       buildTextRef.current = '';
       setBuildCommand(cmd);
-      setBuildOpen(true);
       setBuildAlive(true);
-      setLaunchStatus('building');
+      // A reused session carries its backend-stored verdict — restore it
+      // directly instead of waiting for the (possibly truncated) log replay or
+      // the next app-running poll, which used to regress a long-lived launched
+      // app back to 'building' on tab-return. Fresh sessions start at
+      // 'building' and report it so the backend session knows one is underway.
+      const initial: LaunchStatus =
+        seededStatus && seededStatus !== 'building' ? seededStatus : 'building';
+      launchStatusRef.current = initial;
+      setLaunchStatus(initial);
+      setBuildOpen(initial !== 'launched');
+      if (initial === 'building') {
+        void setMobileLaunchStatus(projectPath, 'building').catch(() => {
+          /* best-effort — a teardown race just drops the report */
+        });
+      }
     };
 
     const run = async () => {
@@ -258,8 +277,9 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
           healAttemptsRef.current = 0;
         }, HEAL_STABLE_MS);
 
-        // Auto-launch the app build into the embedded terminal.
-        void resolveBuild(platform, info.udid);
+        // Auto-launch the app build into the embedded terminal, seeding any
+        // verdict the backend session already holds (reuse path).
+        void resolveBuild(platform, info.udid, info.launch_status);
       } catch (err) {
         if (cancelled) return;
         logger.error('[DeviceMirror] failed', {
@@ -355,6 +375,11 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
       if (next !== 'launched' && launchStatusRef.current !== 'building') return;
       launchStatusRef.current = next;
       setLaunchStatus(next);
+      // Persist the verdict on the backend session so a tab-return restores it
+      // even after the log marker scrolls out of the pty ring buffer.
+      void setMobileLaunchStatus(projectPath, next).catch(() => {
+        /* best-effort — a teardown race just drops the report */
+      });
       if (next === 'launched') {
         setBuildOpen(false); // app is up — collapse the log
         // iOS only: the build tool foregrounded Simulator.app over Ship Studio; the
@@ -363,7 +388,7 @@ export function DeviceMirror({ projectName, projectPath, onSendToAgent }: Device
         if (platform === 'ios') void hideSimulator();
       }
     },
-    [platform]
+    [platform, projectPath]
   );
 
   // Ground-truth launch detection: poll the simulator for our actually-running app.

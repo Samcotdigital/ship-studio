@@ -66,6 +66,11 @@ pub struct MobileSession {
     pub device_name: String,
     /// Friendly runtime label (e.g. "iOS 26.1"), best-effort.
     pub device_runtime: Option<String>,
+    /// Last build verdict the frontend settled ("building" / "launched" /
+    /// "failed" / "exited"), if any. Backend-owned so a tab-return can restore
+    /// the verdict even after the build log's success banner has scrolled out of
+    /// the pty ring buffer (which used to regress 'launched' to 'building').
+    pub launch_status: Option<String>,
 }
 
 /// Maps `project_path -> MobileSession` for active mobile previews.
@@ -88,6 +93,22 @@ pub fn get_mobile_session(project_path: &str) -> Option<MobileSession> {
 /// Remove and return the mobile session for a project (the teardown entry point).
 pub fn take_mobile_session(project_path: &str) -> Option<MobileSession> {
     MOBILE_SESSIONS.lock().ok()?.remove(project_path)
+}
+
+/// Record the latest build verdict on a project's live session. Returns false
+/// when no session is registered (e.g. the report raced a teardown) — harmless,
+/// the next session starts with a fresh status anyway.
+pub fn set_mobile_session_launch_status(project_path: &str, status: String) -> bool {
+    let Ok(mut map) = MOBILE_SESSIONS.lock() else {
+        return false;
+    };
+    match map.get_mut(project_path) {
+        Some(s) => {
+            s.launch_status = Some(status);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Remove and return every mobile session owned by a window (window-close
@@ -607,7 +628,24 @@ mod mobile_session_tests {
             window_label: window_label.into(),
             device_name: "iPhone 17".into(),
             device_runtime: Some("iOS 26.1".into()),
+            launch_status: None,
         }
+    }
+
+    #[test]
+    fn launch_status_updates_live_session_only() {
+        let path = "/tmp/ms-launch-status";
+        register_mobile_session(path.into(), sample("main"));
+        assert!(set_mobile_session_launch_status(path, "launched".into()));
+        assert_eq!(
+            get_mobile_session(path).unwrap().launch_status.as_deref(),
+            Some("launched")
+        );
+        take_mobile_session(path); // cleanup
+        assert!(
+            !set_mobile_session_launch_status(path, "failed".into()),
+            "no session registered → report is dropped"
+        );
     }
 
     #[test]

@@ -24,6 +24,10 @@ const SERVE_SIM_TIMEOUT_SECS: u64 = 90;
 /// Booting a cold simulator can take a while; `bootstatus -b` blocks until the
 /// device is fully ready, so give it room.
 const BOOT_WAIT_TIMEOUT_SECS: u64 = 150;
+/// A cold Android emulator boot (`-no-snapshot-save`, first run after creation)
+/// routinely exceeds the iOS budget — give it more headroom before declaring
+/// the boot failed.
+const ANDROID_BOOT_WAIT_TIMEOUT_SECS: u64 = 240;
 /// A one-shot AppleScript (e.g. hiding Simulator.app) should be near-instant;
 /// cap it low so a wedged osascript can't stall the caller.
 const OSASCRIPT_TIMEOUT_SECS: u64 = 5;
@@ -64,6 +68,11 @@ pub struct MirrorInfo {
     pub device_name: String,
     /// Friendly runtime label (e.g. "iOS 26.1"), best-effort.
     pub device_runtime: Option<String>,
+    /// The session's last reported build verdict ("building" / "launched" /
+    /// "failed" / "exited"), present only on the reuse path. Lets a tab-return
+    /// restore the verdict instantly instead of re-deriving it from a replayed
+    /// (and possibly truncated) build log.
+    pub launch_status: Option<String>,
 }
 
 /// Build an `xcrun` command with the extended PATH (Finder-launched apps don't
@@ -171,6 +180,7 @@ fn parse_mirror_info(json: &str) -> Result<MirrorInfo, CommandError> {
         // JSON only carries the udid.
         device_name: String::new(),
         device_runtime: None,
+        launch_status: None,
     })
 }
 
@@ -498,8 +508,16 @@ async fn ensure_emulator(preferred: Option<String>) -> Result<(AndroidDevice, bo
         );
     }
 
-    // Reuse a device that's already up (booted_by_us = false).
-    if let Some(dev) = list_android_devices().await?.into_iter().next() {
+    // Reuse a device that's already up (booted_by_us = false), preferring the
+    // requested serial when it's among them. We never boot a SECOND emulator
+    // while one is running — `expo run:android` / `react-native run-android`
+    // target "the" device and would be ambiguous with two attached.
+    let running = list_android_devices().await?;
+    if !running.is_empty() {
+        let dev = preferred
+            .as_deref()
+            .and_then(|p| running.iter().find(|d| d.serial == p).cloned())
+            .unwrap_or_else(|| running.into_iter().next().expect("non-empty"));
         return Ok((dev, false));
     }
 
@@ -529,7 +547,7 @@ async fn ensure_emulator(preferred: Option<String>) -> Result<(AndroidDevice, bo
                 return Ok((AndroidDevice { name: avd, ..dev }, true));
             }
         }
-        if waited >= BOOT_WAIT_TIMEOUT_SECS {
+        if waited >= ANDROID_BOOT_WAIT_TIMEOUT_SECS {
             return Err("The Android emulator did not finish booting in time.".into());
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -736,10 +754,17 @@ const SCRCPY_REMOTE_JAR: &str = "/data/local/tmp/scrcpy-server.jar";
 const SCRCPY_MAX_SIZE: u32 = 1600;
 
 /// A running Android mirror bridge: the supervisor task (abort to stop the WS
-/// server + screenrecord) and the device serial (to clean up the on-device process).
+/// server and the in-flight capture), the device serial (to clean up on-device
+/// processes), and the scid of the live scrcpy server (if any) so teardown can
+/// kill exactly OUR server — `pkill -f scrcpy` would also take down a scrcpy
+/// session the user runs by hand, or another project's bridge on a shared device.
 struct AndroidBridgeHandle {
     serial: String,
     task: tokio::task::JoinHandle<()>,
+    /// The `scid=<id>` of the currently-running scrcpy server, set by the client
+    /// handler for its connection's lifetime. `None` = screenrecord fallback (or
+    /// no client connected).
+    current_scid: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 /// Live bridges keyed by project path — the same key as [`MOBILE_SESSIONS`], so
@@ -752,12 +777,37 @@ type WsStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
 type WsSink = futures_util::stream::SplitSink<WsStream, tokio_tungstenite::tungstenite::Message>;
 type WsSource = futures_util::stream::SplitStream<WsStream>;
 
+/// A touch phase in a streamed gesture, mirroring the pointer events the
+/// webview sees. Maps to Android `AMOTION_EVENT_ACTION_*` on the scrcpy path.
+#[derive(Deserialize, Debug, PartialEq, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum TouchPhase {
+    Down,
+    Move,
+    Up,
+}
+
 /// A control message from the webview, sent as JSON on the mirror WebSocket.
 /// Coordinates are normalized 0..1 (origin top-left) so the frontend never needs
-/// the device's pixel size; the bridge maps them with `wm size`.
+/// the device's pixel size.
+///
+/// `Touch` is the streamed-gesture path (scrcpy control socket): the frontend
+/// sends every down/move/up, plus the decoded video dimensions (`vw`/`vh`) —
+/// scrcpy's `PositionMapper` silently DROPS any event whose claimed screen size
+/// doesn't match the encoder's video size, and the decoder is the one place that
+/// size is reliably known. `Tap`/`Swipe` are the discrete fallback (screenrecord
+/// mirror, or before the first frame): the bridge maps them with `wm size` onto
+/// `adb shell input`.
 #[derive(Deserialize, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum ControlMsg {
+    Touch {
+        phase: TouchPhase,
+        x: f64,
+        y: f64,
+        vw: u32,
+        vh: u32,
+    },
     Tap {
         x: f64,
         y: f64,
@@ -789,6 +839,130 @@ fn keycode_for(key: &str) -> Option<&'static str> {
         "DEL" => "KEYCODE_DEL",
         _ => return None,
     })
+}
+
+/// The same whitelist as [`keycode_for`], as numeric `AKEYCODE_*` values for the
+/// scrcpy control socket.
+fn android_keycode(key: &str) -> Option<i32> {
+    Some(match key {
+        "BACK" => 4,
+        "HOME" => 3,
+        "APP_SWITCH" => 187,
+        "ENTER" => 66,
+        "DEL" => 67,
+        _ => return None,
+    })
+}
+
+// ---- scrcpy control protocol (server v4.0) ----
+//
+// Verified against the scrcpy v4.0 server source (ControlMessageReader.java,
+// ControlMessage.java, PositionMapper.java). All integers are big-endian.
+
+/// `ControlMessage.TYPE_INJECT_KEYCODE`.
+const SCRCPY_MSG_INJECT_KEYCODE: u8 = 0;
+/// `ControlMessage.TYPE_INJECT_TEXT`.
+const SCRCPY_MSG_INJECT_TEXT: u8 = 1;
+/// `ControlMessage.TYPE_INJECT_TOUCH_EVENT`.
+const SCRCPY_MSG_INJECT_TOUCH: u8 = 2;
+/// scrcpy's `POINTER_ID_GENERIC_FINGER`: the server injects the event as a real
+/// finger on the touchscreen source (buttons are zeroed server-side).
+const SCRCPY_POINTER_GENERIC_FINGER: i64 = -2;
+/// `AMOTION_EVENT_ACTION_*` values for the touch message's `action` byte.
+const AMOTION_ACTION_DOWN: u8 = 0;
+const AMOTION_ACTION_UP: u8 = 1;
+const AMOTION_ACTION_MOVE: u8 = 2;
+/// The server caps injected text at 300 bytes (`INJECT_TEXT_MAX_LENGTH`).
+const SCRCPY_INJECT_TEXT_MAX: usize = 300;
+
+/// Build a scrcpy inject-touch control message (32 bytes): type, action,
+/// pointer id (i64), x/y (i32, in VIDEO pixels), video width/height (u16),
+/// pressure (u16 fixed-point; 0xffff = 1.0, 0 on UP), action button, buttons.
+/// `x`/`y` are normalized 0..1 and mapped onto the video size — scrcpy's
+/// `PositionMapper` requires the claimed screen size to equal the encoder's
+/// video size exactly, and maps the point back onto the device display itself
+/// (so rotation/resize are handled server-side).
+fn scrcpy_touch_msg(action: u8, x: f64, y: f64, vw: u16, vh: u16) -> [u8; 32] {
+    let px = |n: f64, max: u16| (n.clamp(0.0, 1.0) * f64::from(max)).round() as i32;
+    let pressure: u16 = if action == AMOTION_ACTION_UP {
+        0
+    } else {
+        0xffff
+    };
+    let mut m = [0u8; 32];
+    m[0] = SCRCPY_MSG_INJECT_TOUCH;
+    m[1] = action;
+    m[2..10].copy_from_slice(&SCRCPY_POINTER_GENERIC_FINGER.to_be_bytes());
+    m[10..14].copy_from_slice(&px(x, vw).to_be_bytes());
+    m[14..18].copy_from_slice(&px(y, vh).to_be_bytes());
+    m[18..20].copy_from_slice(&vw.to_be_bytes());
+    m[20..22].copy_from_slice(&vh.to_be_bytes());
+    m[22..24].copy_from_slice(&pressure.to_be_bytes());
+    // action_button (24..28) and buttons (28..32): zero — finger input.
+    m
+}
+
+/// Build a scrcpy inject-keycode control message (14 bytes): type, action
+/// (0 down / 1 up), keycode (i32), repeat (i32, 0), meta state (i32, 0).
+fn scrcpy_keycode_msg(action: u8, keycode: i32) -> [u8; 14] {
+    let mut m = [0u8; 14];
+    m[0] = SCRCPY_MSG_INJECT_KEYCODE;
+    m[1] = action;
+    m[2..6].copy_from_slice(&keycode.to_be_bytes());
+    m
+}
+
+/// Build a scrcpy inject-text control message: type, u32 byte length, UTF-8
+/// bytes. `None` when empty or over the server's 300-byte cap — callers fall
+/// back to the (sanitized) `adb shell input text` path.
+fn scrcpy_text_msg(text: &str) -> Option<Vec<u8>> {
+    let bytes = text.as_bytes();
+    if bytes.is_empty() || bytes.len() > SCRCPY_INJECT_TEXT_MAX {
+        return None;
+    }
+    let mut m = Vec::with_capacity(5 + bytes.len());
+    m.push(SCRCPY_MSG_INJECT_TEXT);
+    m.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+    m.extend_from_slice(bytes);
+    Some(m)
+}
+
+/// Translate a webview control message into scrcpy control-socket messages, in
+/// write order. Empty = "not expressible here" — the caller falls back to the
+/// `adb shell input` path (Tap/Swipe stay on adb: they carry no video size, and
+/// the frontend only sends them in discrete mode anyway). Pure for testing.
+fn control_to_scrcpy_msgs(msg: &ControlMsg) -> Vec<Vec<u8>> {
+    match msg {
+        ControlMsg::Touch {
+            phase,
+            x,
+            y,
+            vw,
+            vh,
+        } => {
+            let (Ok(vw), Ok(vh)) = (u16::try_from(*vw), u16::try_from(*vh)) else {
+                return Vec::new();
+            };
+            if vw == 0 || vh == 0 {
+                return Vec::new();
+            }
+            let action = match phase {
+                TouchPhase::Down => AMOTION_ACTION_DOWN,
+                TouchPhase::Move => AMOTION_ACTION_MOVE,
+                TouchPhase::Up => AMOTION_ACTION_UP,
+            };
+            vec![scrcpy_touch_msg(action, *x, *y, vw, vh).to_vec()]
+        }
+        ControlMsg::Key { key } => match android_keycode(key) {
+            Some(code) => vec![
+                scrcpy_keycode_msg(AMOTION_ACTION_DOWN, code).to_vec(),
+                scrcpy_keycode_msg(AMOTION_ACTION_UP, code).to_vec(),
+            ],
+            None => Vec::new(),
+        },
+        ControlMsg::Text { text } => scrcpy_text_msg(text).map(|m| vec![m]).unwrap_or_default(),
+        ControlMsg::Tap { .. } | ControlMsg::Swipe { .. } => Vec::new(),
+    }
 }
 
 /// Sanitize text for `adb shell input text`, which runs through the device shell:
@@ -831,6 +1005,10 @@ fn control_to_adb_args(msg: &ControlMsg, dw: u32, dh: u32) -> Option<Vec<String>
         }
         ControlMsg::Key { key } => Some(vec!["keyevent".into(), keycode_for(key)?.to_string()]),
         ControlMsg::Text { text } => Some(vec!["text".into(), sanitize_input_text(text)?]),
+        // Streamed touches need the scrcpy control socket; `adb shell input`
+        // can't express a held-down pointer. The frontend only streams these in
+        // scrcpy mode, so there's nothing to map here.
+        ControlMsg::Touch { .. } => None,
     }
 }
 
@@ -859,18 +1037,19 @@ async fn device_size(serial: &str) -> Option<(u32, u32)> {
     parse_wm_size(&out)
 }
 
-/// Pump live H.264 to the WebSocket. Prefers scrcpy (low-latency, ~50-100ms) when
-/// its server jar is available; otherwise falls back to screenrecord (always
-/// present, but file-oriented and ~1s buffered). Both emit raw Annex-B H.264, so
-/// the WebCodecs decoder is identical — only the capture source differs. Returns
-/// when the client disconnects or the source can't be started.
-async fn pump_video(serial: String, sink: WsSink) {
-    if push_scrcpy_server(&serial).await {
-        pump_video_scrcpy(serial, sink).await;
-    } else {
-        tracing::info!(%serial, "scrcpy-server unavailable — using screenrecord mirror");
-        pump_video_screenrecord(serial, sink).await;
-    }
+/// Everything needed to mirror via scrcpy: the live, already-probed video
+/// socket (plus the first bytes the probe read), the control socket for input
+/// injection, the on-device server child, and the forward guard that removes
+/// the adb forward on every exit path.
+struct ScrcpySession {
+    server: tokio::process::Child,
+    video: tokio::net::TcpStream,
+    /// First video bytes (SPS/PPS + IDR) consumed by the connect probe.
+    first: Vec<u8>,
+    control: tokio::net::TcpStream,
+    scid: String,
+    /// Held for the session's lifetime; `Drop` removes the adb forward.
+    _forward: ForwardGuard,
 }
 
 /// Monotonic scrcpy socket id source (`scrcpy_<scid>`), so concurrent bridges
@@ -975,11 +1154,13 @@ async fn remove_scrcpy_forward(serial: &str, local_port: u16) {
     .await;
 }
 
-/// Start scrcpy-server in raw-video mode (no control, no audio). The on-device
-/// process is a child of this adb shell, killed on drop. `raw_stream=true` makes the
-/// socket carry pure Annex-B H.264 — no device meta, codec header, or dummy byte —
-/// so the decoder reads it like screenrecord's output. `max_size` caps the long edge
-/// for a crisp-but-light stream.
+/// Start scrcpy-server in raw-video + control mode (no audio). The on-device
+/// process is a child of this adb shell, killed on drop. `raw_stream=true` makes
+/// the VIDEO socket carry pure Annex-B H.264 — no device meta, codec header, or
+/// dummy byte (it only strips metadata; control is unaffected, verified against
+/// v4.0's `Options.java`). `control=true` opens the second (control) socket for
+/// real streamed touch/key injection. `max_size` caps the long edge for a
+/// crisp-but-light stream.
 fn start_scrcpy_server(serial: &str, scid: &str) -> Option<tokio::process::Child> {
     let mut cmd = adb_command();
     cmd.args([
@@ -996,7 +1177,7 @@ fn start_scrcpy_server(serial: &str, scid: &str) -> Option<tokio::process::Child
         "raw_stream=true",
         "video=true",
         "audio=false",
-        "control=false",
+        "control=true",
         &format!("max_size={SCRCPY_MAX_SIZE}"),
         "log_level=error",
     ]);
@@ -1016,17 +1197,21 @@ fn start_scrcpy_server(serial: &str, scid: &str) -> Option<tokio::process::Child
 /// raw_stream emits SPS immediately, so a live connection returns promptly.
 async fn connect_scrcpy_socket(local_port: u16) -> Option<(tokio::net::TcpStream, Vec<u8>)> {
     use tokio::io::AsyncReadExt;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{sleep, timeout, Duration};
     for _ in 0..40 {
         if let Ok(mut s) = tokio::net::TcpStream::connect(("127.0.0.1", local_port)).await {
             let _ = s.set_nodelay(true);
             let mut buf = vec![0u8; 64 * 1024];
-            match s.read(&mut buf).await {
-                Ok(n) if n > 0 => {
+            // Bound the first read: a live raw_stream connection emits SPS
+            // promptly, but a server that accepted and then wedged must not hang
+            // the whole connect attempt — time out and retry instead.
+            match timeout(Duration::from_secs(2), s.read(&mut buf)).await {
+                Ok(Ok(n)) if n > 0 => {
                     buf.truncate(n);
                     return Some((s, buf));
                 }
-                // 0 bytes / error → connected too early (socket not up yet); retry.
+                // 0 bytes / error / timeout → connected too early (socket not up
+                // yet) or a wedged server; retry.
                 _ => {}
             }
         }
@@ -1052,64 +1237,118 @@ impl Drop for ForwardGuard {
     }
 }
 
-/// scrcpy low-latency mirror: forward a socket, start the server, and pump its raw
-/// Annex-B H.264 to the WebSocket. The server is killed on drop (`kill_on_drop`) and
-/// the forward removed by `ForwardGuard` on every exit path (including task abort).
-/// No relaunch loop — scrcpy streams continuously (no 180s cap).
-async fn pump_video_scrcpy(serial: String, mut sink: WsSink) {
+/// Establish a full scrcpy session: push the jar, forward a port, start the
+/// server, connect-and-probe the VIDEO socket, then connect the CONTROL socket
+/// (the server accepts them in that order in `tunnel_forward` mode). `None` on
+/// any failure — every path cleans up after itself (the forward via the guard,
+/// the server via `start_kill`), so the caller can simply fall back to
+/// screenrecord.
+async fn establish_scrcpy(serial: &str) -> Option<ScrcpySession> {
+    use tokio::time::{timeout, Duration};
+
+    if !push_scrcpy_server(serial).await {
+        return None;
+    }
+    let scid = next_scid();
+    let local_port = setup_scrcpy_forward(serial, &scid).await?;
+    // From here, any return (or abort) removes the forward via this guard.
+    let forward = ForwardGuard {
+        serial: serial.to_string(),
+        port: local_port,
+    };
+    let mut server = match start_scrcpy_server(serial, &scid) {
+        Some(s) => s,
+        None => {
+            tracing::warn!(%serial, "scrcpy: server spawn failed");
+            return None;
+        }
+    };
+    let Some((video, first)) = connect_scrcpy_socket(local_port).await else {
+        tracing::warn!(%serial, "scrcpy: could not connect the video socket");
+        let _ = server.start_kill();
+        return None;
+    };
+    // The control socket is the server's SECOND accept; the video socket is
+    // already live, so this connect resolves immediately — bound it anyway.
+    let control = match timeout(
+        Duration::from_secs(5),
+        tokio::net::TcpStream::connect(("127.0.0.1", local_port)),
+    )
+    .await
+    {
+        Ok(Ok(s)) => {
+            let _ = s.set_nodelay(true);
+            s
+        }
+        _ => {
+            tracing::warn!(%serial, "scrcpy: could not connect the control socket");
+            let _ = server.start_kill();
+            return None;
+        }
+    };
+    Some(ScrcpySession {
+        server,
+        video,
+        first,
+        control,
+        scid,
+        _forward: forward,
+    })
+}
+
+/// Pump the scrcpy video socket's raw Annex-B H.264 to the WebSocket, starting
+/// with the first chunk (SPS/PPS + IDR) the connect probe already read. Returns
+/// when the server closes or the client disconnects. No relaunch loop — scrcpy
+/// streams continuously (no 180s cap).
+async fn pump_scrcpy_video(mut stream: tokio::net::TcpStream, first: Vec<u8>, mut sink: WsSink) {
     use futures_util::SinkExt;
     use tokio::io::AsyncReadExt;
     use tokio_tungstenite::tungstenite::Message;
 
-    let scid = next_scid();
-    let Some(local_port) = setup_scrcpy_forward(&serial, &scid).await else {
-        tracing::warn!(%serial, "scrcpy: adb forward failed — falling back to screenrecord");
-        pump_video_screenrecord(serial, sink).await;
+    if sink.send(Message::Binary(first)).await.is_err() {
         return;
-    };
-    // From here, any return (or abort) removes the forward via this guard.
-    let _forward = ForwardGuard {
-        serial: serial.clone(),
-        port: local_port,
-    };
-    let Some(mut server) = start_scrcpy_server(&serial, &scid) else {
-        tracing::warn!(%serial, "scrcpy: server spawn failed");
-        return;
-    };
-    let Some((mut stream, first)) = connect_scrcpy_socket(local_port).await else {
-        tracing::warn!(%serial, "scrcpy: could not connect the video socket");
-        let _ = server.start_kill();
-        return;
-    };
-
-    // Forward the first chunk (SPS/PPS+IDR) already read during the connect probe,
-    // then stream the rest.
-    if sink.send(Message::Binary(first)).await.is_ok() {
-        let mut buf = vec![0u8; 64 * 1024];
-        loop {
-            match stream.read(&mut buf).await {
-                Ok(0) => break, // server closed
-                Ok(n) => {
-                    if sink.send(Message::Binary(buf[..n].to_vec())).await.is_err() {
-                        break; // client gone
-                    }
+    }
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        match stream.read(&mut buf).await {
+            Ok(0) => break, // server closed
+            Ok(n) => {
+                if sink.send(Message::Binary(buf[..n].to_vec())).await.is_err() {
+                    break; // client gone
                 }
-                Err(_) => break,
             }
+            Err(_) => break,
         }
     }
-    let _ = server.start_kill();
-    let _ = server.wait().await;
 }
+
+/// Read and discard the scrcpy control socket's device→client messages
+/// (clipboard updates etc.). We don't use them, but if nobody reads them the
+/// server's writes eventually block and stall the Controller. Ends when the
+/// socket closes (server died) — which ends the client session via the select.
+async fn drain_scrcpy_control(mut read: tokio::io::ReadHalf<tokio::net::TcpStream>) {
+    use tokio::io::AsyncReadExt;
+    let mut buf = vec![0u8; 4096];
+    while matches!(read.read(&mut buf).await, Ok(n) if n > 0) {}
+}
+
+/// How many consecutive zero-byte screenrecord runs we tolerate before giving
+/// up: a healthy relaunch (the 180s cap) always produces bytes, so repeated
+/// empty runs mean the device is gone or screenrecord is broken — without this
+/// cap the loop would respawn adb as fast as it can, forever.
+const SCREENRECORD_MAX_EMPTY_RUNS: u32 = 5;
 
 /// screenrecord fallback mirror: raw H.264 to the WebSocket, relaunched on the 180s
 /// cap for a continuous stream. The local `adb exec-out` child is killed on drop,
 /// tearing down the on-device screenrecord with it. Used only when scrcpy isn't
-/// available; higher latency but zero extra dependencies.
+/// available; higher latency but zero extra dependencies. Empty runs back off
+/// exponentially and give up after [`SCREENRECORD_MAX_EMPTY_RUNS`] — a dead
+/// device must not turn the relaunch loop into a hot spin.
 async fn pump_video_screenrecord(serial: String, mut sink: WsSink) {
     use futures_util::SinkExt;
     use tokio::io::AsyncReadExt;
     use tokio_tungstenite::tungstenite::Message;
+    let mut empty_runs = 0u32;
     loop {
         let mut cmd = adb_command();
         cmd.args([
@@ -1135,11 +1374,13 @@ async fn pump_video_screenrecord(serial: String, mut sink: WsSink) {
         let Some(mut stdout) = child.stdout.take() else {
             return;
         };
+        let mut got_bytes = false;
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             match stdout.read(&mut buf).await {
                 Ok(0) => break, // screenrecord hit its time limit → respawn below
                 Ok(n) => {
+                    got_bytes = true;
                     if sink.send(Message::Binary(buf[..n].to_vec())).await.is_err() {
                         let _ = child.start_kill();
                         return; // client gone
@@ -1149,13 +1390,37 @@ async fn pump_video_screenrecord(serial: String, mut sink: WsSink) {
             }
         }
         let _ = child.wait().await; // reap before relaunching
+        if got_bytes {
+            empty_runs = 0;
+            continue;
+        }
+        empty_runs += 1;
+        if empty_runs >= SCREENRECORD_MAX_EMPTY_RUNS {
+            tracing::warn!(%serial, "screenrecord produced no output repeatedly — giving up");
+            return;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_secs(1 << empty_runs.min(3))).await;
     }
 }
 
-/// Read control JSON from the WebSocket and drive `adb shell input`. Returns when
-/// the socket closes. Errors from individual `input` calls are swallowed — a
-/// dropped tap shouldn't kill the input channel.
-async fn control_loop(serial: String, mut source: WsSource, dw: u32, dh: u32) {
+/// Run one control message's adb fallback (`adb shell input …`). Errors are
+/// swallowed — a dropped tap shouldn't kill the input channel.
+async fn run_adb_input(serial: &str, args: &[String]) {
+    let mut cmd = adb_command();
+    cmd.args(["-s", serial, "shell", "input"]);
+    cmd.args(args);
+    let _ = run_to_stdout(
+        tokio::process::Command::from(cmd),
+        "adb shell input",
+        ADB_TIMEOUT_SECS,
+    )
+    .await;
+}
+
+/// Read control JSON from the WebSocket and drive `adb shell input` — the
+/// discrete fallback used with the screenrecord mirror. Returns when the socket
+/// closes.
+async fn control_loop_adb(serial: String, mut source: WsSource, dw: u32, dh: u32) {
     use futures_util::StreamExt;
     use tokio_tungstenite::tungstenite::Message;
     while let Some(Ok(msg)) = source.next().await {
@@ -1168,25 +1433,73 @@ async fn control_loop(serial: String, mut source: WsSource, dw: u32, dh: u32) {
             continue;
         };
         if let Some(args) = control_to_adb_args(&parsed, dw, dh) {
-            let mut cmd = adb_command();
-            cmd.args(["-s", &serial, "shell", "input"]);
-            cmd.args(&args);
-            let _ = run_to_stdout(
-                tokio::process::Command::from(cmd),
-                "adb shell input",
-                ADB_TIMEOUT_SECS,
-            )
-            .await;
+            run_adb_input(&serial, &args).await;
         }
     }
 }
 
-/// Handle one webview connection: WebSocket handshake, then run video out and
-/// control in concurrently. Whichever side ends first cancels the other (the
-/// dropped future kills its screenrecord child), so a disconnect tears everything
-/// down. Single-client by design — the supervisor loops back to await reconnects.
-async fn handle_bridge_client(serial: &str, stream: tokio::net::TcpStream) {
+/// Read control JSON from the WebSocket and inject it over the scrcpy control
+/// socket — streamed touches (real down/move/up, so drags and long-presses feel
+/// live), keycodes, and full-fidelity text. Messages the socket can't express
+/// (Tap/Swipe, oversize text) fall back to `adb shell input`. Returns when the
+/// WebSocket closes, or when the control socket dies (server gone — the video
+/// pump ends with it and the supervisor takes over).
+async fn control_loop_scrcpy(
+    serial: String,
+    mut source: WsSource,
+    mut ctrl: tokio::io::WriteHalf<tokio::net::TcpStream>,
+    dw: u32,
+    dh: u32,
+) {
     use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio_tungstenite::tungstenite::Message;
+    while let Some(Ok(msg)) = source.next().await {
+        let text = match msg {
+            Message::Text(t) => t,
+            Message::Close(_) => break,
+            _ => continue,
+        };
+        let Ok(parsed) = serde_json::from_str::<ControlMsg>(&text) else {
+            continue;
+        };
+        let msgs = control_to_scrcpy_msgs(&parsed);
+        if msgs.is_empty() {
+            // Not expressible on the control socket — adb input fallback.
+            if let Some(args) = control_to_adb_args(&parsed, dw, dh) {
+                run_adb_input(&serial, &args).await;
+            }
+            continue;
+        }
+        for m in &msgs {
+            if ctrl.write_all(m).await.is_err() {
+                tracing::warn!(%serial, "scrcpy control socket write failed");
+                return;
+            }
+        }
+    }
+}
+
+/// The hello the bridge sends as the FIRST WebSocket message, telling the
+/// frontend which input mode this connection supports: `scrcpy` = stream raw
+/// down/move/up touches; `adb` = send discrete tap/swipe. JSON text so it can't
+/// be confused with the binary H.264 frames.
+fn bridge_hello(input: &str) -> String {
+    format!(r#"{{"type":"mode","input":"{input}"}}"#)
+}
+
+/// Handle one webview connection: WebSocket handshake, announce the input mode,
+/// then run video out and control in concurrently. Whichever side ends first
+/// cancels the others (dropped futures kill their capture children), so a
+/// disconnect tears everything down. Single-client by design — the supervisor
+/// loops back to await reconnects.
+async fn handle_bridge_client(
+    serial: &str,
+    current_scid: &std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    stream: tokio::net::TcpStream,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
     let _ = stream.set_nodelay(true);
     let ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
@@ -1195,20 +1508,64 @@ async fn handle_bridge_client(serial: &str, stream: tokio::net::TcpStream) {
             return;
         }
     };
-    let (sink, source) = ws.split();
+    let (mut sink, source) = ws.split();
     let (dw, dh) = device_size(serial).await.unwrap_or((1080, 1920));
-    tokio::select! {
-        _ = pump_video(serial.to_string(), sink) => {}
-        _ = control_loop(serial.to_string(), source, dw, dh) => {}
+
+    match establish_scrcpy(serial).await {
+        Some(sess) => {
+            let ScrcpySession {
+                mut server,
+                video,
+                first,
+                control,
+                scid,
+                _forward,
+            } = sess;
+            *current_scid.lock().unwrap_or_else(|e| e.into_inner()) = Some(scid);
+            if sink
+                .send(Message::Text(bridge_hello("scrcpy").into()))
+                .await
+                .is_ok()
+            {
+                let (ctrl_read, ctrl_write) = tokio::io::split(control);
+                tokio::select! {
+                    _ = pump_scrcpy_video(video, first, sink) => {}
+                    _ = control_loop_scrcpy(serial.to_string(), source, ctrl_write, dw, dh) => {}
+                    _ = drain_scrcpy_control(ctrl_read) => {}
+                }
+            }
+            let _ = server.start_kill();
+            let _ = server.wait().await;
+            *current_scid.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            // `_forward` drops here, removing the adb forward.
+        }
+        None => {
+            tracing::info!(%serial, "scrcpy unavailable — using screenrecord mirror");
+            if sink
+                .send(Message::Text(bridge_hello("adb").into()))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            tokio::select! {
+                _ = pump_video_screenrecord(serial.to_string(), sink) => {}
+                _ = control_loop_adb(serial.to_string(), source, dw, dh) => {}
+            }
+        }
     }
 }
 
 /// Accept loop: serve one client at a time, looping back on disconnect so a tab
 /// re-open or heal reconnects to the same bridge. Ends only when the listener dies.
-async fn android_bridge_supervisor(serial: String, listener: tokio::net::TcpListener) {
+async fn android_bridge_supervisor(
+    serial: String,
+    current_scid: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    listener: tokio::net::TcpListener,
+) {
     loop {
         match listener.accept().await {
-            Ok((stream, _)) => handle_bridge_client(&serial, stream).await,
+            Ok((stream, _)) => handle_bridge_client(&serial, &current_scid, stream).await,
             Err(e) => {
                 tracing::warn!(%serial, error = %e, "android bridge accept failed; stopping");
                 break;
@@ -1229,20 +1586,43 @@ async fn start_android_bridge(
         .await
         .map_err(|e| format!("Failed to bind the Android mirror bridge on port {ws_port}: {e}"))?;
     let serial = serial.to_string();
-    let task = tokio::spawn(android_bridge_supervisor(serial.clone(), listener));
+    let current_scid = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let task = tokio::spawn(android_bridge_supervisor(
+        serial.clone(),
+        current_scid.clone(),
+        listener,
+    ));
     ANDROID_BRIDGES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(
             project_path.to_string(),
-            AndroidBridgeHandle { serial, task },
+            AndroidBridgeHandle {
+                serial,
+                task,
+                current_scid,
+            },
         );
     Ok(())
 }
 
+/// On-device kill command for a bridge's lingering capture process. When the
+/// bridge ran scrcpy we match by OUR `scid=<id>` — a bare `pkill -f scrcpy`
+/// would also take down a scrcpy session the user runs by hand, or another
+/// project's bridge sharing the device. Without a scid (screenrecord fallback,
+/// or no client connected) only the screenrecord fallback could be lingering.
+/// The scid is our own 8-hex-digit token, so interpolation is shell-safe.
+fn capture_kill_command(scid: Option<String>) -> String {
+    match scid {
+        Some(id) => format!("pkill -f scid={id} 2>/dev/null"),
+        None => "pkill -f screenrecord 2>/dev/null".to_string(),
+    }
+}
+
 /// Stop a project's bridge (abort the supervisor → drops the listener and the
 /// in-flight capture child) and best-effort kill any lingering on-device capture
-/// process (scrcpy server or screenrecord). Idempotent: no bridge → nothing to do.
+/// process (our scrcpy server, matched by scid, or the screenrecord fallback).
+/// Idempotent: no bridge → nothing to do.
 async fn stop_android_bridge(project_path: &str) {
     let handle = ANDROID_BRIDGES
         .lock()
@@ -1250,13 +1630,13 @@ async fn stop_android_bridge(project_path: &str) {
         .remove(project_path);
     if let Some(h) = handle {
         h.task.abort();
+        let scid = h
+            .current_scid
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
         let mut cmd = adb_command();
-        cmd.args([
-            "-s",
-            &h.serial,
-            "shell",
-            "pkill -f scrcpy 2>/dev/null; pkill -f screenrecord 2>/dev/null",
-        ]);
+        cmd.args(["-s", &h.serial, "shell", &capture_kill_command(scid)]);
         let _ = run_to_stdout(
             tokio::process::Command::from(cmd),
             "adb shell pkill capture",
@@ -1270,20 +1650,20 @@ async fn stop_android_bridge(project_path: &str) {
 /// abort the supervisor and blocking-kill the on-device capture process. Mirrors the
 /// iOS sync teardown's use of blocking `.output()`.
 fn stop_android_bridge_sync(project_path: &str, serial: &str) {
-    if let Some(h) = ANDROID_BRIDGES
+    let scid = ANDROID_BRIDGES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(project_path)
-    {
-        h.task.abort();
-    }
+        .map(|h| {
+            h.task.abort();
+            h.current_scid
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take()
+        })
+        .unwrap_or(None);
     let mut cmd = adb_command();
-    cmd.args([
-        "-s",
-        serial,
-        "shell",
-        "pkill -f scrcpy 2>/dev/null; pkill -f screenrecord 2>/dev/null",
-    ]);
+    cmd.args(["-s", serial, "shell", &capture_kill_command(scid)]);
     let _ = cmd.output();
 }
 
@@ -1670,6 +2050,7 @@ fn reuse_mirror_info(s: &crate::state::MobileSession) -> MirrorInfo {
         port: s.serve_sim_port,
         device_name: s.device_name.clone(),
         device_runtime: s.device_runtime.clone(),
+        launch_status: s.launch_status.clone(),
     }
 }
 
@@ -1732,10 +2113,33 @@ async fn establish_mirror(
             window_label: window_label.to_string(),
             device_name,
             device_runtime,
+            launch_status: None,
         },
     );
 
     Ok(info)
+}
+
+/// The build verdicts the frontend may report. A closed set so the registry
+/// can't accumulate arbitrary strings from the webview.
+const LAUNCH_STATUSES: [&str; 4] = ["building", "launched", "failed", "exited"];
+
+/// Record the frontend's settled build verdict on the project's live session,
+/// so a later reuse (tab-return) restores it instantly — the pty ring buffer
+/// can have dropped the log marker the verdict came from. No-op when no session
+/// is registered (the report raced a teardown).
+#[tauri::command]
+#[tracing::instrument]
+pub async fn set_mobile_launch_status(
+    project_path: String,
+    status: String,
+) -> Result<(), CommandError> {
+    crate::utils::validate_project_path(&project_path)?;
+    if !LAUNCH_STATUSES.contains(&status.as_str()) {
+        return Err(format!("Unknown launch status: {status}").into());
+    }
+    crate::state::set_mobile_session_launch_status(&project_path, status);
+    Ok(())
 }
 
 /// Start (or reuse) a complete native mobile preview for a project: ensure a
@@ -1917,6 +2321,7 @@ fn android_mirror_info(s: &crate::state::MobileSession) -> MirrorInfo {
         port: s.serve_sim_port,
         device_name: s.device_name.clone(),
         device_runtime: s.device_runtime.clone(),
+        launch_status: s.launch_status.clone(),
     }
 }
 
@@ -1996,6 +2401,7 @@ async fn start_android_preview(
             window_label,
             device_name: device.name.clone(),
             device_runtime: device_runtime.clone(),
+            launch_status: None,
         },
     );
 
@@ -2006,6 +2412,7 @@ async fn start_android_preview(
         port: reserved,
         device_name: device.name,
         device_runtime,
+        launch_status: None,
     })
 }
 
@@ -2370,10 +2777,123 @@ mod tests {
                 ms: 0
             }
         );
+        // Streamed touch with the decoded video size.
+        assert_eq!(
+            serde_json::from_str::<ControlMsg>(
+                r#"{"type":"touch","phase":"move","x":0.5,"y":0.25,"vw":720,"vh":1600}"#
+            )
+            .unwrap(),
+            ControlMsg::Touch {
+                phase: TouchPhase::Move,
+                x: 0.5,
+                y: 0.25,
+                vw: 720,
+                vh: 1600
+            }
+        );
+    }
+
+    #[test]
+    fn scrcpy_touch_msg_matches_v4_wire_format() {
+        // DOWN at (0.5, 0.25) on a 720x1600 video → x=360, y=400, pressure 0xffff.
+        let m = scrcpy_touch_msg(AMOTION_ACTION_DOWN, 0.5, 0.25, 720, 1600);
+        assert_eq!(m.len(), 32);
+        assert_eq!(m[0], 2, "TYPE_INJECT_TOUCH_EVENT");
+        assert_eq!(m[1], 0, "AMOTION_EVENT_ACTION_DOWN");
+        assert_eq!(&m[2..10], &(-2i64).to_be_bytes(), "generic finger pointer");
+        assert_eq!(&m[10..14], &360i32.to_be_bytes());
+        assert_eq!(&m[14..18], &400i32.to_be_bytes());
+        assert_eq!(&m[18..20], &720u16.to_be_bytes());
+        assert_eq!(&m[20..22], &1600u16.to_be_bytes());
+        assert_eq!(&m[22..24], &[0xff, 0xff], "full pressure while down");
+        assert_eq!(&m[24..32], &[0u8; 8], "no buttons for finger input");
+
+        // UP zeroes the pressure; out-of-range coords clamp into the video.
+        let up = scrcpy_touch_msg(AMOTION_ACTION_UP, 2.0, -1.0, 720, 1600);
+        assert_eq!(&up[10..14], &720i32.to_be_bytes(), "x clamped to width");
+        assert_eq!(&up[14..18], &0i32.to_be_bytes(), "y clamped to 0");
+        assert_eq!(&up[22..24], &[0, 0], "no pressure on up");
+    }
+
+    #[test]
+    fn scrcpy_keycode_and_text_msgs() {
+        let down = scrcpy_keycode_msg(AMOTION_ACTION_DOWN, 4); // AKEYCODE_BACK
+        assert_eq!(down.len(), 14);
+        assert_eq!(down[0], 0, "TYPE_INJECT_KEYCODE");
+        assert_eq!(down[1], 0, "action down");
+        assert_eq!(&down[2..6], &4i32.to_be_bytes());
+        assert_eq!(&down[6..14], &[0u8; 8], "repeat + meta zero");
+
+        let txt = scrcpy_text_msg("hi 👋").unwrap();
+        let bytes = "hi 👋".as_bytes();
+        assert_eq!(txt[0], 1, "TYPE_INJECT_TEXT");
+        assert_eq!(&txt[1..5], &(bytes.len() as u32).to_be_bytes());
+        assert_eq!(&txt[5..], bytes);
+        // Empty and oversize fall back to the adb path.
+        assert!(scrcpy_text_msg("").is_none());
+        assert!(scrcpy_text_msg(&"x".repeat(301)).is_none());
+    }
+
+    #[test]
+    fn control_to_scrcpy_msgs_dispatch() {
+        // Touch → one 32-byte message.
+        let touch = ControlMsg::Touch {
+            phase: TouchPhase::Down,
+            x: 0.5,
+            y: 0.5,
+            vw: 720,
+            vh: 1600,
+        };
+        assert_eq!(control_to_scrcpy_msgs(&touch).len(), 1);
+        // Zero/oversize video dims → not expressible (adb fallback).
+        let bad = ControlMsg::Touch {
+            phase: TouchPhase::Down,
+            x: 0.5,
+            y: 0.5,
+            vw: 0,
+            vh: 1600,
+        };
+        assert!(control_to_scrcpy_msgs(&bad).is_empty());
+        let huge = ControlMsg::Touch {
+            phase: TouchPhase::Down,
+            x: 0.5,
+            y: 0.5,
+            vw: 70000,
+            vh: 1600,
+        };
+        assert!(control_to_scrcpy_msgs(&huge).is_empty());
+        // Key → down + up pair; unknown key → nothing.
+        assert_eq!(
+            control_to_scrcpy_msgs(&ControlMsg::Key { key: "BACK".into() }).len(),
+            2
+        );
+        assert!(control_to_scrcpy_msgs(&ControlMsg::Key {
+            key: "REBOOT".into()
+        })
+        .is_empty());
+        // Text → one message; Tap/Swipe stay on the adb path.
+        assert_eq!(
+            control_to_scrcpy_msgs(&ControlMsg::Text { text: "ok".into() }).len(),
+            1
+        );
+        assert!(control_to_scrcpy_msgs(&ControlMsg::Tap { x: 0.1, y: 0.1 }).is_empty());
+    }
+
+    #[test]
+    fn capture_kill_command_scopes_to_our_scid() {
+        assert_eq!(
+            capture_kill_command(Some("0000002a".into())),
+            "pkill -f scid=0000002a 2>/dev/null"
+        );
+        assert_eq!(
+            capture_kill_command(None),
+            "pkill -f screenrecord 2>/dev/null"
+        );
     }
 
     /// Live, non-hermetic proof that the bridge streams decodable H.264 from a real
-    /// emulator. Gated behind `SHIPSTUDIO_LIVE_ANDROID=1` (serial via
+    /// emulator AND that the scrcpy control socket accepts our injected input.
+    /// Gated behind `SHIPSTUDIO_LIVE_ANDROID=1` (serial via
     /// `SHIPSTUDIO_ANDROID_SERIAL`, default `emulator-5554`) so `cargo test` skips it
     /// in CI. Run manually:
     ///   SHIPSTUDIO_LIVE_ANDROID=1 cargo test android_bridge_streams_h264 -- --nocapture
@@ -2384,6 +2904,7 @@ mod tests {
             return;
         }
         use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
         let serial =
             std::env::var("SHIPSTUDIO_ANDROID_SERIAL").unwrap_or_else(|_| "emulator-5554".into());
         let project = "/tmp/ship-android-bridge-test";
@@ -2397,6 +2918,21 @@ mod tests {
             .await
             .expect("client should connect");
 
+        // First message is the mode hello (scrcpy expected when the jar is bundled).
+        let hello = tokio::time::timeout(std::time::Duration::from_secs(20), ws.next())
+            .await
+            .expect("hello in time")
+            .expect("ws open")
+            .expect("ws ok");
+        let Message::Text(hello) = hello else {
+            panic!("expected text hello first, got {hello:?}");
+        };
+        eprintln!("bridge hello: {hello}");
+        assert!(
+            hello.contains(r#""input":"scrcpy""#),
+            "expected the scrcpy input mode, got: {hello}"
+        );
+
         // Collect a bit of stream; assert it's Annex-B H.264 (starts 00 00 00 01).
         let mut acc: Vec<u8> = Vec::new();
         for _ in 0..200 {
@@ -2404,19 +2940,33 @@ mod tests {
                 break;
             }
             match tokio::time::timeout(std::time::Duration::from_secs(15), ws.next()).await {
-                Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(b)))) => acc.extend(b),
+                Ok(Some(Ok(Message::Binary(b)))) => acc.extend(b),
                 other => panic!("expected binary frame, got {other:?}"),
             }
         }
         assert!(acc.len() >= 4, "stream too short");
         assert_eq!(&acc[..4], &[0, 0, 0, 1], "not Annex-B H.264");
 
-        // A tap should round-trip without erroring the socket.
-        ws.send(tokio_tungstenite::tungstenite::Message::Text(
-            r#"{"type":"tap","x":0.5,"y":0.5}"#.into(),
-        ))
-        .await
-        .expect("send tap");
+        // Inject a streamed touch gesture and a BACK key over the control socket.
+        // A malformed message would make the server's ControlMessageReader throw
+        // and tear the session down — so the stream STAYING ALIVE afterwards is
+        // the protocol-level proof the server parsed our bytes.
+        for msg in [
+            r#"{"type":"touch","phase":"down","x":0.5,"y":0.5,"vw":720,"vh":1600}"#,
+            r#"{"type":"touch","phase":"move","x":0.6,"y":0.5,"vw":720,"vh":1600}"#,
+            r#"{"type":"touch","phase":"up","x":0.6,"y":0.5,"vw":720,"vh":1600}"#,
+            r#"{"type":"key","key":"BACK"}"#,
+        ] {
+            ws.send(Message::Text(msg.into())).await.expect("send ctrl");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut alive = 0usize;
+        while alive < 2048 {
+            match tokio::time::timeout(std::time::Duration::from_secs(10), ws.next()).await {
+                Ok(Some(Ok(Message::Binary(b)))) => alive += b.len(),
+                other => panic!("stream died after control injection: {other:?}"),
+            }
+        }
 
         stop_android_bridge(project).await;
     }

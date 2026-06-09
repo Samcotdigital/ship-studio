@@ -515,6 +515,7 @@ pub fn run() {
             commands::mobile::android_app_running,
             commands::mobile::detect_mobile_targets,
             commands::mobile::mobile_platform_support,
+            commands::mobile::set_mobile_launch_status,
             // PTY & Terminal
             commands::pty::spawn_pty,
             commands::pty::kill_pty,
