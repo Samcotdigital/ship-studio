@@ -1419,6 +1419,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                         workspaceTab={workspaceTab}
                         setWorkspaceTab={setWorkspaceTab}
                         hasPreview={hasPreview}
+                        projectTypeResolved={projectType !== 'unknown'}
                         integrations={integrations}
                         branches={branches}
                         openPRs={openPRs}
