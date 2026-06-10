@@ -22,6 +22,7 @@ import { MultiSourceControl } from './MultiSourceControl';
 import { UsageScope } from './UsageScope';
 import { CodeIcon } from './CodeIcon';
 import { SlackIcon } from '../icons/brand';
+import { PinIcon } from '../icons/layout';
 import { PropSection } from './PropSection';
 import { PropControlRenderer, type ControlRenderCtx } from './PropControlRenderer';
 import { CONTROL_SECTIONS } from '../../lib/editControls';
@@ -272,6 +273,10 @@ interface Props {
   onOpenInCode?: (file: string, line: number) => void;
   onCommit: () => void;
   onClose: () => void;
+  /** Docked as a sidebar column inside the preview container instead of
+   *  floating over the canvas. Positioning comes from the container's grid. */
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 const PANEL_WIDTH = 264;
@@ -304,6 +309,8 @@ export function VisualEditorPanel({
   onOpenInCode,
   onCommit,
   onClose,
+  pinned = false,
+  onTogglePin,
 }: Props) {
   const resolution = selection?.resolution ?? null;
   // Both 'resolved' (one spot) and 'multi' (several identical spots) are editable.
@@ -351,8 +358,9 @@ export function VisualEditorPanel({
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
 
   const onHeaderPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    // Don't start a drag from the close button.
-    if ((e.target as HTMLElement).closest('.ss-edit-panel__close')) return;
+    // Don't start a drag from the header buttons (pin/close) — pointer capture
+    // would swallow their click events.
+    if ((e.target as HTMLElement).closest('.ss-edit-panel__header-actions')) return;
     const r = rootRef.current?.getBoundingClientRect();
     if (!r) return;
     dragRef.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
@@ -376,28 +384,45 @@ export function VisualEditorPanel({
   return (
     <div
       ref={rootRef}
-      className="ss-edit-panel"
+      className={`ss-edit-panel${pinned ? ' ss-edit-panel--pinned' : ''}`}
       data-testid="visual-editor-panel"
-      style={{
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        right: 'auto',
-        zIndex: 1000,
-        // Cap shorter than the viewport; the body scrolls, the footer stays put.
-        maxHeight: `min(520px, calc(100vh - ${pos.top + 16}px))`,
-      }}
+      style={
+        // Pinned positioning is entirely CSS (the container's grid column).
+        pinned
+          ? undefined
+          : {
+              position: 'fixed',
+              top: pos.top,
+              left: pos.left,
+              right: 'auto',
+              zIndex: 1000,
+              // Cap shorter than the viewport; the body scrolls, the footer stays put.
+              maxHeight: `min(520px, calc(100vh - ${pos.top + 16}px))`,
+            }
+      }
     >
       <div
         className="ss-edit-panel__header"
-        onPointerDown={onHeaderPointerDown}
-        onPointerMove={onHeaderPointerMove}
-        onPointerUp={onHeaderPointerUp}
+        onPointerDown={pinned ? undefined : onHeaderPointerDown}
+        onPointerMove={pinned ? undefined : onHeaderPointerMove}
+        onPointerUp={pinned ? undefined : onHeaderPointerUp}
       >
         <span className="ss-edit-panel__title">Edit</span>
-        <button className="ss-edit-panel__close" onClick={onClose} aria-label="Exit edit mode">
-          ×
-        </button>
+        <span className="ss-edit-panel__header-actions">
+          {onTogglePin && (
+            <button
+              className={`ss-edit-panel__pin${pinned ? ' is-pinned' : ''}`}
+              onClick={onTogglePin}
+              title={pinned ? 'Unpin — float over the preview' : 'Pin as sidebar'}
+              aria-pressed={pinned}
+            >
+              <PinIcon size={13} />
+            </button>
+          )}
+          <button className="ss-edit-panel__close" onClick={onClose} aria-label="Exit edit mode">
+            ×
+          </button>
+        </span>
       </div>
 
       <div className="ss-edit-panel__body">

@@ -62,14 +62,16 @@
 }
 
 .ss-edit-panel {
-  /* Portaled to <body>; position/top/left/max-height are set inline by the
-     component (it owns drag). position:fixed at the document root is the only
-     reliable way to sit ABOVE the preview iframe in WebKit — an in-tree overlay
-     (even with z-index or a promoted layer) gets composited under it. */
+  /* Floating mode is portaled to <body>; position/top/left/max-height are set
+     inline by the component (it owns drag). position:fixed at the document
+     root is the only reliable way to sit ABOVE the preview iframe in WebKit —
+     an in-tree overlay (even with z-index or a promoted layer) gets composited
+     under it. Width comes from --editor-panel-w (base.css), which MUST match
+     PANEL_WIDTH in VisualEditorPanel.tsx. */
   position: fixed;
   display: flex;
   flex-direction: column;
-  width: 264px;
+  width: var(--editor-panel-w);
   /* Header + footer are fixed; only the body scrolls. Panel clips; max-height is
      set inline by the component. */
   overflow: hidden;
@@ -79,6 +81,9 @@
   box-shadow: var(--shadow-md);
   font-size: 13px;
 }
+
+/* Pin-as-sidebar styles (pin button, header actions, pinned layout) live in
+   preview.css — they integrate the panel into the preview container's grid. */
 
 .ss-edit-panel__header {
   display: flex;

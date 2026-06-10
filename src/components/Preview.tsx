@@ -44,13 +44,15 @@ import { useBreakpoints } from '../hooks/useBreakpoints';
 import { BASE_BREAKPOINT, isTailwindActive, type Breakpoint as TwBreakpoint } from '../lib/edit';
 import { VisualEditorPanel } from './edit/VisualEditorPanel';
 import { PreviewLocaleSwitcher, type PreviewLocaleConfig } from './PreviewLocaleSwitcher';
+import { CompactIcon, ExpandIcon, ResetIcon } from './icons';
 import { pathLocale, switchPathLocale } from '../lib/i18n';
 import type { ProjectType } from '../lib/static-server';
 
 // SVG icons for breakpoints
 const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
   if (type === 'full') {
-    // Expand/maximize icon for full width
+    // Horizontal stretch-to-edges for full width — deliberately distinct from
+    // the diagonal expand arrows on the fullscreen toolbar button.
     return (
       <svg
         width="16"
@@ -59,11 +61,14 @@ const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <polyline points="15 3 21 3 21 9" />
-        <polyline points="9 21 3 21 3 15" />
-        <line x1="21" y1="3" x2="14" y2="10" />
-        <line x1="3" y1="21" x2="10" y2="14" />
+        <line x1="3" y1="4" x2="3" y2="20" />
+        <line x1="21" y1="4" x2="21" y2="20" />
+        <line x1="7" y1="12" x2="17" y2="12" />
+        <polyline points="10 9 7 12 10 15" />
+        <polyline points="14 9 17 12 14 15" />
       </svg>
     );
   }
@@ -289,6 +294,46 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     iframeWrapperRef: capture.iframeWrapperRef,
     onUserResize: () => setPinnedBreakpoint(null),
   });
+
+  // Fullscreen: the container goes position:fixed over the window below the
+  // workspace header (kept visible — it carries the project name and makes
+  // room for the macOS traffic lights). The iframe never remounts, so the
+  // page state survives entering/leaving. ESC exits.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Bottom edge of the workspace header — the top of the fullscreen overlay
+  // and of the pinned editor sidebar. Measured (the header has no fixed height).
+  const [chromeTop, setChromeTop] = useState(0);
+  useEffect(() => {
+    const measure = () => {
+      const header = document.querySelector('.workspace-header');
+      setChromeTop(header ? Math.round(header.getBoundingClientRect().bottom) : 0);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isFullscreen]);
+
+  // Pin the visual editor as a sidebar (instead of a floating panel over the
+  // canvas) — persisted in localStorage, so it's a cross-project setting.
+  // The preview makes room via a class on the container, in both normal and
+  // fullscreen modes.
+  const [editorPinned, setEditorPinned] = useState(
+    () => localStorage.getItem('visualEditorPinned') === '1'
+  );
+  const toggleEditorPinned = useCallback(() => {
+    setEditorPinned((p) => {
+      localStorage.setItem('visualEditorPinned', p ? '0' : '1');
+      return !p;
+    });
+  }, []);
 
   // Inspect-panel vertical resize. Null = use the default 1fr split from CSS;
   // a number = explicit panel height in px (overrides via inline grid-template-rows).
@@ -605,15 +650,18 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
   return (
     <div
-      className="preview-container"
+      className={`preview-container${isFullscreen ? ' preview-container--fullscreen' : ''}${
+        editor.editMode && editorPinned ? ' preview-container--editor-pinned' : ''
+      }`}
       data-logs={showLogs ? 'open' : 'closed'}
-      style={
-        showLogs && inspectPanelHeight !== null
+      style={{
+        ...(showLogs && inspectPanelHeight !== null
           ? {
               gridTemplateRows: `auto minmax(0, 1fr) var(--handle-size) ${inspectPanelHeight}px`,
             }
-          : undefined
-      }
+          : undefined),
+        ...(isFullscreen ? { top: chromeTop } : undefined),
+      }}
     >
       <div className="preview-toolbar">
         {editorEnabled && (
@@ -637,7 +685,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             >
               <path d="M4 4l7.07 17 2.51-7.39L21 11.07z" />
             </svg>
-            <span>Edit (Beta)</span>
+            <span>Edit</span>
             <span
               className={`preview-edit-toggle-switch ${editor.editMode ? 'is-on' : ''}`}
               aria-hidden
@@ -745,7 +793,17 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           title="Refresh preview"
           data-education-id="preview-refresh"
         >
-          ↻
+          <ResetIcon size={14} />
+        </button>
+
+        <button
+          type="button"
+          className="preview-fullscreen-btn"
+          onClick={() => setIsFullscreen((f) => !f)}
+          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen preview'}
+          aria-pressed={isFullscreen}
+        >
+          {isFullscreen ? <CompactIcon size={14} /> : <ExpandIcon size={14} />}
         </button>
 
         {previewPlugins}
@@ -931,36 +989,44 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         onHealthOutput={onHealthOutput}
       />
       {editor.editMode &&
-        createPortal(
-          <VisualEditorPanel
-            selection={editor.selection}
-            currentClass={editor.currentClass}
-            textResolution={editor.textResolution}
-            textBlockedNonce={editor.textBlockedNonce}
-            breakpoints={breakpoints}
-            activeBreakpoint={activeBreakpoint}
-            breakpointTooWide={breakpointTooWide}
-            onSelectBreakpoint={(bp) => {
-              setPinnedBreakpoint(bp);
-              // Jump the canvas to a breakpoint's width so you can see it; Base
-              // applies at all widths, so leave the canvas where it is.
-              if (bp.minPx > 0) resize.previewAtWidth(bp.minPx);
-            }}
-            autoSave={editor.autoSave}
-            onToggleAutoSave={editor.toggleAutoSave}
-            onStepGap={(dir) => editor.stepSpacing('gap', dir)}
-            onSetSide={editor.setBoxSide}
-            onApplyEnum={editor.applyEnum}
-            onReset={editor.reset}
-            multiTarget={editor.multiTarget}
-            onMultiTargetChange={editor.setMultiTarget}
-            usage={editor.usage}
-            onOpenInCode={onOpenInCode}
-            onCommit={() => void editor.commit()}
-            onClose={editor.toggleEditMode}
-          />,
-          document.body
-        )}
+        (() => {
+          // Floating mode portals to <body> (position:fixed is the only way to
+          // composite above the iframe in WebKit). Pinned mode renders in-tree
+          // as the container's second grid column — it never overlaps the
+          // iframe, and the grid guarantees it can't cover surrounding chrome.
+          const panel = (
+            <VisualEditorPanel
+              selection={editor.selection}
+              currentClass={editor.currentClass}
+              textResolution={editor.textResolution}
+              textBlockedNonce={editor.textBlockedNonce}
+              breakpoints={breakpoints}
+              activeBreakpoint={activeBreakpoint}
+              breakpointTooWide={breakpointTooWide}
+              onSelectBreakpoint={(bp) => {
+                setPinnedBreakpoint(bp);
+                // Jump the canvas to a breakpoint's width so you can see it; Base
+                // applies at all widths, so leave the canvas where it is.
+                if (bp.minPx > 0) resize.previewAtWidth(bp.minPx);
+              }}
+              autoSave={editor.autoSave}
+              onToggleAutoSave={editor.toggleAutoSave}
+              onStepGap={(dir) => editor.stepSpacing('gap', dir)}
+              onSetSide={editor.setBoxSide}
+              onApplyEnum={editor.applyEnum}
+              onReset={editor.reset}
+              multiTarget={editor.multiTarget}
+              onMultiTargetChange={editor.setMultiTarget}
+              usage={editor.usage}
+              onOpenInCode={onOpenInCode}
+              onCommit={() => void editor.commit()}
+              onClose={editor.toggleEditMode}
+              pinned={editorPinned}
+              onTogglePin={toggleEditorPinned}
+            />
+          );
+          return editorPinned ? panel : createPortal(panel, document.body);
+        })()}
     </div>
   );
 });
