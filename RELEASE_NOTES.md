@@ -6,6 +6,17 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.7.1
+
+- **Element tree** - Fullscreen edit mode gains a Webflow-style navigator: every element on the page as a collapsible tree. Click to select (the edit panel picks it up instantly), hover to highlight, and selection stays in sync both ways. Toggle it from the toolbar
+- **Fullscreen preview** - A new button next to refresh expands the preview to fill the window (Esc exits). Combine with edit mode for a full designer layout: elements | canvas | edit panel
+- **Pin the visual editor** - A pin in the Edit panel docks it as a sidebar so it never covers your page. Works in fullscreen too, and the choice sticks across projects
+- **Mobile app starters** - The create-project picker now offers Expo, React Native, and Flutter templates, each opening straight into a live device preview
+- **Choose your assets folder** - The Assets panel can point anywhere in your project (like src/assets for Astro), per project, from a picker in the breadcrumb bar
+- **Clickable terminal links** - URLs printed by dev servers, build logs, and agents now open in your browser
+- **Polish** - Double-clicking the device mirror no longer selects the preview, matched toolbar icons, and a distinct full-width breakpoint icon
+
+
 ## What's New in v0.7.0
 
 - **Mobile app previews** - Open a React Native, Expo, or Flutter project and the preview pane becomes a real, interactive device. Ship Studio boots an iOS Simulator or Android emulator, builds and launches your app onto it (build log streams in), and mirrors the screen live — tap, swipe, and type right in the workspace. macOS only for now.
