@@ -25,6 +25,18 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.1', // v0.7.1
+    items: [
+      'Element tree — fullscreen edit mode now shows a Webflow-style navigator on the left: every element on the page as a collapsible tree. Click a row to select it (the edit panel picks it up instantly), hover to highlight it on the canvas, and selections stay in sync both ways. Toggle it from the toolbar',
+      'Fullscreen preview — a new button next to refresh expands the preview to fill the window. Press Esc to exit. Combine it with edit mode for a full designer layout: elements | canvas | edit panel',
+      'Pin the visual editor — a pin in the Edit panel docks it as a sidebar so it never covers your page, and the preview makes room. Works in fullscreen too, and the choice sticks across projects',
+      'Mobile app starters — the create-project picker now offers Expo, React Native, and Flutter templates. Each opens straight into a live device preview with a polished starter screen and agent-ready instructions',
+      'Choose your assets folder — the Assets panel can now point anywhere in your project (like src/assets for Astro image pipelines), per project, from a new picker in the breadcrumb bar. Copy-path adapts automatically',
+      'Links in terminals are now clickable — URLs printed by dev servers, build logs, and agents open in your browser',
+      'Polish — double-clicking the device mirror no longer selects the whole preview, matched toolbar icons, and the full-width breakpoint got its own icon',
+    ],
+  },
+  {
     version: '0.7.0', // v0.7.0
     items: [
       'Mobile app previews — open a React Native, Expo, or Flutter project and the preview pane becomes a real, interactive device. Ship Studio boots an iOS Simulator or Android emulator for you, builds and launches your app onto it (with the build log streaming in), and mirrors the screen live so you can tap, swipe, and type right in the workspace',
