@@ -6,6 +6,17 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.8.0
+
+- **Shopify themes** - Build Online Store 2.0 themes: create from the new starter or import any theme repo, connect your store through a guided setup, and preview real Liquid rendered against your actual store with hot reload. Cmd+K commands build sections with AI and push your theme for review; visual edit mode works on .liquid sections
+- **Replace images visually** - Select any image in edit mode and swap it from your assets folder; the new path is written straight into source
+- **Interactive dev server logs** - Answer CLI prompts (logins, y/n confirms) by clicking the logs and typing; logs auto-follow new output and stay scrollable
+- **Wrapped terminal links fixed** - URLs split across lines now highlight and open as one link
+- **Import any repo** - GitHub repos without a package.json (Flutter, Rust, plain HTML) no longer fail at the dependency step
+- **Security hardening** - Closed path-traversal, command-injection, and IPC trust gaps across backend commands
+- **Fixes** - Project rename no longer breaks open-project guards or shows malformed errors
+
+
 ## What's New in v0.7.1
 
 - **Element tree** - Fullscreen edit mode gains a Webflow-style navigator: every element on the page as a collapsible tree. Click to select (the edit panel picks it up instantly), hover to highlight, and selection stays in sync both ways. Toggle it from the toolbar
