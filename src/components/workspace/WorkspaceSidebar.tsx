@@ -587,6 +587,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
         type="button"
         className="workspace-sidebar-filter"
         onClick={() => openPalette()}
+        title="Open command palette"
         aria-label="Open command palette"
       >
         <SearchIcon size={12} />
@@ -812,6 +813,7 @@ function ProjectGroup({
             onToggleExpand();
           }}
           aria-expanded={isExpanded}
+          title={isExpanded ? 'Collapse project' : 'Expand project'}
           aria-label={isExpanded ? 'Collapse project' : 'Expand project'}
         >
           <ChevronIcon
