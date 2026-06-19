@@ -1080,6 +1080,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               onReset={editor.reset}
               multiTarget={editor.multiTarget}
               onMultiTargetChange={editor.setMultiTarget}
+              editTarget={editor.editTarget}
+              customClasses={editor.customClasses}
+              canCreateClass={editor.classEntryReady}
+              onEditElement={editor.editElement}
+              onEditClass={editor.editClass}
+              onApplyClass={(name) => editor.applyClass(name)}
+              onUnapplyClass={(name) => editor.unapplyClass(name)}
+              onCreateClass={(name) => void editor.createClassFromStyles(name)}
               usage={editor.usage}
               onOpenInCode={onOpenInCode}
               onCommit={() => void editor.commit()}
@@ -1090,8 +1098,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           );
           // Pinned: wrap in a relative "dock" grid cell and absolutely-position
           // the panel inside it. An absolute panel can't grow its grid track, so
-          // it's bounded to the cell's real height and its body scrolls — an
-          // in-flow panel was growing its row past the viewport in WebKit.
+          // it's forced to the cell's real (bounded) height and its body scrolls
+          // — grid track-sizing was letting the in-flow panel grow past the
+          // viewport in WebKit instead.
           return editorPinned ? (
             <div className="ss-edit-panel-dock">{panel}</div>
           ) : (
