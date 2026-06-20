@@ -137,6 +137,24 @@ export function useVisualEditor({
   const [editModeOn, setEditModeOn] = useState(false);
   const editMode = enabled && editModeOn;
 
+  // ── Analytics: edit-mode session tracking ────────────────────────────────
+  // Mirror edit-mode intent into a ref so `toggleEditMode` reads the current
+  // direction without going stale, plus per-session timing and a saved-edit
+  // counter that's reported when the session ends (`visual_edit_stopped`).
+  const editModeOnRef = useRef(false);
+  useEffect(() => {
+    editModeOnRef.current = editModeOn;
+  }, [editModeOn]);
+  const editStartedAtRef = useRef<number | null>(null);
+  const editsCommittedRef = useRef(0);
+  /** Fire an analytics event for an edit that persisted to source, and count it
+   *  toward the current edit-mode session. Project context is auto-attached by
+   *  `trackEvent`/`enrichProperties`, so callers pass only edit-specific props. */
+  const recordCommit = useCallback((event: string, props?: Record<string, unknown>) => {
+    editsCommittedRef.current += 1;
+    void trackEvent(event, props);
+  }, []);
+
   // Known breakpoint prefixes, for scoping a class string to one variant layer.
   const known = useMemo(() => breakpointPrefixes(breakpoints), [breakpoints]);
 
@@ -359,6 +377,7 @@ export function useVisualEditor({
               prev?.status === 'resolved' ? { ...prev, text: next } : prev
             );
             post({ type: 'ss:commit' });
+            recordCommit('visual_text_saved');
             onToast?.('Saved to source', 'success');
           } catch (err) {
             logger.error('[VisualEditor] text write-back failed', { error: String(err) });
@@ -377,6 +396,13 @@ export function useVisualEditor({
       selectedSigRef.current = sig;
       setSelection({ signature: sig, resolution: null, instanceCount });
       setLiveClass(sig.className);
+      // Engagement: an element was selected for editing. `tagName` is a plain
+      // HTML tag (no PII); className is deliberately NOT sent.
+      void trackEvent('visual_element_selected', {
+        tag: sig.tagName,
+        instance_count: instanceCount,
+        leaf_text: leafText,
+      });
       // A fresh element selection always edits the element (not a leftover class).
       setEditTarget({ kind: 'element' });
       post({ type: 'ss:clearClassPreview' });
@@ -465,6 +491,7 @@ export function useVisualEditor({
     setTextTarget,
     setImageTarget,
     setEditTarget,
+    recordCommit,
   ]);
 
   // Load the project's custom classes when edit mode opens; refresh helper lets
@@ -587,7 +614,7 @@ export function useVisualEditor({
         try {
           const list = await updateCustomClass(projectPath, target.name, tokens);
           setCustomClasses(list);
-          void trackEvent('custom_class_edited', { token_count: tokens.length });
+          recordCommit('custom_class_edited', { token_count: tokens.length });
           // Advance the baseline so consecutive edits (and auto-save) keep working.
           setEditTarget({ kind: 'class', name: target.name, baseline: tokens.join(' ') });
           // Keep the live override as the committed state — do NOT clear it here.
@@ -642,13 +669,17 @@ export function useVisualEditor({
         // deactivating (closing the panel) doesn't revert the just-saved edit
         // before HMR re-renders it from source.
         post({ type: 'ss:commit' });
+        recordCommit('visual_style_saved', {
+          is_autosave: !!opts?.silent,
+          is_multi: res.status === 'multi',
+        });
         if (!opts?.silent) onToast?.('Saved to source', 'success');
       } catch (err) {
         logger.error('[VisualEditor] write-back failed', { error: String(err) });
         onToast?.(String(err), 'error');
       }
     },
-    [selection, projectPath, onToast, post, setEditTarget]
+    [selection, projectPath, onToast, post, setEditTarget, recordCommit]
   );
 
   /** Rewrite the selected element's className in source to `next` (single or
@@ -710,12 +741,12 @@ export function useVisualEditor({
       if (current.includes(name)) return; // already on the element
       try {
         await writeElementClass([...current, name].join(' '));
-        void trackEvent('custom_class_applied');
+        recordCommit('custom_class_applied');
       } catch (err) {
         onToast?.(String(err), 'error');
       }
     },
-    [currentElementClass, writeElementClass, onToast]
+    [currentElementClass, writeElementClass, onToast, recordCommit]
   );
 
   /** Remove a custom class from the selected element (the class stays defined in
@@ -732,12 +763,12 @@ export function useVisualEditor({
       try {
         const ok = await writeElementClass(next);
         if (ok && wasEditing) editElement();
-        void trackEvent('custom_class_unapplied');
+        recordCommit('custom_class_unapplied');
       } catch (err) {
         onToast?.(String(err), 'error');
       }
     },
-    [currentElementClass, writeElementClass, editElement, onToast]
+    [currentElementClass, writeElementClass, editElement, onToast, recordCommit]
   );
 
   /** Webflow-style "create class from styles": move the element's utility tokens
@@ -762,7 +793,7 @@ export function useVisualEditor({
         }
         const list = await createCustomClass(projectPath, name, utilities);
         setCustomClasses(list);
-        void trackEvent('custom_class_created', {
+        recordCommit('custom_class_created', {
           token_count: utilities.length,
           kept_count: kept.length,
         });
@@ -779,7 +810,15 @@ export function useVisualEditor({
         onToast?.(String(err), 'error');
       }
     },
-    [projectPath, customClasses, currentElementClass, writeElementClass, editClass, onToast]
+    [
+      projectPath,
+      customClasses,
+      currentElementClass,
+      writeElementClass,
+      editClass,
+      onToast,
+      recordCommit,
+    ]
   );
 
   // NOTE: deleting a custom class (delete_custom_class backend command) is a
@@ -818,6 +857,7 @@ export function useVisualEditor({
         );
         post({ type: 'ss:setSrc', value: newSrc }); // instant preview (HMR confirms)
         post({ type: 'ss:commit' });
+        recordCommit('visual_image_saved');
         onToast?.('Image replaced', 'success');
       } catch (err) {
         logger.error('[VisualEditor] image write-back failed', { error: String(err) });
@@ -825,7 +865,7 @@ export function useVisualEditor({
         throw err;
       }
     },
-    [projectPath, onToast, post]
+    [projectPath, onToast, post, recordCommit]
   );
 
   // Auto-save: debounce a silent commit after edits settle. Re-running on every
@@ -848,6 +888,22 @@ export function useVisualEditor({
   }, [autoSave, currentClass, selection, editTarget, commit]);
 
   const toggleEditMode = useCallback(() => {
+    // Fire lifecycle analytics from the user's toggle intent (read via ref so the
+    // direction is never stale), outside the state updater so it runs exactly once.
+    const turningOn = !editModeOnRef.current;
+    editModeOnRef.current = turningOn;
+    if (turningOn) {
+      editStartedAtRef.current = Date.now();
+      editsCommittedRef.current = 0;
+      void trackEvent('visual_edit_started');
+    } else {
+      const startedAt = editStartedAtRef.current;
+      void trackEvent('visual_edit_stopped', {
+        duration_ms: startedAt != null ? Date.now() - startedAt : undefined,
+        edits_committed: editsCommittedRef.current,
+      });
+      editStartedAtRef.current = null;
+    }
     setEditModeOn((prev) => {
       // Turning off: clear the current selection (event-handler context, so
       // these state updates batch without a cascading-render effect).

@@ -96,6 +96,12 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `code_snippet_sent_to_agent` | `file_extension`, `language`, `line_count`, `char_count`, `had_question` |
 | `code_snippet_copied` | `file_extension`, `line_count` |
 | `search_performed` (`code_files`) | Debounced |
+| `visual_edit_started` | — (edit mode toggled on; the visual-editor adoption metric) |
+| `visual_edit_stopped` | `duration_ms`, `edits_committed` (edits persisted to source during the session) |
+| `visual_element_selected` | `tag` (HTML tag), `instance_count`, `leaf_text` — `className` is deliberately never sent |
+| `visual_style_saved` | `is_autosave`, `is_multi` (one event per element class write committed to source) |
+| `visual_text_saved` | — (inline text edit written to source) |
+| `visual_image_saved` | — (image `src` replaced in source) |
 | `custom_class_created` | `token_count` (utilities folded into `@apply`), `kept_count` (non-utility tokens left on the element) |
 | `custom_class_applied` | — |
 | `custom_class_unapplied` | — |
