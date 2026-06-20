@@ -28,8 +28,11 @@ const CHANGELOG: ChangelogEntry[] = [
     version: '0.10.0', // v0.10.0
     items: [
       'Workspaces — keep separate Claude, GitHub, and Codex logins for different clients or orgs, fully isolated. Each workspace has its own credentials, so the agent working in one project never sees another client\'s auth. Your existing setup becomes the "Default" workspace and is left completely untouched',
-      "Per-project workspaces — assign any project to a workspace and its terminals, git, pull requests, and AI all use that workspace's logins automatically. Move a project between workspaces right from the dashboard",
-      'Credential vault — store per-workspace tokens (Vercel, Figma, OpenAI) and a git identity securely in the macOS Keychain; secret values never leave the backend',
+      "Per-project workspaces — assign any project to a workspace and its terminals, git, pull requests, and AI all use that workspace's logins automatically. Move a project between workspaces right from the dashboard and Ship Studio relocates its files for you",
+      'Credential vault — store a per-workspace Vercel token, Anthropic base URL, and git identity securely in the macOS Keychain; secret values never leave the backend',
+      'Choose your projects folder — point Ship Studio at any folder you like (such as an existing ~/Dev directory) instead of ~/ShipStudio, globally or per workspace, and optionally move your existing projects across',
+      'Windows fixes — the Code tab no longer shows a garbled file list, and "Install Claude Code" now installs from the terminal instead of opening a browser in a new chat. Setup terminals also remind you that a typed password stays hidden even though nothing appears',
+      "Smoother agent setup — the onboarding AI Agent step now links each assistant's official install docs as a fallback if an in-app install gets stuck, plus a small polish pass on the step indicator",
     ],
   },
   {

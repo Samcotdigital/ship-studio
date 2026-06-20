@@ -220,6 +220,17 @@ export const AGENT_ITEM_IDS: Set<string> = new Set(
 );
 
 /**
+ * Official, verified install/setup docs per agent. Surfaced in the AI Agent
+ * step subtitle so users who hit install trouble in-app (e.g. the Windows
+ * Claude hiccup) can fall back to the canonical instructions, then restart.
+ */
+export const AGENT_DOC_LINKS: { binaryId: string; name: string; url: string }[] = [
+  { binaryId: 'claude', name: 'Claude Code', url: 'https://code.claude.com/docs/en/setup' },
+  { binaryId: 'codex', name: 'Codex', url: 'https://github.com/openai/codex' },
+  { binaryId: 'opencode', name: 'opencode', url: 'https://opencode.ai/docs/' },
+];
+
+/**
  * Returns agent pairs that have both binary and auth ready.
  */
 export function getReadyAgentPairs(items: SetupItem[]): (typeof AGENT_ITEM_PAIRS)[number][] {

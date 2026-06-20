@@ -6,6 +6,14 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.10.0
+
+- **Workspaces** - Keep separate Claude, GitHub, and Codex logins for different clients or orgs, fully isolated. Each workspace has its own credentials, so an agent working in one project never sees another's auth. Your existing setup becomes the "Default" workspace, untouched. Assign any project to a workspace — its terminals, git, PRs, and AI all use that workspace's logins automatically — and move projects between workspaces right from the dashboard.
+- **Credential vault** - Store a per-workspace Vercel token, Anthropic base URL, and git identity securely in the macOS Keychain. Secret values never leave the backend.
+- **Choose your projects folder** - Point Ship Studio at any folder (like an existing ~/Dev directory) instead of ~/ShipStudio, globally or per workspace, and optionally move your existing projects across.
+- **Windows fixes** - The Code tab no longer shows a garbled file list, and "Install Claude Code" now installs from the terminal instead of opening a browser. Setup terminals also remind you that a typed password stays hidden even though nothing appears.
+
+
 ## What's New in v0.9.0
 
 - **Custom classes** - A Webflow-style, Tailwind-native class system in the visual editor: create a reusable class from an element's styles, apply or remove classes, and edit a class once to update every element using it.

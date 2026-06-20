@@ -39,6 +39,7 @@ import {
   findFirstIncompleteStep,
   getReadyAgentPairs,
   isAtLeastOneAgentReady,
+  AGENT_DOC_LINKS,
 } from '../../lib/setup';
 import { initDefaultAgent } from '../../lib/agent';
 import { checkGitHubCliStatus } from '../../lib/github';
@@ -523,7 +524,31 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         <div className="wizard-step-container">
           <div className="wizard-step-header">
             <h2 className="wizard-step-title">{currentStepDef.title}</h2>
-            <p className="wizard-step-subtitle">{currentStepDef.subtitle}</p>
+            <p className="wizard-step-subtitle">
+              {/* Keep the subtitle text in its own node so the agent step can
+                  append a "trouble installing?" hint with official-docs links. */}
+              <span>{currentStepDef.subtitle}</span>
+              {currentStep === 'agent' && (
+                <>
+                  {' — having trouble? Read the official docs ('}
+                  {AGENT_DOC_LINKS.filter((doc) => items.some((i) => i.id === doc.binaryId)).map(
+                    (doc, idx, arr) => (
+                      <span key={doc.binaryId}>
+                        <button
+                          type="button"
+                          className="wizard-step-subtitle-link"
+                          onClick={() => void openUrl(doc.url)}
+                        >
+                          {doc.name}
+                        </button>
+                        {idx < arr.length - 1 ? ', ' : ''}
+                      </span>
+                    )
+                  )}
+                  {'), install it through your terminal, then restart Ship Studio.'}
+                </>
+              )}
+            </p>
           </div>
 
           {currentStep === 'package-manager' && (
