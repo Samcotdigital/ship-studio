@@ -553,6 +553,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             SHELL: '/bin/zsh',
           };
         }
+        // Per-workspace isolation vars (CLAUDE_CONFIG_DIR, GH_CONFIG_DIR,
+        // CODEX_HOME, XDG_DATA_HOME) and credential tokens are injected
+        // SERVER-SIDE by `pty_session_open` from this project's workspace, so
+        // secret token values never have to cross into the webview's JS. Nothing
+        // to fetch or merge here — just pass `projectPath` (below) and the
+        // backend resolves the right Workspace env.
+
         // The PTY merges this env over the app's own, so npm/pnpm "invocation
         // directory" vars leak through when Ship Studio runs under `pnpm tauri
         // dev`. Tools the agent runs (e.g. `shopify theme dev`) trust INIT_CWD

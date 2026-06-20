@@ -110,12 +110,31 @@ pub(crate) fn is_valid_project(path: &std::path::Path) -> bool {
             || path.join(".git").exists())
 }
 
+/// Whether a project should be shown on the dashboard for the given active
+/// Workspace (Account). Resolves through the shared `effective_account_id_in`
+/// helper so visibility and credential routing never disagree: a project is
+/// shown in the workspace it effectively belongs to (tagged-and-existing → that
+/// workspace; untagged or tagged-to-a-deleted-workspace → Default). `accounts`
+/// is the live workspace list, passed in so this stays IO-free in the loop.
+fn project_visible_for_account(
+    metadata: Option<&ProjectMetadata>,
+    active_account_id: &str,
+    accounts: &[crate::types::Account],
+) -> bool {
+    ui_state::effective_account_id_in(metadata, accounts) == active_account_id
+}
+
 // ============ Tauri Commands ============
 
 #[tauri::command]
 #[tracing::instrument]
 pub async fn list_projects() -> Result<Vec<ProjectInfo>, CommandError> {
     let shipstudio_dir = crate::utils::projects_root()?;
+    // Account resolution must never break project listing: degrade to "no active
+    // account" (everything visible) on failure rather than erroring the whole list.
+    let active_account_id = crate::commands::accounts::get_active_account_id().unwrap_or_default();
+    // Live workspace list, read once so the visibility check stays IO-free per project.
+    let accounts = crate::commands::setup::read_app_state().accounts;
 
     if !shipstudio_dir.exists() {
         return Ok(Vec::new());
@@ -136,14 +155,19 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, CommandError> {
             };
 
             let metadata_path = path.join(".shipstudio").join("project.json");
-            let last_opened = if metadata_path.exists() {
+            let metadata = if metadata_path.exists() {
                 std::fs::read_to_string(&metadata_path)
                     .ok()
                     .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
-                    .and_then(|m| m.last_opened)
             } else {
                 None
             };
+
+            if !project_visible_for_account(metadata.as_ref(), &active_account_id, &accounts) {
+                continue;
+            }
+
+            let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
 
             projects.push(ProjectInfo {
                 name: entry.file_name().to_string_lossy().to_string(),
@@ -172,16 +196,21 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, CommandError> {
                 };
 
                 let metadata_path = ext_path.join(".shipstudio").join("project.json");
-                let last_opened = if metadata_path.exists() {
+                let metadata = if metadata_path.exists() {
                     std::fs::read_to_string(&metadata_path)
                         .ok()
                         .and_then(|contents| {
                             serde_json::from_str::<ProjectMetadata>(&contents).ok()
                         })
-                        .and_then(|m| m.last_opened)
                 } else {
                     None
                 };
+
+                if !project_visible_for_account(metadata.as_ref(), &active_account_id, &accounts) {
+                    continue;
+                }
+
+                let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
 
                 projects.push(ProjectInfo {
                     name,
@@ -208,6 +237,11 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, CommandError> {
 #[tracing::instrument]
 pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, CommandError> {
     let shipstudio_dir = crate::utils::projects_root()?;
+    // Account resolution must never break the dashboard: degrade to "no active
+    // account" (everything visible) on failure rather than erroring the whole list.
+    let active_account_id = crate::commands::accounts::get_active_account_id().unwrap_or_default();
+    // Live workspace list, read once so the visibility check stays IO-free per project.
+    let accounts = crate::commands::setup::read_app_state().accounts;
 
     if !shipstudio_dir.exists() {
         return Ok(Vec::new());
@@ -235,6 +269,11 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, CommandEr
             } else {
                 None
             };
+
+            if !project_visible_for_account(metadata.as_ref(), &active_account_id, &accounts) {
+                continue;
+            }
+
             let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
             let auto_accept_mode = metadata.as_ref().and_then(|m| m.auto_accept_mode);
             let hide_main_branch_warning =
@@ -290,6 +329,11 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, CommandEr
                 } else {
                     None
                 };
+
+                if !project_visible_for_account(metadata.as_ref(), &active_account_id, &accounts) {
+                    continue;
+                }
+
                 let last_opened = metadata.as_ref().and_then(|m| m.last_opened);
                 let auto_accept_mode = metadata.as_ref().and_then(|m| m.auto_accept_mode);
                 let hide_main_branch_warning =
