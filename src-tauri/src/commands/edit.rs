@@ -2383,10 +2383,13 @@ fn locate_element(
                 reason: "This element appears in several identical places, so editing its markup here could change the wrong one. Ask your agent to edit it instead.".into(),
             })
         }
-        Resolution::ReadOnly { reason } => {
+        // The class resolver couldn't anchor this element to source (its classes
+        // are dynamic/generated, or it has none). The markup editor is
+        // class-anchored, so phrase it for *markup*, not the class-string reason.
+        Resolution::ReadOnly { .. } => {
             return Err(CommandError::Validation {
                 field: "element".into(),
-                reason,
+                reason: "This element can't be matched to its source markup (it has no static class to anchor on). Edit it with your agent instead.".into(),
             })
         }
     };

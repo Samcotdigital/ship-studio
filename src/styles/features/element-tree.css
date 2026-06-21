@@ -59,8 +59,23 @@
 .ss-tree-panel__body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   overflow: auto;
   padding: var(--spacing-xs) 0;
+}
+
+/* Code (Edit-HTML) view: a flex column so the editor fills the full width and
+   height of the (widened) panel rather than collapsing to its intrinsic size. */
+.ss-tree-panel__body--code {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.ss-tree-panel__body--code > * {
+  width: 100%;
+  min-width: 0;
 }
 
 /* Edit-HTML (Code) view. */
@@ -68,7 +83,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--spacing-md);
 }
 .ss-tree-html__actions {
@@ -77,6 +95,8 @@
   gap: var(--spacing-xs);
 }
 .ss-tree-html__error {
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--spacing-md);
   font-size: var(--font-size-xs);
   color: var(--text-muted);

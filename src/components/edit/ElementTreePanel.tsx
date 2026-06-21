@@ -201,7 +201,7 @@ export function ElementTreePanel({
           )}
         </div>
       ) : (
-        <div className="ss-tree-panel__body">
+        <div className="ss-tree-panel__body ss-tree-panel__body--code">
           {selectedSignature ? (
             <ElementHtmlEditor
               key={sigKey}
