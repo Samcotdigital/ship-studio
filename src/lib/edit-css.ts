@@ -53,11 +53,23 @@ export interface CssSignature {
   targetClass?: string;
   /** Whether the element carries an inline `style=""` (drives the Inline state). */
   hasInlineStyle?: boolean;
+  /** Pseudo-class / state to target (without colon, e.g. "hover"). Resolves
+   *  `.class:hover` — states are selectors in CSS. */
+  pseudo?: string;
 }
 
 /** Build a `CssSignature` from the iframe selection signature. */
-export function toCssSignature(sig: ElementSignature, targetClass?: string): CssSignature {
-  return { className: sig.className, tagName: sig.tagName, targetClass };
+export function toCssSignature(
+  sig: ElementSignature,
+  targetClass?: string | null,
+  pseudo?: string | null
+): CssSignature {
+  return {
+    className: sig.className,
+    tagName: sig.tagName,
+    targetClass: targetClass ?? undefined,
+    pseudo: pseudo ?? undefined,
+  };
 }
 
 /** Resolve a clicked element to the CSS rule that styles its class. */

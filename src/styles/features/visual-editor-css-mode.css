@@ -164,6 +164,82 @@
   color: var(--text-muted);
 }
 
+/* ── Class bar + state switcher ──────────────────────────────────── */
+.ss-css-classbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+.ss-css-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ss-css-chip.is-active {
+  border-color: var(--action);
+}
+.ss-css-chip__name {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.ss-css-chip.is-active .ss-css-chip__name {
+  color: var(--action);
+  font-weight: 600;
+}
+.ss-css-chip__x {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  padding: 0 5px 0 0;
+  cursor: pointer;
+}
+.ss-css-chip__x:hover {
+  color: var(--text-primary);
+}
+.ss-css-chip__add {
+  width: 22px;
+  height: 22px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  cursor: pointer;
+}
+.ss-css-chip__add:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.ss-css-chip__input {
+  width: 96px;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--action);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+}
+.ss-css-chip__input:focus {
+  outline: none;
+}
+.ss-css-states {
+  margin-bottom: var(--spacing-sm);
+}
+
 /* ── Visual / Code mode toggle ───────────────────────────────────── */
 .ss-css-modes {
   display: flex;

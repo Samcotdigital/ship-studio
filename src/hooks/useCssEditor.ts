@@ -28,7 +28,12 @@ import {
   type CssResolution,
   type CssDeclaration,
 } from '../lib/edit-css';
-import type { ElementSignature } from '../lib/edit';
+import {
+  resolveClassnameSource,
+  applyClassnameEdit,
+  applyClassnameEditMulti,
+  type ElementSignature,
+} from '../lib/edit';
 import { logger } from '../lib/logger';
 import { trackEvent } from '../lib/analytics';
 
@@ -67,6 +72,15 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
   // Staleness token: a value resolve/save that started before a newer selection
   // must not clobber it.
   const selTokenRef = useRef(0);
+
+  // Which class chip is being edited (null = the element's last class, the
+  // backend default) and which pseudo-state (null = default). Mirrored into refs
+  // so the class/state setters and the message handler read fresh values.
+  const [targetClass, setTargetClassState] = useState<string | null>(null);
+  const [pseudo, setPseudoState] = useState<string | null>(null);
+  const targetClassRef = useRef<string | null>(null);
+  const pseudoRef = useRef<string | null>(null);
+  const selectedSigRef = useRef<ElementSignature | null>(null);
 
   const post = useCallback(
     (msg: unknown) => iframeRef.current?.contentWindow?.postMessage(msg, '*'),
@@ -110,6 +124,12 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
       const sig = d.signature;
       const instanceCount = d.count ?? 1;
       const token = ++selTokenRef.current;
+      // A fresh element resets the class/state target to defaults.
+      selectedSigRef.current = sig;
+      targetClassRef.current = null;
+      pseudoRef.current = null;
+      setTargetClassState(null);
+      setPseudoState(null);
       setSelection({ signature: sig, resolution: null, instanceCount });
       void trackEvent('visual_element_selected', {
         mode: 'css',
@@ -143,6 +163,120 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
 
   /** The active resolved rule, or null when the selection isn't an editable rule. */
   const resolvedRule = selection?.resolution?.status === 'resolved' ? selection.resolution : null;
+
+  /** Re-resolve the current element for a given class + state, updating the
+   *  resolution in place (keeps the same selection signature/instanceCount). */
+  const reresolve = useCallback(
+    async (tClass: string | null, ps: string | null) => {
+      const sig = selectedSigRef.current;
+      if (!sig) return;
+      const token = ++selTokenRef.current;
+      try {
+        const resolution = await resolveCssRule(projectPath, toCssSignature(sig, tClass, ps));
+        if (selTokenRef.current === token) {
+          setSelection((prev) => (prev ? { ...prev, resolution } : prev));
+        }
+      } catch (err) {
+        logger.error('[CssEditor] reresolve failed', { error: String(err) });
+      }
+    },
+    [projectPath]
+  );
+
+  /** Edit which class chip the controls target. */
+  const setTargetClass = useCallback(
+    (name: string) => {
+      targetClassRef.current = name;
+      setTargetClassState(name);
+      void reresolve(name, pseudoRef.current);
+    },
+    [reresolve]
+  );
+
+  /** Edit which pseudo-state the controls target (null = default). */
+  const setPseudo = useCallback(
+    (ps: string | null) => {
+      pseudoRef.current = ps;
+      setPseudoState(ps);
+      void reresolve(targetClassRef.current, ps);
+    },
+    [reresolve]
+  );
+
+  /** Rewrite the selected element's `class` attribute in source (and live in the
+   *  preview), via the class-attribute resolver/editor. Returns false when the
+   *  element's classes can't be resolved to source. */
+  const writeClassAttr = useCallback(
+    async (nextClass: string) => {
+      const sig = selectedSigRef.current;
+      if (!sig) return false;
+      const res = await resolveClassnameSource(projectPath, sig);
+      if (res.status !== 'resolved' && res.status !== 'multi') {
+        onToast?.("Can't edit this element's classes in source — change them in code.", 'error');
+        return false;
+      }
+      const prev = res.class_name;
+      if (nextClass === prev) return true;
+      post({ type: 'ss:suppressReload' });
+      if (res.status === 'resolved') {
+        await applyClassnameEdit(projectPath, res.file, res.line, prev, nextClass);
+      } else {
+        await applyClassnameEditMulti(projectPath, res.locations, prev, nextClass);
+      }
+      const nextSig = { ...sig, className: nextClass };
+      selectedSigRef.current = nextSig;
+      setSelection((p) => (p ? { ...p, signature: nextSig } : p));
+      post({ type: 'ss:mutate', className: nextClass, rules: [] });
+      post({ type: 'ss:commit' });
+      return true;
+    },
+    [projectPath, onToast, post]
+  );
+
+  /** Add a class to the selected element and edit its rule. */
+  const addClass = useCallback(
+    async (name: string) => {
+      const n = name.trim().replace(/^\./, '');
+      const sig = selectedSigRef.current;
+      if (!n || !sig) return;
+      const tokens = sig.className.split(/\s+/).filter(Boolean);
+      if (tokens.includes(n)) {
+        setTargetClass(n);
+        return;
+      }
+      try {
+        if (!(await writeClassAttr([...tokens, n].join(' ')))) return;
+        targetClassRef.current = n;
+        setTargetClassState(n);
+        await reresolve(n, pseudoRef.current);
+        void trackEvent('visual_class_added', { mode: 'css' });
+      } catch (err) {
+        onToast?.(String(err), 'error');
+      }
+    },
+    [writeClassAttr, reresolve, setTargetClass, onToast]
+  );
+
+  /** Remove a class from the selected element (the class stays defined in CSS). */
+  const removeClass = useCallback(
+    async (name: string) => {
+      const sig = selectedSigRef.current;
+      if (!sig) return;
+      const next = sig.className.split(/\s+/).filter((t) => t && t !== name);
+      try {
+        if (!(await writeClassAttr(next.join(' ')))) return;
+        if (targetClassRef.current === name) {
+          targetClassRef.current = null;
+          setTargetClassState(null);
+        }
+        await reresolve(targetClassRef.current, pseudoRef.current);
+        void trackEvent('visual_class_removed', { mode: 'css' });
+      } catch (err) {
+        onToast?.(String(err), 'error');
+      }
+    },
+    [writeClassAttr, reresolve, onToast]
+  );
 
   /** Live-preview a single property on the resolved rule's selector (no write). */
   const previewDeclaration = useCallback(
@@ -269,5 +403,13 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     saveDeclaration,
     saveDeclarations,
     createRule,
+    /** The class chip currently being edited (null = the element's last class). */
+    targetClass,
+    setTargetClass,
+    /** The pseudo-state being edited (null = default), e.g. "hover". */
+    pseudo,
+    setPseudo,
+    addClass,
+    removeClass,
   };
 }

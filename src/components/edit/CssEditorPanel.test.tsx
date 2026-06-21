@@ -28,6 +28,12 @@ function renderPanel(
     onSave: vi.fn(),
     onSaveMany: vi.fn(),
     onCreateRule: vi.fn(),
+    targetClass: null,
+    pseudo: null,
+    onSelectClass: vi.fn(),
+    onAddClass: vi.fn(),
+    onRemoveClass: vi.fn(),
+    onSetPseudo: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -57,11 +63,30 @@ describe('CssEditorPanel', () => {
 
   it('renders a resolved rule with the selector and Visual/Code toggle', () => {
     renderPanel(resolved([{ property: 'color', value: 'red', important: false }]));
-    expect(screen.getByText('.hero-title')).toBeInTheDocument();
+    expect(
+      screen.getByText('.hero-title', { selector: 'code.ss-css-selector' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Visual' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Code' })).toBeInTheDocument();
     // Default Visual view shows the Layout category controls.
     expect(screen.getByText('Display')).toBeInTheDocument();
+  });
+
+  it('class bar selects/removes a class and the state switcher sets a pseudo', () => {
+    const onSelectClass = vi.fn();
+    const onRemoveClass = vi.fn();
+    const onSetPseudo = vi.fn();
+    renderPanel(resolved([{ property: 'color', value: 'red', important: false }]), {
+      onSelectClass,
+      onRemoveClass,
+      onSetPseudo,
+    });
+    fireEvent.click(screen.getByRole('button', { name: '.hero-title' }));
+    expect(onSelectClass).toHaveBeenCalledWith('hero-title');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove .hero-title' }));
+    expect(onRemoveClass).toHaveBeenCalledWith('hero-title');
+    fireEvent.click(screen.getByRole('button', { name: 'Hover' }));
+    expect(onSetPseudo).toHaveBeenCalledWith('hover');
   });
 
   it('a structured control saves a single property', () => {

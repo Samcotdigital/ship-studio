@@ -1145,6 +1145,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
                 void cssEditor.createRule(file, selector, decls)
               }
               onSendToClaude={onSendToClaude}
+              targetClass={cssEditor.targetClass}
+              pseudo={cssEditor.pseudo}
+              onSelectClass={cssEditor.setTargetClass}
+              onAddClass={(name) => void cssEditor.addClass(name)}
+              onRemoveClass={(name) => void cssEditor.removeClass(name)}
+              onSetPseudo={cssEditor.setPseudo}
               onClose={cssEditor.toggleEditMode}
               pinned={editorPinned}
               onTogglePin={toggleEditorPinned}

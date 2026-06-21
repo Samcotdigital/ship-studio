@@ -22,6 +22,7 @@ import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import { trackEvent } from '../../lib/analytics';
 import { buildCssPrepPrompt } from '../../lib/edit-css';
 import { CssControls, AddProp } from './CssControls';
+import { CssClassBar, CssStateSwitcher } from './CssClassBar';
 import { CSS_CATEGORIES, PROP_TO_CATEGORY } from '../../lib/cssControls';
 
 /** Common sections start open; the long-tail ones collapse to keep it scannable. */
@@ -91,6 +92,13 @@ interface Props {
   onCreateRule: (file: string, selector: string, declarations?: CssDeclaration[]) => void;
   /** Paste the prep prompt into the agent terminal (user presses Enter). */
   onSendToClaude?: (prompt: string) => void;
+  // Class bar + state switcher.
+  targetClass: string | null;
+  pseudo: string | null;
+  onSelectClass: (name: string) => void;
+  onAddClass: (name: string) => void;
+  onRemoveClass: (name: string) => void;
+  onSetPseudo: (pseudo: string | null) => void;
   onClose: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
@@ -146,6 +154,12 @@ export function CssEditorPanel({
   onSaveMany,
   onCreateRule,
   onSendToClaude,
+  targetClass,
+  pseudo,
+  onSelectClass,
+  onAddClass,
+  onRemoveClass,
+  onSetPseudo,
   onClose,
   pinned,
   onTogglePin,
@@ -173,6 +187,7 @@ export function CssEditorPanel({
   });
   const setViewMode = useCallback((next: 'visual' | 'code') => {
     setView(next);
+    void trackEvent('visual_view_switched', { mode: 'css', view: next });
     try {
       localStorage.setItem(VIEW_KEY, next);
     } catch {
@@ -239,6 +254,8 @@ export function CssEditorPanel({
   }, []);
 
   const res = selection?.resolution;
+  const classes = (selection?.signature.className ?? '').split(/\s+/).filter(Boolean);
+  const activeClass = targetClass ?? (classes.length ? classes[classes.length - 1] : null);
 
   return (
     <div
@@ -317,6 +334,19 @@ export function CssEditorPanel({
             </p>
             {prepLink}
           </div>
+        )}
+
+        {!prep && selection && (
+          <>
+            <CssClassBar
+              classes={classes}
+              active={activeClass}
+              onSelect={onSelectClass}
+              onRemove={onRemoveClass}
+              onAdd={onAddClass}
+            />
+            {classes.length > 0 && <CssStateSwitcher pseudo={pseudo} onChange={onSetPseudo} />}
+          </>
         )}
 
         {!prep && selection && !res && <p className="ss-css-status">Resolving…</p>}

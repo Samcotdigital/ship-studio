@@ -77,6 +77,27 @@ pub struct CssSignature {
     /// `Inline` status (managed styling should live in a class, not inline).
     #[serde(default)]
     pub has_inline_style: bool,
+    /// A pseudo-class / state to target, without the leading colon (e.g.
+    /// "hover", "focus", "focus-visible"). Appended to the class selector so the
+    /// editor resolves `.class:hover` — states ARE selectors in CSS.
+    #[serde(default)]
+    pub pseudo: Option<String>,
+}
+
+/// The sanitized `:pseudo` suffix for a signature, or "" for the default state.
+/// Only a conservative `[a-z-]` pseudo name is honored (never raw selector text).
+fn pseudo_suffix(sig: &CssSignature) -> String {
+    match sig.pseudo.as_deref() {
+        Some(p) => {
+            let name = p.trim().trim_start_matches(':');
+            if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+                format!(":{name}")
+            } else {
+                String::new()
+            }
+        }
+        None => String::new(),
+    }
 }
 
 /// Result of resolving an element to a CSS rule.
@@ -627,7 +648,7 @@ fn resolve_in_sheets(
             };
         }
     };
-    let selector = format!(".{class}");
+    let selector = format!(".{class}{}", pseudo_suffix(sig));
 
     let mut hits: Vec<(&String, &str, RuleSpan)> = Vec::new();
     for (rel, content) in sheets {
@@ -858,6 +879,31 @@ mod tests {
             tag_name: "div".into(),
             target_class: None,
             has_inline_style: false,
+            pseudo: None,
+        }
+    }
+
+    #[test]
+    fn resolves_pseudo_class_rule() {
+        let css = ".btn { color: red; }\n.btn:hover { color: blue; }";
+        let sheets = vec![("s.css".to_string(), css.to_string())];
+        let mut s = sig("btn");
+        s.pseudo = Some("hover".into());
+        match resolve_in_sheets(&sheets, &s, None) {
+            CssResolution::Resolved {
+                selector,
+                declarations,
+                ..
+            } => {
+                assert_eq!(selector, ".btn:hover");
+                assert_eq!(declarations[0].value, "blue");
+            }
+            other => panic!("expected hover rule, got {other:?}"),
+        }
+        // Default state still resolves the base rule.
+        match resolve_in_sheets(&sheets, &sig("btn"), None) {
+            CssResolution::Resolved { selector, .. } => assert_eq!(selector, ".btn"),
+            other => panic!("expected base rule, got {other:?}"),
         }
     }
 
