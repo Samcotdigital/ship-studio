@@ -102,6 +102,14 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `visual_style_saved` | `is_autosave`, `is_multi` (one event per element class write committed to source) |
 | `visual_text_saved` | — (inline text edit written to source) |
 | `visual_image_saved` | — (image `src` replaced in source) |
+| `visual_prep_started` | `mode` (`css`) — opened the "Prepare for visual editing" agent prompt |
+| `visual_view_switched` | `mode` (`css`), `view` (`visual`/`code`) — toggled the structured controls vs raw-CSS view |
+| `visual_class_added` / `visual_class_removed` | `mode` (`css`) — added/removed a class on the element via the class bar |
+
+The CSS visual editor (a separate feature from the Tailwind one) tags its
+events with `mode: 'css'`; the Tailwind editor omits `mode` (treat absent as
+`tailwind`). On `visual_style_saved`, CSS mode adds one of `removed` (cleared a
+property), `bulk` (count, from the Code view's save), or `created_rule`.
 | `custom_class_created` | `token_count` (utilities folded into `@apply`), `kept_count` (non-utility tokens left on the element) |
 | `custom_class_applied` | — |
 | `custom_class_unapplied` | — |

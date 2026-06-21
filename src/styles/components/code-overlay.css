@@ -1,0 +1,34 @@
+/**
+ * Plain code textarea (`CodeOverlayEditor`) — used by the element HTML editor and
+ * the CSS-mode Code view. A single textarea: no overlay, so the caret always
+ * lands exactly where you click. Non-wrapping; long lines scroll horizontally,
+ * the box scrolls vertically.
+ */
+
+.ss-codeedit {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 160px;
+  margin: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+  box-sizing: border-box;
+}
+.ss-codeedit:focus {
+  outline: none;
+  border-color: var(--action);
+}
+.ss-codeedit::placeholder {
+  color: var(--text-muted);
+}

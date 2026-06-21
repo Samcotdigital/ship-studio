@@ -1417,6 +1417,10 @@ export const WorkspaceView = memo(function WorkspaceView({
                             needsInstall={needsInstall}
                             onRunInstall={onRunInstall}
                             onOpenInCode={openInCode}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
+                            onUndo={() => void undoSnapshot()}
+                            onRedo={() => void redoSnapshot()}
                             previewPlugins={
                               <PluginSlot
                                 name="preview"

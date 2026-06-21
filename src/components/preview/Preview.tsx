@@ -40,13 +40,15 @@ import { BrowserTools } from './BrowserTools';
 import { HealthTabPanel, type HealthTabPanelRef } from '../code/HealthTabPanel';
 import { BrowserDropdown } from './BrowserDropdown';
 import { useVisualEditor } from '../../hooks/useVisualEditor';
+import { useCssEditor } from '../../hooks/useCssEditor';
+import { CssEditorPanel } from '../edit/CssEditorPanel';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 import { BASE_BREAKPOINT, isTailwindActive, type Breakpoint as TwBreakpoint } from '../../lib/edit';
 import { VisualEditorPanel } from '../edit/VisualEditorPanel';
 import { ElementTreePanel } from '../edit/ElementTreePanel';
 import { useElementTree } from '../../hooks/useElementTree';
 import { PreviewLocaleSwitcher, type PreviewLocaleConfig } from './PreviewLocaleSwitcher';
-import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon } from '../icons';
+import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon, UndoIcon, RedoIcon } from '../icons';
 import { Button } from '../primitives/Button';
 import { Spinner } from '../primitives/Spinner';
 import { pathLocale, switchPathLocale } from '../../lib/i18n';
@@ -198,6 +200,11 @@ interface PreviewProps {
   onRunInstall?: () => void;
   /** Jump to a source file:line in the Code tab (from the visual editor). */
   onOpenInCode?: (file: string, line: number) => void;
+  /** Snapshot undo/redo, surfaced in the fullscreen toolbar. */
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 /**
@@ -264,6 +271,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     needsInstall,
     onRunInstall,
     onOpenInCode,
+    canUndo,
+    canRedo,
+    onUndo,
+    onRedo,
   },
   ref
 ) {
@@ -521,6 +532,29 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onToast,
   });
 
+  // CSS-Mode editor — a SEPARATE feature for class-based CSS projects (vanilla
+  // Astro: no Tailwind). Mutually exclusive with the Tailwind editor above:
+  // Astro+Tailwind → `editor`; Astro without Tailwind → `cssEditor`. Same toggle
+  // and selection experience; edits write CSS rules instead of utility classes.
+  const cssEditorEnabled =
+    conn.serverReady &&
+    ((projectType === 'astro' && !tailwindActive) || projectType === 'statichtml');
+  const cssEditor = useCssEditor({
+    iframeRef,
+    projectPath,
+    enabled: cssEditorEnabled,
+    onToast,
+  });
+  // Which editor (if any) the toolbar toggle and panel drive.
+  const editorMode: 'tailwind' | 'css' | null = editorEnabled
+    ? 'tailwind'
+    : cssEditorEnabled
+      ? 'css'
+      : null;
+  const activeEditMode = editor.editMode || cssEditor.editMode;
+  const toggleActiveEditor =
+    editorMode === 'css' ? cssEditor.toggleEditMode : editor.toggleEditMode;
+
   // Element tree (navigator) — left column in fullscreen edit mode, like
   // Webflow's navigator: read-only, select-only. Toggleable from the toolbar;
   // the choice persists cross-project like the editor pin.
@@ -533,7 +567,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       return !v;
     });
   }, []);
-  const showTree = isFullscreen && editor.editMode && treeVisible;
+  const showTree = isFullscreen && activeEditMode && treeVisible;
+  // The Elements panel's Code (markup-edit) view needs a wider column than the
+  // navigator; the tree panel reports its view so we can widen the grid track.
+  const [treeCodeView, setTreeCodeView] = useState(false);
   const elementTree = useElementTree({ iframeRef, enabled: showTree });
 
   const [iframeSize, setIframeSize] = useState<{ w: number; h: number } | null>(null);
@@ -688,8 +725,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   return (
     <div
       className={`preview-container${isFullscreen ? ' preview-container--fullscreen' : ''}${
-        editor.editMode && editorPinned ? ' preview-container--editor-pinned' : ''
-      }${showTree ? ' preview-container--tree' : ''}`}
+        activeEditMode && editorPinned ? ' preview-container--editor-pinned' : ''
+      }${showTree ? ' preview-container--tree' : ''}${
+        showTree && treeCodeView ? ' preview-container--tree-code' : ''
+      }`}
       data-logs={showLogs ? 'open' : 'closed'}
       style={{
         ...(showLogs && inspectPanelHeight !== null
@@ -701,13 +740,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       }}
     >
       <div className="preview-toolbar">
-        {editorEnabled && (
+        {editorMode ? (
           <button
             type="button"
-            className={`preview-edit-toggle${editor.editMode ? ' active' : ''}`}
-            onClick={editor.toggleEditMode}
+            className={`preview-edit-toggle${activeEditMode ? ' active' : ''}`}
+            onClick={toggleActiveEditor}
             title="Toggle visual editor"
-            aria-pressed={editor.editMode}
+            aria-pressed={activeEditMode}
           >
             <svg
               width="13"
@@ -724,10 +763,44 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             </svg>
             <span>Edit</span>
             <span
-              className={`preview-edit-toggle-switch ${editor.editMode ? 'is-on' : ''}`}
+              className={`preview-edit-toggle-switch ${activeEditMode ? 'is-on' : ''}`}
               aria-hidden
             />
           </button>
+        ) : (
+          // Preview-capable but not editable: show the toggle grayed out with a
+          // tooltip explaining what visual editing is and where it works.
+          <span className="preview-edit-toggle-wrap">
+            <button
+              type="button"
+              className="preview-edit-toggle preview-edit-toggle--disabled"
+              aria-disabled="true"
+              tabIndex={-1}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 4l7.07 17 2.51-7.39L21 11.07z" />
+              </svg>
+              <span>Edit</span>
+            </button>
+            <span className="preview-edit-tooltip" role="tooltip">
+              <strong>Visual editing</strong>
+              <span>
+                Click elements in the preview to edit their styles — no code. Works with Next.js,
+                Astro, and Shopify projects styled with Tailwind, and with Astro or plain HTML/CSS
+                projects styled with regular CSS.
+              </span>
+            </span>
+          </span>
         )}
 
         {onToggleLogs && (
@@ -833,6 +906,33 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           <ResetIcon size={14} />
         </button>
 
+        {/* Undo/redo live in the workspace header, which is hidden in fullscreen
+            — surface them here so visual edits can be undone while editing. */}
+        {isFullscreen && onUndo && (
+          <button
+            type="button"
+            className="preview-fullscreen-btn"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo last change (⌘Z)"
+            aria-label="Undo"
+          >
+            <UndoIcon size={14} />
+          </button>
+        )}
+        {isFullscreen && onRedo && (
+          <button
+            type="button"
+            className="preview-fullscreen-btn"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo (⌘⇧Z)"
+            aria-label="Redo"
+          >
+            <RedoIcon size={14} />
+          </button>
+        )}
+
         <button
           type="button"
           className="preview-fullscreen-btn"
@@ -843,7 +943,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           {isFullscreen ? <CompactIcon size={14} /> : <ExpandIcon size={14} />}
         </button>
 
-        {isFullscreen && editor.editMode && (
+        {isFullscreen && activeEditMode && (
           <button
             type="button"
             className={`preview-tree-btn${treeVisible ? ' active' : ''}`}
@@ -1046,6 +1146,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           selectedId={elementTree.selectedId}
           onSelect={elementTree.selectNode}
           onHover={elementTree.hoverNode}
+          projectPath={projectPath}
+          selectedSignature={
+            (editorMode === 'css' ? cssEditor.selection?.signature : editor.selection?.signature) ??
+            null
+          }
+          onViewChange={(v) => setTreeCodeView(v === 'code')}
         />
       )}
       {editor.editMode &&
@@ -1101,6 +1207,46 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           // it's forced to the cell's real (bounded) height and its body scrolls
           // — grid track-sizing was letting the in-flow panel grow past the
           // viewport in WebKit instead.
+          return editorPinned ? (
+            <div className="ss-edit-panel-dock">{panel}</div>
+          ) : (
+            createPortal(panel, document.body)
+          );
+        })()}
+      {cssEditor.editMode &&
+        (() => {
+          // Same floating-vs-pinned strategy as the Tailwind panel above.
+          const panel = (
+            <CssEditorPanel
+              selection={cssEditor.selection}
+              authoredSheets={cssEditor.authoredSheets}
+              saving={cssEditor.saving}
+              onPreview={cssEditor.previewDeclaration}
+              onSave={(prop, value) => void cssEditor.saveDeclaration(prop, value)}
+              onSaveMany={(changes) => void cssEditor.saveDeclarations(changes)}
+              onCreateRule={(file, selector, decls) =>
+                void cssEditor.createRule(file, selector, decls)
+              }
+              onSendToClaude={onSendToClaude}
+              targetClass={cssEditor.targetClass}
+              pseudo={cssEditor.pseudo}
+              allClasses={cssEditor.allClasses}
+              breakpointMinPx={cssEditor.breakpointMinPx}
+              onSelectClass={cssEditor.setTargetClass}
+              onAddClass={(name) => void cssEditor.addClass(name)}
+              onRemoveClass={(name) => void cssEditor.removeClass(name)}
+              onSetPseudo={cssEditor.setPseudo}
+              onSetBreakpoint={(minPx) => {
+                cssEditor.setBreakpoint(minPx);
+                // Jump the canvas to the breakpoint width so you can see it (Base
+                // applies at all widths — leave the canvas where it is).
+                if (minPx) resize.previewAtWidth(minPx);
+              }}
+              onClose={cssEditor.toggleEditMode}
+              pinned={editorPinned}
+              onTogglePin={toggleEditorPinned}
+            />
+          );
           return editorPinned ? (
             <div className="ss-edit-panel-dock">{panel}</div>
           ) : (
