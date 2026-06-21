@@ -1,13 +1,19 @@
 /**
- * A textarea with live syntax highlighting — the standard "transparent textarea
- * over a highlighted <pre>" technique. The textarea owns editing + the caret;
- * the highlight layer (Shiki) sits behind it, scroll-synced, with the text drawn
- * transparent on top so the colors show through. Used by the element HTML editor
- * and the CSS-mode Code view.
+ * A plain, monospace code textarea used by the element HTML editor and the
+ * CSS-mode Code view.
+ *
+ * It used to overlay a transparent textarea on a Shiki-highlighted <pre> for
+ * syntax coloring, but that overlay kept misaligning the two layers in the panel
+ * context (the colored text drifted from the caret, so clicks landed in the
+ * wrong place). A single textarea has nothing to misalign or intercept, so
+ * editing is rock-solid. Syntax highlighting can return later via a real editor
+ * (e.g. CodeMirror) if it's worth the weight.
+ *
+ * `lang` is kept on the props for API compatibility (callers pass html/css);
+ * it's unused now that there's no highlighter.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { highlightCode, type HighlightLang } from '../../lib/highlight';
+import type { HighlightLang } from '../../lib/highlight';
 
 interface Props {
   value: string;
@@ -17,49 +23,15 @@ interface Props {
   placeholder?: string;
 }
 
-export function CodeOverlayEditor({ value, onChange, lang, className, placeholder }: Props) {
-  const [highlighted, setHighlighted] = useState('');
-  const hlRef = useRef<HTMLDivElement>(null);
-
-  // Re-highlight on every change (un-debounced so a just-typed character is never
-  // briefly invisible — Shiki is fast on a small snippet once initialized; the
-  // `is-plain` class keeps text visible before the first highlight loads).
-  useEffect(() => {
-    let cancelled = false;
-    void highlightCode(value, lang)
-      .then((html) => {
-        if (!cancelled) setHighlighted(html);
-      })
-      .catch(() => {
-        // Highlighting is non-essential — the textarea stays plain (is-plain).
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [value, lang]);
-
+export function CodeOverlayEditor({ value, onChange, className, placeholder }: Props) {
   return (
-    <div className={`ss-codeedit${className ? ` ${className}` : ''}`}>
-      <div
-        className="ss-codeedit__hl"
-        aria-hidden
-        ref={hlRef}
-        dangerouslySetInnerHTML={{ __html: highlighted }}
-      />
-      <textarea
-        className={`ss-codeedit__area${highlighted ? '' : ' is-plain'}`}
-        value={value}
-        spellCheck={false}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onScroll={(e) => {
-          const el = hlRef.current;
-          if (el) {
-            el.scrollTop = e.currentTarget.scrollTop;
-            el.scrollLeft = e.currentTarget.scrollLeft;
-          }
-        }}
-      />
-    </div>
+    <textarea
+      className={`ss-codeedit${className ? ` ${className}` : ''}`}
+      value={value}
+      spellCheck={false}
+      wrap="off"
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }

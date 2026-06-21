@@ -598,24 +598,17 @@
 }
 
 /* ── Code view ───────────────────────────────────────────────────── */
-/* The Code view fills the panel body. The body forces `flex: 0 0 auto` on its
-   children (visual-editor.css) so the structured controls keep their natural
-   height; the code editor is the exception — it must grow to fill, otherwise it
-   collapses to the editor's min-height and leaves the lower half of the panel
-   empty. */
+/* Modeled exactly on the HTML editor tab: `.ss-css-code` is the relative,
+   overflow-clipped box (like `.ss-tree-panel__body--code`) and the editor inside
+   is the absolute-fill `.ss-htmltab` — the proven-working layout where the
+   textarea always spans the area, so click-to-caret works everywhere. The body
+   forces `flex: 0 0 auto` on its children (visual-editor.css); the code box is
+   the exception and grows to fill. */
 .ss-edit-panel__body > .ss-css-code {
   flex: 1 1 auto;
   min-height: 0;
-}
-.ss-css-code {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-.ss-css-code__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-xs);
+  position: relative;
+  overflow: hidden;
 }
 
 /* ── Agent-prep flow ─────────────────────────────────────────────── */

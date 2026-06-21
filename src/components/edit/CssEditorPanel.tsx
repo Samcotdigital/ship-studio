@@ -119,29 +119,36 @@ function CodeView({
   const serialized = serializeDeclarations(declarations);
   const [text, setText] = useState(serialized);
   const dirty = text !== serialized;
+  // Same DOM + classes as the (working) HTML editor tab: the editor absolutely
+  // fills a relative, overflow-clipped box, so the textarea always spans the
+  // area and click-to-caret works everywhere.
   return (
     <div className="ss-css-code">
-      <CodeOverlayEditor
-        value={text}
-        onChange={setText}
-        lang="css"
-        placeholder="property: value;"
-      />
-      <div className="ss-css-code__actions">
-        <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setText(serialized)}>
-          Revert
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={!dirty}
-          onClick={() => {
-            const changes = diffDeclarations(declarations, parseCssText(text));
-            if (changes.length) onSaveMany(changes);
-          }}
-        >
-          Save
-        </Button>
+      <div className="ss-htmltab">
+        <div className="ss-htmltab__main">
+          <CodeOverlayEditor
+            value={text}
+            onChange={setText}
+            lang="css"
+            placeholder="property: value;"
+          />
+        </div>
+        <div className="ss-htmltab__foot">
+          <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setText(serialized)}>
+            Revert
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!dirty}
+            onClick={() => {
+              const changes = diffDeclarations(declarations, parseCssText(text));
+              if (changes.length) onSaveMany(changes);
+            }}
+          >
+            Save
+          </Button>
+        </div>
       </div>
     </div>
   );

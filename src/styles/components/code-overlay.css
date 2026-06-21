@@ -1,83 +1,34 @@
 /**
- * Highlighted code editor (`CodeOverlayEditor`): a transparent textarea over a
- * Shiki-highlighted <pre>. The two layers MUST share identical text metrics so
- * the colored text sits exactly under the caret.
+ * Plain code textarea (`CodeOverlayEditor`) — used by the element HTML editor and
+ * the CSS-mode Code view. A single textarea: no overlay, so the caret always
+ * lands exactly where you click. Non-wrapping; long lines scroll horizontally,
+ * the box scrolls vertically.
  */
 
 .ss-codeedit {
-  position: relative;
+  display: block;
   width: 100%;
   flex: 1;
   min-height: 160px;
+  margin: 0;
+  padding: var(--spacing-sm);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
-  overflow: hidden;
-}
-.ss-codeedit:focus-within {
-  border-color: var(--action);
-}
-
-.ss-codeedit__hl,
-.ss-codeedit__area {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  padding: var(--spacing-sm);
+  color: var(--text-primary);
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-xs);
   line-height: 1.6;
   tab-size: 2;
-  /* The two layers MUST wrap at the SAME points or clicking "on" the text lands
-     at the wrong caret position. A <textarea> only soft-wraps at spaces, so the
-     <pre> must too — `word-break: break-word` broke long tokens mid-word in the
-     highlight but not in the textarea, drifting them apart line by line. */
-  white-space: pre-wrap;
-  word-break: normal;
-  overflow-wrap: normal;
+  white-space: pre;
   overflow: auto;
+  resize: none;
   box-sizing: border-box;
 }
-
-.ss-codeedit__hl {
-  z-index: 1;
-  color: var(--text-secondary);
-}
-/* The highlight layer (and everything Shiki renders inside it) must never
-   intercept clicks — the textarea above owns all interaction. */
-.ss-codeedit__hl,
-.ss-codeedit__hl * {
-  pointer-events: none !important;
-}
-/* Shiki renders its own <pre> with a background + padding; flatten it so it
-   lines up with the textarea and the wrapper background shows through. */
-.ss-codeedit__hl pre,
-.ss-codeedit__hl code {
-  margin: 0;
-  padding: 0;
-  background: transparent !important; /* css-ok: override Shiki's inline bg */
-  font: inherit;
-  white-space: inherit;
-  word-break: inherit;
-  overflow-wrap: inherit;
-}
-
-.ss-codeedit__area {
-  z-index: 2;
-  border: none;
-  background: transparent;
-  color: transparent;
-  caret-color: var(--text-primary);
-  resize: none;
-  pointer-events: auto;
-}
-/* Before the first highlight loads, keep the text visible. */
-.ss-codeedit__area.is-plain {
-  color: var(--text-primary);
-}
-.ss-codeedit__area:focus {
+.ss-codeedit:focus {
   outline: none;
+  border-color: var(--action);
 }
-.ss-codeedit__area::placeholder {
+.ss-codeedit::placeholder {
   color: var(--text-muted);
 }
