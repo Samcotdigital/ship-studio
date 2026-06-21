@@ -91,8 +91,8 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'astro-basic',
-    name: 'Astro',
-    description: 'A content or marketing site that loads fast.',
+    name: 'Astro (Tailwind)',
+    description: 'A fast content or marketing site, styled with Tailwind.',
     repo: 'https://github.com/ship-studio/astro-static-marketing-site-starter',
     category: 'web',
   },
