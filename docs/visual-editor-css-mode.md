@@ -77,16 +77,20 @@ CSS Mode adds a parallel engine and routes to it by project type. Reused as-is:
 Net-new:
 
 - **Rust CSS engine** (`commands/edit_css.rs`) — locate a class's rule, edit a
-  single declaration surgically, create a class + attach it. *(Phase 1, this
-  doc's focus.)*
-- **Frontend style-engine abstraction** — extract the shared
-  selection/preview/tree plumbing from `useVisualEditor`; a `StyleEngine`
-  interface with the existing Tailwind engine and a new CSS engine. *(Phase 2)*
-- **Gating** — light up the toggle for `statichtml` + vanilla Astro, without the
-  `tailwindActive` requirement. *(Phase 2)*
-- **Prep flow** — `LanguagesModal`-style reviewable agent prompt. *(Phase 3)*
+  single declaration surgically, create a class + attach it. *(Phase 1 ✓)*
+- **Isolated CSS editor** — a SEPARATE `useCssEditor` hook + `CssEditorPanel`
+  (not a refactor of the Tailwind hook), reusing the in-iframe `ss:*` protocol.
+  *(Phase 2 ✓)*
+- **Gating** — the toggle lights up for vanilla Astro (Astro without Tailwind),
+  mutually exclusive with the Tailwind editor. `statichtml` is a later phase
+  (its preview path needs the select script injected). *(Phase 2 ✓)*
+- **Navigator** — the element tree reuses `useElementTree`/`ElementTreePanel`;
+  selecting a node fires the same `ss:select` the CSS editor handles. *(Phase 3 ✓)*
+- **Prep flow** — a `LanguagesModal`-style reviewable agent prompt
+  (`buildCssPrepPrompt`) surfaced from the empty + read-only states. *(Phase 3 ✓)*
 - **Expanded controls** — typography, full color, spacing, flex/grid, borders,
-  background, effects, position (not scale-bound). *(Phase 4)*
+  background, effects, position (not scale-bound), plus the static-HTML path.
+  *(Phase 4 — next)*
 
 ## Phase 1 — Rust CSS engine (this phase)
 

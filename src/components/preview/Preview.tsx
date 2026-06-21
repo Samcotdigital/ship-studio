@@ -556,7 +556,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       return !v;
     });
   }, []);
-  const showTree = isFullscreen && editor.editMode && treeVisible;
+  const showTree = isFullscreen && activeEditMode && treeVisible;
   const elementTree = useElementTree({ iframeRef, enabled: showTree });
 
   const [iframeSize, setIframeSize] = useState<{ w: number; h: number } | null>(null);
@@ -866,7 +866,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           {isFullscreen ? <CompactIcon size={14} /> : <ExpandIcon size={14} />}
         </button>
 
-        {isFullscreen && editor.editMode && (
+        {isFullscreen && activeEditMode && (
           <button
             type="button"
             className={`preview-tree-btn${treeVisible ? ' active' : ''}`}
@@ -1143,6 +1143,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               onCreateRule={(file, selector, decls) =>
                 void cssEditor.createRule(file, selector, decls)
               }
+              onSendToClaude={onSendToClaude}
               onClose={cssEditor.toggleEditMode}
               pinned={editorPinned}
               onTogglePin={toggleEditorPinned}

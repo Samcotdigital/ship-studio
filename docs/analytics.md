@@ -102,6 +102,7 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `visual_style_saved` | `is_autosave`, `is_multi` (one event per element class write committed to source) |
 | `visual_text_saved` | — (inline text edit written to source) |
 | `visual_image_saved` | — (image `src` replaced in source) |
+| `visual_prep_started` | `mode` (`css`) — opened the "Prepare for visual editing" agent prompt |
 | `custom_class_created` | `token_count` (utilities folded into `@apply`), `kept_count` (non-utility tokens left on the element) |
 | `custom_class_applied` | — |
 | `custom_class_unapplied` | — |

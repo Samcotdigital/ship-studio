@@ -165,3 +165,54 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
+
+/* ── Agent-prep flow ─────────────────────────────────────────────── */
+.ss-css-prep-link {
+  align-self: flex-start;
+  margin-top: var(--spacing-sm);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ss-css-prep-link:hover {
+  text-decoration: underline;
+}
+
+.ss-css-prep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.ss-css-prep__lead {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.ss-css-prep__box {
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+}
+.ss-css-prep__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+.ss-css-prep__right {
+  display: flex;
+  gap: var(--spacing-xs);
+}

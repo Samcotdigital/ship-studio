@@ -114,3 +114,30 @@ export function createCssClass(
 export function listStylesheets(projectPath: string): Promise<string[]> {
   return invoke<string[]>('list_stylesheets', { projectPath });
 }
+
+/**
+ * Build a ready-to-paste agent request that refactors a project toward the
+ * conventions the CSS visual editor relies on. This is the on-ramp for projects
+ * that don't conform yet (inline styles, utility soup, a class defined by
+ * several rules) — the user reviews it, then hands it to their coding agent.
+ *
+ * `authoredSheets` seeds the agent with the real stylesheet paths when known;
+ * the prompt is deliberately design-preserving (refactor structure, not looks).
+ */
+export function buildCssPrepPrompt(authoredSheets: string[] = []): string {
+  const sheetLine =
+    authoredSheets.length > 0
+      ? `\nStylesheets in this project: ${authoredSheets.join(', ')}. Prefer consolidating into a single primary stylesheet.`
+      : '';
+  return (
+    `Refactor this project's styling so it can be edited with a visual, click-to-edit CSS editor. ` +
+    `Do NOT change how the site looks — this is a structural refactor only.${sheetLine}\n\n` +
+    `Apply these conventions:\n` +
+    `1. Style through CSS classes, never inline style="" attributes. Move any inline styles into classes.\n` +
+    `2. Give each styled element ONE semantic class (e.g. .hero-title, .feature-card), named for what it is.\n` +
+    `3. Define each class with exactly ONE rule in an external stylesheet. If a class is currently defined by several rules, merge them into one.\n` +
+    `4. Avoid utility-class soup (many single-purpose classes per element); prefer one meaningful class whose rule holds the styles.\n` +
+    `5. Keep responsive overrides in @media blocks (min-width / max-width), each mirroring the base rule's selector.\n\n` +
+    `Work file by file, keep the rendered output visually identical, and tell me which files you changed when done.`
+  );
+}

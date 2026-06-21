@@ -96,6 +96,17 @@ describe('CssEditorPanel', () => {
     expect(onCreateRule).toHaveBeenCalledWith('src/styles/main.css', '.hero', []);
   });
 
+  it('opens the agent-prep prompt from the empty state and pastes it', () => {
+    const onSendToClaude = vi.fn();
+    renderPanel(null, { onSendToClaude });
+    fireEvent.click(screen.getByRole('button', { name: /prepare this project/i }));
+    // The review view shows the prompt and a paste action.
+    expect(screen.getByText(/refactor this project's styling/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /paste into terminal/i }));
+    expect(onSendToClaude).toHaveBeenCalledTimes(1);
+    expect(onSendToClaude.mock.calls[0][0]).toMatch(/one semantic class/i);
+  });
+
   it('shows read-only guidance for a multiply-defined class', () => {
     const selection: CssSelection = {
       signature: sig('hero'),

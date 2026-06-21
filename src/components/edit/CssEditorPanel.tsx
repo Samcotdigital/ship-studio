@@ -13,6 +13,9 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Button } from '../primitives/Button';
 import { PinIcon } from '../icons/layout';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
+import { trackEvent } from '../../lib/analytics';
+import { buildCssPrepPrompt } from '../../lib/edit-css';
 import type { CssSelection } from '../../hooks/useCssEditor';
 import type { CssDeclaration } from '../../lib/edit-css';
 
@@ -44,6 +47,8 @@ interface Props {
   onSave: (property: string, value: string | null) => void;
   /** Create a rule for `selector` in `file` (the not-found case). */
   onCreateRule: (file: string, selector: string, declarations?: CssDeclaration[]) => void;
+  /** Paste the prep prompt into the agent terminal (user presses Enter). */
+  onSendToClaude?: (prompt: string) => void;
   onClose: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
@@ -170,6 +175,7 @@ export function CssEditorPanel({
   onPreview,
   onSave,
   onCreateRule,
+  onSendToClaude,
   onClose,
   pinned,
   onTogglePin,
@@ -206,6 +212,22 @@ export function CssEditorPanel({
     dragRef.current = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
   }, []);
+
+  // Agent-prep flow: a reviewable prompt that refactors an off-spec project
+  // toward the editor's conventions. Shown from the empty state and the
+  // read-only (inline / multiple / needs-class) states.
+  const [prep, setPrep] = useState(false);
+  const { copy, isCopied } = useCopyToClipboard();
+  const prepPrompt = buildCssPrepPrompt(authoredSheets);
+  const openPrep = useCallback(() => {
+    setPrep(true);
+    void trackEvent('visual_prep_started', { mode: 'css' });
+  }, []);
+  const prepLink = (
+    <button type="button" className="ss-css-prep-link" onClick={openPrep}>
+      Prepare this project for visual editing →
+    </button>
+  );
 
   const res = selection?.resolution;
 
@@ -252,19 +274,45 @@ export function CssEditorPanel({
       </div>
 
       <div className="ss-edit-panel__body">
-        {!selection && (
+        {prep && (
+          <div className="ss-css-prep">
+            <p className="ss-css-prep__lead">
+              Hand this to your coding agent to refactor the project's styling into clean,
+              class-based CSS the editor can edit. It keeps the site looking the same.
+            </p>
+            <div className="ss-css-prep__box">{prepPrompt}</div>
+            <div className="ss-css-prep__actions">
+              <Button variant="ghost" size="sm" onClick={() => setPrep(false)}>
+                Back
+              </Button>
+              <div className="ss-css-prep__right">
+                <Button variant="secondary" size="sm" onClick={() => void copy(prepPrompt)}>
+                  {isCopied ? 'Copied!' : 'Copy'}
+                </Button>
+                {onSendToClaude && (
+                  <Button variant="primary" size="sm" onClick={() => onSendToClaude(prepPrompt)}>
+                    Paste into terminal
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!prep && !selection && (
           <div className="ss-css-empty">
             <p className="ss-css-empty__lead">Click an element to edit its styles.</p>
             <p className="ss-css-empty__hint">
               Edits change the element's CSS class rule — any property, any value — and apply
               everywhere that class is used.
             </p>
+            {prepLink}
           </div>
         )}
 
-        {selection && !res && <p className="ss-css-status">Resolving…</p>}
+        {!prep && selection && !res && <p className="ss-css-status">Resolving…</p>}
 
-        {selection && res?.status === 'resolved' && (
+        {!prep && selection && res?.status === 'resolved' && (
           <>
             <div className="ss-css-context">
               <code className="ss-css-selector">{res.selector}</code>
@@ -294,7 +342,7 @@ export function CssEditorPanel({
           </>
         )}
 
-        {res?.status === 'not_found' && (
+        {!prep && res?.status === 'not_found' && (
           <div className="ss-css-create">
             <p className="ss-css-status">
               No CSS rule defines <code>{res.selector}</code> yet.
@@ -330,21 +378,27 @@ export function CssEditorPanel({
           </div>
         )}
 
-        {res?.status === 'needs_class' && (
-          <p className="ss-css-readonly">
-            This element has no class to style. Add a class to it in code (or ask the agent), then
-            reselect to edit its rule.
-          </p>
+        {!prep && res?.status === 'needs_class' && (
+          <div className="ss-css-readonly">
+            <p>
+              This element has no class to style. Add a class to it in code, then reselect — or let
+              the agent prepare the project.
+            </p>
+            {prepLink}
+          </div>
         )}
 
-        {res?.status === 'inline' && (
-          <p className="ss-css-readonly">
-            This element is styled with an inline <code>style</code> attribute. Move those styles
-            into a class to edit them here.
-          </p>
+        {!prep && res?.status === 'inline' && (
+          <div className="ss-css-readonly">
+            <p>
+              This element is styled with an inline <code>style</code> attribute. Move those styles
+              into a class to edit them here.
+            </p>
+            {prepLink}
+          </div>
         )}
 
-        {res?.status === 'multiple' && (
+        {!prep && res?.status === 'multiple' && (
           <div className="ss-css-readonly">
             <p>
               <code>{res.selector}</code> is defined by {res.locations.length} rules, so it isn't
@@ -357,6 +411,7 @@ export function CssEditorPanel({
                 </li>
               ))}
             </ul>
+            {prepLink}
           </div>
         )}
       </div>
