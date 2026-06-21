@@ -53,9 +53,10 @@ echo
 echo "CSS (limit 1200 per file):"
 # The visual editor stylesheet carries every control's styling (box model,
 # dropdowns, color picker, collapsible sections, custom-CSS box) and grew with
-# the expanded property coverage. Raised deliberately; splitting it by control
+# the expanded property coverage, plus the neutral active-state primitives now
+# shared with the CSS-mode editor. Raised deliberately; splitting it by control
 # family is on the roadmap.
-check_file src/styles/features/visual-editor.css 1400
+check_file src/styles/features/visual-editor.css 1500
 while IFS= read -r f; do
   check_file "$f" 1200
 done < <(find src/styles -maxdepth 3 -name '*.css' ! -name 'visual-editor.css' 2>/dev/null)
