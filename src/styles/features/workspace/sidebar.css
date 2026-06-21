@@ -47,13 +47,14 @@
   flex-shrink: 0;
 }
 
-/* Home row — height matches the editor's primary action toolbar so the
- * sidebar's top band lines up with the Learn Mode / workspace header row. */
+/* Home row — height matches the workspace header band so the sidebar's top
+ * lines up with it: the header is a 28px toolbar control + 8px top/bottom
+ * padding = 44px, and the top row adds its own 1px bottom border. */
 .workspace-sidebar-home {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  height: 45px;
+  height: 44px;
   padding: 0 var(--spacing-md);
   background: var(--bg-secondary);
   border: none;

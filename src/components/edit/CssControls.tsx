@@ -217,31 +217,60 @@ function ColorControl({
     };
   }, [open, close]);
 
+  const commitText = () => {
+    const next = local.trim();
+    if (next === (value || '')) return;
+    if (next !== '' && !cssSupports(prop, next)) {
+      setLocal(value || '');
+      return;
+    }
+    onSave(prop, next === '' ? null : next);
+  };
+
   return (
     <Field label={label}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="ss-color-swatch"
-        title={`${label} color`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => {
-          if (open) {
-            close();
-          } else {
-            latestRef.current = value;
-            setLocal(value || '');
-            setOpen(true);
-          }
-        }}
-      >
-        {value ? (
-          <span className="ss-color-swatch__chip" style={{ background: value }} />
-        ) : (
-          <span className="ss-color-swatch__empty">—</span>
-        )}
-      </button>
+      <div className="ss-cc-color">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="ss-color-swatch"
+          title={`${label} color`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => {
+            if (open) {
+              close();
+            } else {
+              latestRef.current = value;
+              setLocal(value || '');
+              setOpen(true);
+            }
+          }}
+        >
+          {value ? (
+            <span className="ss-color-swatch__chip" style={{ background: value }} />
+          ) : (
+            <span className="ss-color-swatch__empty">—</span>
+          )}
+        </button>
+        <input
+          className="ss-cc-input"
+          value={local}
+          placeholder="—"
+          spellCheck={false}
+          aria-label={`${label} value`}
+          onChange={(e) => {
+            setLocal(e.target.value);
+            latestRef.current = e.target.value;
+            const t = e.target.value.trim();
+            if (t && cssSupports(prop, t)) onPreview(prop, t);
+          }}
+          onBlur={commitText}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+        />
+      </div>
       {open &&
         rect &&
         createPortal(
@@ -258,6 +287,118 @@ function ColorControl({
           document.body
         )}
     </Field>
+  );
+}
+
+/** Expand a `padding`/`margin` shorthand into its four sides (CSS rules). */
+function expandShorthand(value: string): Record<'top' | 'right' | 'bottom' | 'left', string> {
+  const p = value.trim().split(/\s+/);
+  if (p.length === 1) return { top: p[0], right: p[0], bottom: p[0], left: p[0] };
+  if (p.length === 2) return { top: p[0], right: p[1], bottom: p[0], left: p[1] };
+  if (p.length === 3) return { top: p[0], right: p[1], bottom: p[2], left: p[1] };
+  return { top: p[0], right: p[1], bottom: p[2], left: p[3] };
+}
+
+/** Effective value of one box side: an explicit longhand wins, else the side
+ *  derived from the shorthand, else empty. */
+function sideValue(
+  declarations: CssDeclaration[],
+  type: 'padding' | 'margin',
+  side: string
+): string {
+  const long = cssValueOf(declarations, `${type}-${side}`);
+  if (long) return long;
+  const short = cssValueOf(declarations, type);
+  if (short) return expandShorthand(short)[side as 'top'];
+  return '';
+}
+
+/** One side input of the box-model editor. Writes the longhand (`padding-top`). */
+function BoxSide({
+  type,
+  side,
+  edge,
+  value,
+  onPreview,
+  onSave,
+}: {
+  type: 'padding' | 'margin';
+  side: string;
+  edge: string;
+  value: string;
+} & Pick<ControlProps, 'onPreview' | 'onSave'>) {
+  const prop = `${type}-${side}`;
+  const [text, setText] = useState(value);
+  const valid = text.trim() === '' || cssSupports(type, text.trim());
+  const commit = () => {
+    const next = text.trim();
+    if (next === value) return;
+    if (next !== '' && !valid) {
+      setText(value);
+      onPreview(prop, value || null);
+      return;
+    }
+    onSave(prop, next === '' ? null : next);
+  };
+  return (
+    <input
+      className={`ss-box__field ss-box__edge--${edge}${valid ? '' : ' ss-box__field--invalid'}`}
+      aria-label={`${type} ${side}`}
+      placeholder="0"
+      spellCheck={false}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const t = e.target.value.trim();
+        if (t && cssSupports(type, t)) onPreview(prop, t);
+      }}
+      onFocus={(e) => e.target.select()}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
+/** Webflow-style box-model editor (margin wrapping padding), CSS-native: each
+ *  side reads its effective value (longhand or shorthand) and writes a longhand.
+ *  Reuses the Tailwind editor's `ss-box` styling so the two look identical. */
+function CssSpacingBox({
+  declarations,
+  onPreview,
+  onSave,
+}: Omit<ControlProps, 'value'> & { declarations: CssDeclaration[] }) {
+  const f = (type: 'padding' | 'margin', side: string, edge: string) => {
+    const v = sideValue(declarations, type, side);
+    return (
+      <BoxSide
+        key={`${type}-${side}-${v}`}
+        type={type}
+        side={side}
+        edge={edge}
+        value={v}
+        onPreview={onPreview}
+        onSave={onSave}
+      />
+    );
+  };
+  return (
+    <div className="ss-box" data-testid="css-spacing-box">
+      <span className="ss-box__tag">MARGIN</span>
+      {f('margin', 'top', 't')}
+      {f('margin', 'bottom', 'b')}
+      {f('margin', 'left', 'l')}
+      {f('margin', 'right', 'r')}
+      <div className="ss-box__inner">
+        <span className="ss-box__tag">PADDING</span>
+        {f('padding', 'top', 't')}
+        {f('padding', 'bottom', 'b')}
+        {f('padding', 'left', 'l')}
+        {f('padding', 'right', 'r')}
+        <div className="ss-box__core" />
+      </div>
+    </div>
   );
 }
 
@@ -371,15 +512,19 @@ export function CssControls({
   const controls = cat.controls.filter((c) => !c.showIf || c.showIf(get));
   return (
     <div className="ss-cc">
-      {controls.map((c) => (
-        <Control
-          key={c.prop}
-          control={c}
-          value={get(c.prop)}
-          onPreview={onPreview}
-          onSave={onSave}
-        />
-      ))}
+      {category === 'spacing' ? (
+        <CssSpacingBox declarations={declarations} onPreview={onPreview} onSave={onSave} />
+      ) : (
+        controls.map((c) => (
+          <Control
+            key={c.prop}
+            control={c}
+            value={get(c.prop)}
+            onPreview={onPreview}
+            onSave={onSave}
+          />
+        ))
+      )}
       <AddProp onSave={onSave} />
     </div>
   );

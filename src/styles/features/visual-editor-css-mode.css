@@ -313,7 +313,7 @@
 }
 .ss-cc-color {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: auto 1fr;
   gap: var(--spacing-xs);
   align-items: center;
 }
