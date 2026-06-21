@@ -78,7 +78,7 @@ export const TEMPLATES: Template[] = [
   {
     id: 'nextjs-basic',
     name: 'Next.js',
-    description: 'The most flexible — a modern, full-featured website. A great default if unsure.',
+    description: "The most flexible, especially for web apps. A great default if you're not sure.",
     repo: 'https://github.com/ship-studio/static-marketing-site-starter',
     category: 'web',
   },
@@ -92,22 +92,23 @@ export const TEMPLATES: Template[] = [
   {
     id: 'astro-basic',
     name: 'Astro (Tailwind)',
-    description:
-      'Best for agent-first marketing sites — fast and content-driven, styled with Tailwind.',
+    description: 'Best for agent-first marketing sites, styled with Tailwind.',
     repo: 'https://github.com/ship-studio/astro-static-marketing-site-starter',
     category: 'web',
   },
   {
     id: 'sveltekit-basic',
     name: 'SvelteKit',
-    description: 'A fast, lightweight website built on Svelte.',
+    description:
+      'Best for snappy, interactive apps — Svelte compiles away the framework for minimal JS and fast loads.',
     repo: 'https://github.com/ship-studio/sveltekit-static-marketing-site-starter',
     category: 'web',
   },
   {
     id: 'nuxt-basic',
     name: 'Nuxt',
-    description: "A full-stack website built on Vue — ideal if your team prefers Vue's ecosystem.",
+    description:
+      'Best for Vue teams building full-stack apps, with server rendering and data fetching built in.',
     repo: 'https://github.com/ship-studio/nuxt-static-marketing-site-starter',
     category: 'web',
   },
