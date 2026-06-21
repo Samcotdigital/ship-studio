@@ -222,6 +222,15 @@
   color: var(--action-text);
 }
 
+/* Accordion: space the section cards apart (they're bordered cards, like the
+ * Tailwind editor) and leave room before the add-property row. */
+.ss-css-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
 /* ── Structured controls ─────────────────────────────────────────── */
 .ss-cc {
   display: flex;
