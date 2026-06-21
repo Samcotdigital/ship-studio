@@ -363,9 +363,12 @@ export function CssEditorPanel({
                       className="ss-edit-panel__section"
                       data-cat={cat.id}
                       open={openSections[cat.id] ?? defaultSectionOpen(cat.id)}
-                      onToggle={(e) =>
-                        setOpenSections((o) => ({ ...o, [cat.id]: e.currentTarget.open }))
-                      }
+                      onToggle={(e) => {
+                        // Read synchronously — the synthetic event's currentTarget is
+                        // nulled by the time the deferred setState updater runs.
+                        const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+                        setOpenSections((o) => ({ ...o, [cat.id]: isOpen }));
+                      }}
                     >
                       <summary className="ss-edit-panel__section-head">
                         <span className="ss-edit-panel__section-row">
