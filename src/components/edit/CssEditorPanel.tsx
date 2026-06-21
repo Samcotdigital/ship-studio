@@ -535,6 +535,12 @@ export function CssEditorPanel({
             {prepLink}
           </div>
         )}
+
+        {!prep && res?.status === 'error' && (
+          <div className="ss-css-readonly">
+            <p>Couldn’t read this element’s styles: {res.reason}. Try selecting it again.</p>
+          </div>
+        )}
       </div>
 
       <div className="ss-edit-panel__footer">

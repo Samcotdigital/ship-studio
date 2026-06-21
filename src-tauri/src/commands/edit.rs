@@ -2290,10 +2290,19 @@ fn element_span(src: &str, inside_open_tag: usize) -> Option<(usize, usize)> {
             if ne > ns {
                 let oname = src[ns..ne].to_ascii_lowercase();
                 let gt = scan_to_gt(bytes, ne)?;
-                if oname == tag
-                    && bytes[gt.saturating_sub(1)] != b'/'
-                    && !VOID_ELEMENTS.contains(&oname.as_str())
-                {
+                let self_closing = bytes[gt.saturating_sub(1)] == b'/';
+                // `<script>`/`<style>` hold raw text where `<` is not a tag (e.g.
+                // `if (a < b)`); skip their whole body so it can't be misread as
+                // markup or unbalance the depth count.
+                if !self_closing && (oname == "script" || oname == "style") {
+                    let close = format!("</{oname}");
+                    if let Some(rel) = src[gt + 1..].to_ascii_lowercase().find(&close) {
+                        p = scan_to_gt(bytes, gt + 1 + rel)? + 1;
+                        continue;
+                    }
+                    return None;
+                }
+                if oname == tag && !self_closing && !VOID_ELEMENTS.contains(&oname.as_str()) {
                     depth += 1;
                 }
                 p = gt + 1;
@@ -2457,6 +2466,14 @@ mod tests {
     #[test]
     fn element_span_skips_comment_and_quoted_gt() {
         let src = r#"<div class="cls" data-x="a>b"><!-- </div> --><span>x</span></div>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_skips_script_raw_text() {
+        // The `<` in `a < b` and the literal `</div>` string inside the script
+        // must not be read as markup — the outer div's real close wins.
+        let src = r#"<div class="cls"><script>if (a < b) { x("</div>") }</script>done</div>"#;
         assert_eq!(span_str(src), src);
     }
 

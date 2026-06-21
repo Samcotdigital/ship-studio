@@ -33,20 +33,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-/// Directories never worth scanning for authored stylesheets.
-const SKIP_DIRS: &[&str] = &[
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "out",
-    ".next",
-    ".astro",
-    ".cache",
-    "vendor",
-    "coverage",
-];
-
 /// Skip stylesheets larger than this (bytes) — almost certainly generated /
 /// minified bundles, not hand-authored convention-conforming CSS.
 const MAX_CSS_BYTES: u64 = 2 * 1024 * 1024;
@@ -134,7 +120,11 @@ fn is_safe_pseudo(s: &str) -> bool {
     let mut saw_alpha = false;
     for c in s.chars() {
         match c {
-            ':' | '-' | '_' | '+' | '.' | '#' | '%' | ',' | ' ' => {}
+            ':' | '-' | '_' | '+' | '.' | '#' | '%' => {}
+            // `,` and ` ` group/combine selectors — only legal inside a
+            // functional pseudo (`:is(.a, .b)`, `:not(.x .y)`). At the top level
+            // they'd break out of the appended selector.
+            ',' | ' ' if depth > 0 => {}
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
@@ -593,11 +583,20 @@ fn set_declaration_in_block(
     let existing = decls.iter().find(|d| d.property_lc == prop_lc);
 
     match (existing, value) {
-        // Update an existing declaration's value in place.
+        // Update an existing declaration's value in place. Preserve a trailing
+        // `!important` the UI doesn't round-trip (it tracks the flag separately
+        // and sends only the value), so editing a property never silently drops
+        // its importance.
         (Some(d), Some(v)) => {
+            let existing = css[d.value_start..d.value_end].trim_end();
+            let keep_important = existing.to_ascii_lowercase().ends_with("!important")
+                && !v.to_ascii_lowercase().contains("!important");
             let mut out = String::with_capacity(css.len());
             out.push_str(&css[..d.value_start]);
             out.push_str(v);
+            if keep_important {
+                out.push_str(" !important");
+            }
             out.push_str(&css[d.value_end..]);
             out
         }
@@ -803,20 +802,20 @@ fn apply_declaration_to_source(
 /// contents)` for each.
 fn discover_stylesheets(root: &Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    let walker = walkdir::WalkDir::new(root).into_iter().filter_entry(|e| {
-        !e.file_type().is_dir()
-            || !e
-                .file_name()
-                .to_str()
-                .map(|n| SKIP_DIRS.contains(&n))
-                .unwrap_or(false)
-    });
+    // Use the `ignore` walker — it honors .gitignore and skips hidden/VCS dirs,
+    // the same walker the source indexer uses (`edit::index_occurrences`). A
+    // hand-rolled denylist can't know about `.vercel`, `.turbo`, `.svelte-kit`,
+    // asset dumps, etc., so it descended into huge generated trees and made every
+    // cache-miss resolve crawl on large projects.
+    let walker = ignore::WalkBuilder::new(root)
+        .standard_filters(true)
+        .build();
     for entry in walker.flatten() {
-        if !entry.file_type().is_file() {
-            continue;
-        }
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("css") {
+            continue;
+        }
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
         if entry.metadata().map(|m| m.len()).unwrap_or(0) > MAX_CSS_BYTES {
@@ -849,6 +848,87 @@ fn safe_join(root: &Path, file: &str) -> Result<std::path::PathBuf, CommandError
     Ok(abs)
 }
 
+// ───────────────────────── Write validation ─────────────────────────
+//
+// Edits are written verbatim and surgically, so a value/property/selector that
+// contains block-structure characters (a typo, or a paste) would break out of
+// the rule and corrupt the stylesheet. The engine is fail-closed: refuse them
+// rather than write something that silently destroys the file.
+
+/// A CSS property name is a plain identifier (`padding`, `--brand-color`).
+fn property_is_safe(property: &str) -> bool {
+    let p = property.trim();
+    !p.is_empty()
+        && p.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// A value is safe when it can't terminate the declaration or close the block:
+/// `{`/`}` never appear outside a quoted string, and `;` only inside quotes or
+/// parentheses (e.g. a `url(data:…;…)` or `content: ";"`). Unbalanced quotes or
+/// parens are rejected too — they'd swallow following source.
+fn value_is_safe(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut i = 0usize;
+    let mut quote = 0u8;
+    let mut depth = 0i32;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if quote != 0 {
+            if c == b'\\' {
+                i += 2;
+                continue;
+            }
+            if c == quote {
+                quote = 0;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b'"' | b'\'' => quote = c,
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b'{' | b'}' => return false,
+            b';' if depth == 0 => return false,
+            _ => {}
+        }
+        i += 1;
+    }
+    quote == 0 && depth == 0
+}
+
+/// Reject a property/value pair that would corrupt the stylesheet. `None` value
+/// is a removal — only the property is checked.
+fn validate_declaration(property: &str, value: Option<&str>) -> Result<(), CommandError> {
+    if !property_is_safe(property) {
+        return Err(CommandError::Validation {
+            field: "property".into(),
+            reason: format!("\"{property}\" isn't a valid CSS property name"),
+        });
+    }
+    if let Some(v) = value {
+        if !value_is_safe(v) {
+            return Err(CommandError::Validation {
+                field: "value".into(),
+                reason: "value contains characters that would break the stylesheet".into(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// A selector written into a new rule must not carry block braces.
+fn validate_selector(selector: &str) -> Result<(), CommandError> {
+    if selector.trim().is_empty() || selector.contains('{') || selector.contains('}') {
+        return Err(CommandError::Validation {
+            field: "selector".into(),
+            reason: "invalid selector".into(),
+        });
+    }
+    Ok(())
+}
+
 // ───────────────────────────── Commands ─────────────────────────────
 
 /// Resolve a clicked element to the CSS rule that styles its class, at the
@@ -878,6 +958,7 @@ pub fn set_css_declaration(
     property: String,
     value: Option<String>,
 ) -> Result<(), CommandError> {
+    validate_declaration(&property, value.as_deref())?;
     let root = validate_project_path(&project_path)?;
     let abs = safe_join(&root, &file)?;
     let src = std::fs::read_to_string(&abs).map_err(CommandError::from)?;
@@ -907,6 +988,10 @@ pub fn create_css_class(
     declarations: Vec<Declaration>,
     breakpoint_min_px: Option<u32>,
 ) -> Result<(), CommandError> {
+    validate_selector(&selector)?;
+    for d in &declarations {
+        validate_declaration(&d.property, Some(&d.value))?;
+    }
     let root = validate_project_path(&project_path)?;
     let abs = safe_join(&root, &file)?;
     let src = std::fs::read_to_string(&abs).map_err(CommandError::from)?;
@@ -1026,6 +1111,58 @@ mod tests {
         // Reject injection.
         s.pseudo = Some("hover{}body".into());
         assert_eq!(pseudo_suffix(&s), "");
+    }
+
+    #[test]
+    fn pseudo_rejects_top_level_comma_and_space_but_allows_them_in_parens() {
+        let mut s = sig("x");
+        // Top-level comma/space would break out into a selector list.
+        s.pseudo = Some("hover, .evil".into());
+        assert_eq!(pseudo_suffix(&s), "");
+        s.pseudo = Some("hover .evil".into());
+        assert_eq!(pseudo_suffix(&s), "");
+        // Inside a functional pseudo they're legal.
+        s.pseudo = Some(":is(.a, .b)".into());
+        assert_eq!(pseudo_suffix(&s), ":is(.a, .b)");
+        s.pseudo = Some(":not(.x .y)".into());
+        assert_eq!(pseudo_suffix(&s), ":not(.x .y)");
+    }
+
+    #[test]
+    fn validates_property_and_value_against_block_break_out() {
+        assert!(property_is_safe("padding"));
+        assert!(property_is_safe("--brand-color"));
+        assert!(!property_is_safe("color; }"));
+        assert!(!property_is_safe(""));
+        assert!(!property_is_safe("a:b"));
+
+        assert!(value_is_safe("24px"));
+        assert!(value_is_safe("rgba(0, 0, 0, 0.5)"));
+        assert!(value_is_safe("url(data:image/svg+xml;base64,abc)")); // ; inside parens
+        assert!(value_is_safe("\"a;b{c}\"")); // structural chars inside a string
+        assert!(!value_is_safe("red }")); // closes the block
+        assert!(!value_is_safe("red; .evil { color: blue")); // injects a rule
+        assert!(!value_is_safe("\"unterminated")); // dangling quote
+        assert!(!value_is_safe("rgb(0,0,0")); // unbalanced parens
+
+        assert!(validate_declaration("color", Some("red }")).is_err());
+        assert!(validate_declaration("color", Some("red")).is_ok());
+        assert!(validate_declaration("color", None).is_ok());
+        assert!(validate_selector(".hero:hover").is_ok());
+        assert!(validate_selector(".hero { } .evil").is_err());
+    }
+
+    #[test]
+    fn editing_a_value_preserves_existing_important() {
+        let css = ".x {\n  color: red !important;\n}";
+        let out = set_declaration_in_block(
+            css,
+            css.find('{').unwrap() + 1,
+            css.rfind('}').unwrap(),
+            "color",
+            Some("blue"),
+        );
+        assert!(out.contains("color: blue !important;"), "got: {out}");
     }
 
     #[test]

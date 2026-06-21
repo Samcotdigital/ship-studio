@@ -42,7 +42,10 @@ export type CssResolution =
   | { status: 'multiple'; selector: string; locations: CssLocation[] }
   | { status: 'inline'; reason: string }
   | { status: 'needs_class'; reason: string }
-  | { status: 'not_found'; selector: string };
+  | { status: 'not_found'; selector: string }
+  /** Frontend-only: the resolve command itself failed (IO/backend error). Kept
+   *  distinct from `not_found` so we never offer "create rule" on a real error. */
+  | { status: 'error'; reason: string };
 
 /** Element signature for CSS resolution. Built from the in-iframe selection
  *  script's payload (`ElementSignature`); camelCase to match the Rust command. */

@@ -37,6 +37,13 @@ import {
 } from '../lib/edit';
 import { logger } from '../lib/logger';
 import { trackEvent } from '../lib/analytics';
+import { asCommandError, formatCommandError } from '../lib/errors';
+
+/** A Tauri-rejected `CommandError` is an object — `String(err)` would render it
+ *  as "[object Object]". Format it to the human message. */
+function toastText(err: unknown): string {
+  return formatCommandError(asCommandError(err));
+}
 
 export interface CssSelection {
   signature: ElementSignature;
@@ -51,7 +58,8 @@ interface Params {
   projectPath: string;
   /** Feature availability (server ready + a CSS-mode project type). */
   enabled: boolean;
-  onToast?: (message: string, type?: 'success' | 'error') => void;
+  /** Required: write failures must always surface — never silently swallowed. */
+  onToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Params) {
@@ -161,9 +169,11 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         } catch (err) {
           logger.error('[CssEditor] resolve failed', { error: String(err) });
           if (selTokenRef.current === token) {
+            // A real failure — do NOT fall back to `not_found`, which would
+            // wrongly offer "create rule" for a class that may already exist.
             setSelection({
               signature: sig,
-              resolution: { status: 'not_found', selector: '' },
+              resolution: { status: 'error', reason: toastText(err) },
               instanceCount,
             });
           }
@@ -239,7 +249,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
       if (!sig) return false;
       const res = await resolveClassnameSource(projectPath, sig);
       if (res.status !== 'resolved' && res.status !== 'multi') {
-        onToast?.("Can't edit this element's classes in source — change them in code.", 'error');
+        onToast("Can't edit this element's classes in source — change them in code.", 'error');
         return false;
       }
       const prev = res.class_name;
@@ -278,7 +288,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         await reresolve(n, pseudoRef.current);
         void trackEvent('visual_class_added', { mode: 'css' });
       } catch (err) {
-        onToast?.(String(err), 'error');
+        onToast(toastText(err), 'error');
       }
     },
     [writeClassAttr, reresolve, setTargetClass, onToast]
@@ -299,7 +309,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         await reresolve(targetClassRef.current, pseudoRef.current);
         void trackEvent('visual_class_removed', { mode: 'css' });
       } catch (err) {
-        onToast?.(String(err), 'error');
+        onToast(toastText(err), 'error');
       }
     },
     [writeClassAttr, reresolve, onToast]
@@ -348,7 +358,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         void trackEvent('visual_style_saved', { mode: 'css', removed: value === null });
       } catch (err) {
         logger.error('[CssEditor] write-back failed', { error: String(err) });
-        onToast?.(String(err), 'error');
+        onToast(toastText(err), 'error');
       } finally {
         setSaving(false);
       }
@@ -378,7 +388,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         void trackEvent('visual_style_saved', { mode: 'css', bulk: changes.length });
       } catch (err) {
         logger.error('[CssEditor] bulk write-back failed', { error: String(err) });
-        onToast?.(String(err), 'error');
+        onToast(toastText(err), 'error');
       } finally {
         setSaving(false);
       }
@@ -398,10 +408,10 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
         const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature), bp);
         setSelection({ ...sel, resolution });
         void trackEvent('visual_style_saved', { mode: 'css', created_rule: true });
-        onToast?.(`Created ${selector}`, 'success');
+        onToast(`Created ${selector}`, 'success');
       } catch (err) {
         logger.error('[CssEditor] create rule failed', { error: String(err) });
-        onToast?.(String(err), 'error');
+        onToast(toastText(err), 'error');
       }
     },
     [projectPath, onToast, selection]
