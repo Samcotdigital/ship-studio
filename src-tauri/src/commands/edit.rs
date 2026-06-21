@@ -18,13 +18,30 @@
 //! literals resolves to `Multi` — editable as a group (write all) or one at a
 //! time — so the resolver never guesses a single wrong edit target.
 
+use crate::commands::projects::detect_project_type;
 use crate::errors::CommandError;
+use crate::types::ProjectType;
 use crate::utils::validate_project_path;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Source file extensions we index for class literals.
-const SOURCE_EXTS: &[&str] = &["tsx", "jsx", "astro", "liquid", "html"];
+/// Source file extensions we index for class literals, by project shape. `.html`
+/// is editable *source* only for a plain static-HTML project. In a JS-framework
+/// project (Next, Astro, Svelte, …) the real source is `.tsx`/`.astro`/etc. and
+/// any `.html` is an export or fixture (e.g. a Webflow export — easily megabytes
+/// across many files); indexing it on every walk is pure cost and can stall the
+/// resolver, so it's excluded there.
+const SOURCE_EXTS_STATIC: &[&str] = &["tsx", "jsx", "astro", "liquid", "html"];
+const SOURCE_EXTS_FRAMEWORK: &[&str] = &["tsx", "jsx", "astro", "liquid"];
+
+/// The source extensions to index for `root`, including `.html` only for static
+/// HTML projects. Cheap — `detect_project_type` is cached.
+fn source_exts(root: &Path) -> &'static [&'static str] {
+    match detect_project_type(root) {
+        ProjectType::Statichtml => SOURCE_EXTS_STATIC,
+        _ => SOURCE_EXTS_FRAMEWORK,
+    }
+}
 
 /// Class-bearing attribute names to scan, by file extension. React/JSX
 /// (`.tsx`/`.jsx`) authors write `className`; Astro `.astro` templates use the
@@ -303,6 +320,7 @@ fn invalidate_index_cache(root: &Path) {
 /// .next, .git, etc. via the `ignore` walker which also honors .gitignore).
 fn index_occurrences(root: &Path) -> Vec<Occurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -313,7 +331,7 @@ fn index_occurrences(root: &Path) -> Vec<Occurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -1088,6 +1106,7 @@ fn index_text_cached(root: &Path) -> std::sync::Arc<Vec<TextOccurrence>> {
 /// Index every static text run under `root` (same file walk/filters as the className index).
 fn index_text_occurrences(root: &Path) -> Vec<TextOccurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -1098,7 +1117,7 @@ fn index_text_occurrences(root: &Path) -> Vec<TextOccurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -1481,6 +1500,7 @@ struct SrcOccurrence {
 /// enough that a cache isn't worth the invalidation surface.
 fn index_src_occurrences(root: &Path) -> Vec<SrcOccurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -1491,7 +1511,7 @@ fn index_src_occurrences(root: &Path) -> Vec<SrcOccurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -2153,6 +2173,7 @@ pub fn find_component_usage(
 
     let mut sites = Vec::new();
     if let Some(name) = &component {
+        let exts = source_exts(&root);
         for entry in ignore::WalkBuilder::new(&root)
             .standard_filters(true)
             .build()
@@ -2162,7 +2183,7 @@ pub fn find_component_usage(
             let is_src = path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| SOURCE_EXTS.contains(&e))
+                .map(|e| exts.contains(&e))
                 .unwrap_or(false);
             if !is_src {
                 continue;
@@ -2485,6 +2506,28 @@ mod tests {
             ancestor_classes: ancestors.iter().map(|s| s.to_string()).collect(),
             attr_src: None,
         }
+    }
+
+    #[test]
+    fn source_exts_includes_html_only_for_static_projects() {
+        // Framework project (Next): `.html` is an export/fixture, not source.
+        let next = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            next.path().join("package.json"),
+            r#"{"dependencies":{"next":"14.0.0"}}"#,
+        )
+        .unwrap();
+        std::fs::write(next.path().join("export.html"), "<div class=\"x\"></div>").unwrap();
+        assert!(!source_exts(next.path()).contains(&"html"));
+
+        // Plain static-HTML project: `.html` IS the source.
+        let static_site = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            static_site.path().join("index.html"),
+            "<div class=\"x\"></div>",
+        )
+        .unwrap();
+        assert!(source_exts(static_site.path()).contains(&"html"));
     }
 
     #[test]
