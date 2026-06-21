@@ -30,9 +30,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
 }
 .ss-css-selector {
   font-family: var(--font-mono, monospace);
@@ -220,8 +218,8 @@
   color: var(--text-primary);
 }
 .ss-css-tab.is-active {
-  background: var(--accent);
-  color: #fff; /* css-ok: accent buttons use white text app-wide */
+  background: var(--action);
+  color: var(--action-text);
 }
 
 /* ── Structured controls ─────────────────────────────────────────── */
@@ -269,8 +267,11 @@
   color: var(--text-primary);
 }
 .ss-cc-seg__btn.is-active {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--action);
+  color: var(--action-text);
+}
+.ss-cc-seg__btn.is-active:hover {
+  color: var(--action-text);
 }
 .ss-cc-select,
 .ss-cc-input {
@@ -289,10 +290,26 @@
 .ss-cc-select:focus,
 .ss-cc-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--action);
 }
 .ss-cc-input.is-invalid {
   border-color: var(--error);
+}
+
+/* Add-any-property row. */
+.ss-cc-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--spacing-xs);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border);
+}
+.ss-cc-add__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: var(--spacing-xs);
+  align-items: center;
 }
 .ss-cc-color {
   display: grid;
@@ -331,7 +348,7 @@
 }
 .ss-css-code__area:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--action);
 }
 .ss-css-code__actions {
   display: flex;
@@ -346,7 +363,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--accent);
+  color: var(--action);
   font-size: var(--font-size-xs);
   font-weight: 600;
   cursor: pointer;

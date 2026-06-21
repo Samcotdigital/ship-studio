@@ -1,14 +1,20 @@
 /**
  * Structured visual controls for the CSS-Mode editor (Phase 4).
  *
- * Renders one category's controls (segmented / select / length / color) for a
- * resolved rule. Each control reads its value straight from the rule's
- * declarations and writes a single CSS property: a quick `onPreview` for live
- * feedback, then `onSave` to persist surgically. The "Custom" / raw-CSS path
- * lives in the panel's Code view, not here.
+ * Renders one category's controls (segmented / dropdown / length / color) for a
+ * resolved rule, plus an always-available "add any property" row. Each control
+ * reads its value straight from the rule's declarations and writes a single CSS
+ * property: a quick `onPreview` for live feedback, then `onSave` to persist.
+ *
+ * Dropdowns and the color popover reuse the Tailwind editor's components
+ * (`EnumDropdown`, `ColorPicker`) so both editors look and behave identically.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Button } from '../primitives/Button';
+import { EnumDropdown } from './EnumDropdown';
+import { ColorPicker } from './ColorPicker';
 import { CSS_CATEGORIES, cssValueOf, type CssControl, type SegOption } from '../../lib/cssControls';
 import type { CssDeclaration } from '../../lib/edit-css';
 
@@ -22,7 +28,9 @@ function cssSupports(prop: string, value: string): boolean {
   }
 }
 
-const HEX = /^#[0-9a-fA-F]{3,8}$/;
+function isValidProperty(prop: string): boolean {
+  return /^-{0,2}[a-z][a-z0-9-]*$/.test(prop.trim());
+}
 
 interface ControlProps {
   value: string;
@@ -30,7 +38,7 @@ interface ControlProps {
   onSave: (property: string, value: string | null) => void;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ss-cc-field">
       <span className="ss-cc-label">{label}</span>
@@ -60,8 +68,7 @@ function Segmented({
               title={o.title ?? o.label ?? o.value}
               aria-pressed={active}
               onClick={() => {
-                // Click an active segment again to clear the property.
-                const next = active ? null : o.value;
+                const next = active ? null : o.value; // click active again to clear
                 onPreview(prop, next);
                 onSave(prop, next);
               }}
@@ -85,22 +92,19 @@ function SelectControl({
 }: ControlProps & { prop: string; label: string; options: { value: string; label: string }[] }) {
   return (
     <Field label={label}>
-      <select
-        className="ss-cc-select"
-        value={value}
-        onChange={(e) => {
-          const v = e.target.value;
-          onPreview(prop, v || null);
-          onSave(prop, v || null);
+      <EnumDropdown
+        label={label}
+        value={value || null}
+        options={[
+          { label: '—', token: '' },
+          ...options.map((o) => ({ label: o.label, token: o.value })),
+        ]}
+        onChange={(token) => {
+          const v = token || null;
+          onPreview(prop, v);
+          onSave(prop, v);
         }}
-      >
-        <option value="">—</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
     </Field>
   );
 }
@@ -151,6 +155,8 @@ function LengthControl({
   );
 }
 
+/** Color control: a swatch that opens the shared ColorPicker popover. Previews
+ *  live while dragging; commits the final value when the popover closes. */
 function ColorControl({
   prop,
   label,
@@ -158,53 +164,104 @@ function ColorControl({
   onPreview,
   onSave,
 }: ControlProps & { prop: string; label: string }) {
-  const [v, setV] = useState(value);
-  const swatch = HEX.test(v.trim()) ? v.trim() : '#000000';
-  const commit = () => {
-    const next = v.trim();
-    if (next === value) return;
-    if (next !== '' && !cssSupports(prop, next)) {
-      setV(value);
-      return;
-    }
-    onSave(prop, next === '' ? null : next);
-  };
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ top: number; left: number } | null>(null);
+  const [local, setLocal] = useState(value || '');
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const latestRef = useRef(value);
+
+  const reposition = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 216;
+    const H = 250;
+    const M = 8;
+    let left = r.left - W - M;
+    if (left < M) left = r.right + M;
+    left = Math.min(Math.max(M, left), window.innerWidth - W - M);
+    const top = Math.min(Math.max(M, r.top), window.innerHeight - H - M);
+    setRect({ top, left });
+  }, []);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    if (latestRef.current !== value) onSave(prop, latestRef.current || null);
+  }, [prop, value, onSave]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, close]);
+
   return (
     <Field label={label}>
-      <div className="ss-cc-color">
-        <input
-          type="color"
-          className="ss-cc-swatch"
-          value={swatch}
-          aria-label={`${label} swatch`}
-          onChange={(e) => {
-            setV(e.target.value);
-            onPreview(prop, e.target.value);
-          }}
-          onBlur={commit}
-        />
-        <input
-          className="ss-cc-input"
-          value={v}
-          placeholder="—"
-          spellCheck={false}
-          onChange={(e) => {
-            setV(e.target.value);
-            const t = e.target.value.trim();
-            if (t && cssSupports(prop, t)) onPreview(prop, t);
-          }}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-        />
-      </div>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="ss-color-swatch"
+        title={`${label} color`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) {
+            close();
+          } else {
+            latestRef.current = value;
+            setLocal(value || '');
+            setOpen(true);
+          }
+        }}
+      >
+        {value ? (
+          <span className="ss-color-swatch__chip" style={{ background: value }} />
+        ) : (
+          <span className="ss-color-swatch__empty">—</span>
+        )}
+      </button>
+      {open &&
+        rect &&
+        createPortal(
+          <div ref={popRef} className="ss-color-popover" style={{ top: rect.top, left: rect.left }}>
+            <ColorPicker
+              value={local || '#000000'}
+              onChange={(css) => {
+                setLocal(css);
+                latestRef.current = css;
+                onPreview(prop, css);
+              }}
+            />
+          </div>,
+          document.body
+        )}
     </Field>
   );
 }
 
 function Control({ control, value, onPreview, onSave }: { control: CssControl } & ControlProps) {
-  // Key by value so external changes (a save advancing the rule) re-seed inputs.
   const key = `${control.prop}:${value}`;
   switch (control.kind) {
     case 'segmented':
@@ -255,6 +312,48 @@ function Control({ control, value, onPreview, onSave }: { control: CssControl } 
   }
 }
 
+/** Type any CSS property + value and add it to the rule. Always available so no
+ *  property is ever out of reach of the visual editor. */
+function AddProp({ onSave }: { onSave: (property: string, value: string | null) => void }) {
+  const [prop, setProp] = useState('');
+  const [value, setValue] = useState('');
+  const ready =
+    isValidProperty(prop) && value.trim() !== '' && cssSupports(prop.trim(), value.trim());
+  const add = () => {
+    if (!ready) return;
+    onSave(prop.trim().toLowerCase(), value.trim());
+    setProp('');
+    setValue('');
+  };
+  return (
+    <div className="ss-cc-add">
+      <span className="ss-cc-label">Add property</span>
+      <div className="ss-cc-add__row">
+        <input
+          className="ss-cc-input"
+          placeholder="property"
+          value={prop}
+          spellCheck={false}
+          onChange={(e) => setProp(e.target.value)}
+        />
+        <input
+          className="ss-cc-input"
+          placeholder="value"
+          value={value}
+          spellCheck={false}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add();
+          }}
+        />
+        <Button variant="secondary" size="sm" onClick={add} disabled={!ready}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CssControls({
   category,
   declarations,
@@ -281,6 +380,7 @@ export function CssControls({
           onSave={onSave}
         />
       ))}
+      <AddProp onSave={onSave} />
     </div>
   );
 }

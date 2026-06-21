@@ -57,6 +57,10 @@ const isFlexish: ControlPredicate = (get) => {
   return d.includes('flex') || d.includes('grid');
 };
 const isFlex: ControlPredicate = (get) => get('display').includes('flex');
+const isPositioned: ControlPredicate = (get) => {
+  const p = get('position');
+  return p !== '' && p !== 'static';
+};
 
 export const CSS_CATEGORIES: CssCategory[] = [
   {
@@ -209,6 +213,67 @@ export const CSS_CATEGORIES: CssCategory[] = [
       },
       { kind: 'color', prop: 'border-color', label: 'Color' },
       { kind: 'length', prop: 'border-radius', label: 'Radius', placeholder: '0' },
+    ],
+  },
+  {
+    id: 'position',
+    label: 'Position',
+    controls: [
+      {
+        kind: 'segmented',
+        prop: 'position',
+        label: 'Position',
+        options: [
+          { value: 'static', label: 'Static' },
+          { value: 'relative', label: 'Relative' },
+          { value: 'absolute', label: 'Absolute' },
+          { value: 'fixed', label: 'Fixed' },
+          { value: 'sticky', label: 'Sticky' },
+        ],
+      },
+      { kind: 'length', prop: 'top', label: 'Top', placeholder: 'auto', showIf: isPositioned },
+      { kind: 'length', prop: 'right', label: 'Right', placeholder: 'auto', showIf: isPositioned },
+      {
+        kind: 'length',
+        prop: 'bottom',
+        label: 'Bottom',
+        placeholder: 'auto',
+        showIf: isPositioned,
+      },
+      { kind: 'length', prop: 'left', label: 'Left', placeholder: 'auto', showIf: isPositioned },
+      { kind: 'length', prop: 'z-index', label: 'Z-index', placeholder: 'auto' },
+    ],
+  },
+  {
+    id: 'effects',
+    label: 'Effects',
+    controls: [
+      { kind: 'length', prop: 'opacity', label: 'Opacity', placeholder: '1' },
+      { kind: 'length', prop: 'box-shadow', label: 'Box shadow', placeholder: 'none' },
+      {
+        kind: 'select',
+        prop: 'overflow',
+        label: 'Overflow',
+        options: [
+          { value: 'visible', label: 'Visible' },
+          { value: 'hidden', label: 'Hidden' },
+          { value: 'auto', label: 'Auto' },
+          { value: 'scroll', label: 'Scroll' },
+        ],
+      },
+      {
+        kind: 'select',
+        prop: 'cursor',
+        label: 'Cursor',
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'default', label: 'Default' },
+          { value: 'pointer', label: 'Pointer' },
+          { value: 'text', label: 'Text' },
+          { value: 'move', label: 'Move' },
+          { value: 'not-allowed', label: 'Not allowed' },
+        ],
+      },
     ],
   },
   { id: 'custom', label: 'Custom', controls: [] },
