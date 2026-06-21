@@ -13,13 +13,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import {
-  EditorView,
-  keymap,
-  drawSelection,
-  dropCursor,
-  placeholder as cmPlaceholder,
-} from '@codemirror/view';
+import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import {
@@ -79,6 +73,10 @@ const ssTheme = EditorView.theme(
       // Custom, theme-matched scrollbars (never the device's white default).
       scrollbarWidth: 'thin',
       scrollbarColor: 'var(--border) transparent',
+      // Promote to its own compositing layer so the native caret has a clean
+      // backing store and paints inside the panel's fixed, rounded, clipped box
+      // (without this, WebKit drops the caret entirely — see .cm-content).
+      transform: 'translateZ(0)',
     },
     '.cm-scroller::-webkit-scrollbar': { width: '10px', height: '10px' },
     '.cm-scroller::-webkit-scrollbar-track': { background: 'transparent' },
@@ -89,12 +87,15 @@ const ssTheme = EditorView.theme(
     },
     '.cm-scroller::-webkit-scrollbar-thumb:hover': { background: 'var(--text-muted)' },
     '.cm-scroller::-webkit-scrollbar-corner': { background: 'transparent' },
-    '.cm-content': { padding: 'var(--spacing-sm) 0', caretColor: 'var(--text-bright, #fff)' },
+    // Native caret, tinted bright. It renders invisibly inside the panel's
+    // rounded `overflow:hidden` compositing layer (a known WebKit bug) unless the
+    // editor is promoted to its own backing layer — see `.cm-scroller` above.
+    '.cm-content': {
+      padding: 'var(--spacing-sm) 0',
+      caretColor: 'var(--text-bright, #fff)',
+    },
     '.cm-line': { padding: '0 var(--spacing-sm)' },
-    // The caret is CodeMirror's DRAWN cursor (drawSelection) — a positioned div,
-    // not the native contenteditable caret, which renders invisibly inside the
-    // position:fixed editor panel in WebKit. Make it thick + bright so it reads.
-    '.cm-cursor, .cm-cursor-primary, .cm-dropCursor': {
+    '.cm-cursor, .cm-cursor-primary': {
       borderLeftColor: 'var(--text-bright, #fff)',
       borderLeftWidth: '2px',
     },
@@ -120,8 +121,6 @@ export function CodeOverlayEditor({ value, onChange, lang, className, placeholde
       doc: value,
       extensions: [
         history(),
-        drawSelection(),
-        dropCursor(),
         bracketMatching(),
         indentUnit.of('  '),
         EditorState.tabSize.of(2),
