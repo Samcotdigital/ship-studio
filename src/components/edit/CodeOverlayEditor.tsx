@@ -13,7 +13,13 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
+import {
+  EditorView,
+  keymap,
+  drawSelection,
+  dropCursor,
+  placeholder as cmPlaceholder,
+} from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import {
@@ -83,9 +89,15 @@ const ssTheme = EditorView.theme(
     },
     '.cm-scroller::-webkit-scrollbar-thumb:hover': { background: 'var(--text-muted)' },
     '.cm-scroller::-webkit-scrollbar-corner': { background: 'transparent' },
-    // Native caret (no drawSelection layer to make it transparent), tinted bright.
-    '.cm-content': { padding: 'var(--spacing-sm) 0', caretColor: 'var(--text-primary)' },
+    '.cm-content': { padding: 'var(--spacing-sm) 0', caretColor: 'var(--text-bright, #fff)' },
     '.cm-line': { padding: '0 var(--spacing-sm)' },
+    // The caret is CodeMirror's DRAWN cursor (drawSelection) — a positioned div,
+    // not the native contenteditable caret, which renders invisibly inside the
+    // position:fixed editor panel in WebKit. Make it thick + bright so it reads.
+    '.cm-cursor, .cm-cursor-primary, .cm-dropCursor': {
+      borderLeftColor: 'var(--text-bright, #fff)',
+      borderLeftWidth: '2px',
+    },
     '.cm-selectionBackground, ::selection': { backgroundColor: 'var(--tint)' },
     '&.cm-focused .cm-selectionBackground': { backgroundColor: 'var(--tint-strong)' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
@@ -108,6 +120,8 @@ export function CodeOverlayEditor({ value, onChange, lang, className, placeholde
       doc: value,
       extensions: [
         history(),
+        drawSelection(),
+        dropCursor(),
         bracketMatching(),
         indentUnit.of('  '),
         EditorState.tabSize.of(2),
