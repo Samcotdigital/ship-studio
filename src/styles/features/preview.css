@@ -296,6 +296,15 @@
   grid-template-columns: var(--tree-panel-w) minmax(0, 1fr) var(--editor-panel-w);
 }
 
+/* Code (markup-edit) view of the Elements panel: widen the left track so the
+   HTML editor has room and lines don't wrap after every few characters. */
+.preview-container--tree.preview-container--tree-code {
+  grid-template-columns: var(--tree-code-w) minmax(0, 1fr);
+}
+.preview-container--tree.preview-container--tree-code.preview-container--editor-pinned {
+  grid-template-columns: var(--tree-code-w) minmax(0, 1fr) var(--editor-panel-w);
+}
+
 .preview-container--editor-pinned .preview-toolbar,
 .preview-container--tree .preview-toolbar {
   grid-column: 1 / -1;

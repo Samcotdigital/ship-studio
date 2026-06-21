@@ -21,6 +21,9 @@ interface Props {
   /** The currently-selected element (for the Code/HTML view). */
   projectPath: string;
   selectedSignature: ElementSignature | null;
+  /** Notified when the Visual/Code view toggles, so the parent can widen the
+   *  panel for editing markup. */
+  onViewChange?: (view: 'visual' | 'code') => void;
 }
 
 /** Rows at depth < this start expanded so the tree isn't a single chevron. */
@@ -57,9 +60,14 @@ export function ElementTreePanel({
   onHover,
   projectPath,
   selectedSignature,
+  onViewChange,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [view, setView] = useState<'visual' | 'code'>('visual');
+  const selectView = (next: 'visual' | 'code') => {
+    setView(next);
+    onViewChange?.(next);
+  };
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
@@ -165,7 +173,7 @@ export function ElementTreePanel({
             type="button"
             className={`ss-tree-panel__mode${view === 'visual' ? ' is-active' : ''}`}
             aria-pressed={view === 'visual'}
-            onClick={() => setView('visual')}
+            onClick={() => selectView('visual')}
           >
             Visual
           </button>
@@ -173,7 +181,7 @@ export function ElementTreePanel({
             type="button"
             className={`ss-tree-panel__mode${view === 'code' ? ' is-active' : ''}`}
             aria-pressed={view === 'code'}
-            onClick={() => setView('code')}
+            onClick={() => selectView('code')}
           >
             Code
           </button>

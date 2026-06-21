@@ -16,6 +16,13 @@ import { resolveElementHtml, applyElementHtml } from '../../lib/edit-html';
 import { asCommandError, formatCommandError } from '../../lib/errors';
 import type { ElementSignature } from '../../lib/edit';
 
+/** Friendly, prefix-free message for the panel — the backend's Validation
+ *  reasons are already complete sentences, so show them verbatim. */
+function editorErrorText(e: unknown): string {
+  const err = asCommandError(e);
+  return err.type === 'Validation' ? err.reason : formatCommandError(err);
+}
+
 interface Props {
   projectPath: string;
   signature: ElementSignature;
@@ -44,7 +51,7 @@ export function ElementHtmlEditor({ projectPath, signature }: Props) {
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(formatCommandError(asCommandError(e)));
+        setError(editorErrorText(e));
         setStatus('error');
       });
     return () => {
@@ -56,7 +63,7 @@ export function ElementHtmlEditor({ projectPath, signature }: Props) {
   if (status === 'error')
     return (
       <div className="ss-tree-html__error">
-        This element can’t be edited as markup{error ? `: ${error}` : ''}.
+        {error || 'This element can’t be edited as markup.'}
       </div>
     );
 
@@ -69,7 +76,7 @@ export function ElementHtmlEditor({ projectPath, signature }: Props) {
       baselineRef.current = text;
       showToast('Markup saved', 'success');
     } catch (e) {
-      showToast(formatCommandError(asCommandError(e)), 'error');
+      showToast(editorErrorText(e), 'error');
     } finally {
       setSaving(false);
     }

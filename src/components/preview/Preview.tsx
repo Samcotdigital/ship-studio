@@ -568,6 +568,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     });
   }, []);
   const showTree = isFullscreen && activeEditMode && treeVisible;
+  // The Elements panel's Code (markup-edit) view needs a wider column than the
+  // navigator; the tree panel reports its view so we can widen the grid track.
+  const [treeCodeView, setTreeCodeView] = useState(false);
   const elementTree = useElementTree({ iframeRef, enabled: showTree });
 
   const [iframeSize, setIframeSize] = useState<{ w: number; h: number } | null>(null);
@@ -723,7 +726,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     <div
       className={`preview-container${isFullscreen ? ' preview-container--fullscreen' : ''}${
         activeEditMode && editorPinned ? ' preview-container--editor-pinned' : ''
-      }${showTree ? ' preview-container--tree' : ''}`}
+      }${showTree ? ' preview-container--tree' : ''}${
+        showTree && treeCodeView ? ' preview-container--tree-code' : ''
+      }`}
       data-logs={showLogs ? 'open' : 'closed'}
       style={{
         ...(showLogs && inspectPanelHeight !== null
@@ -1146,6 +1151,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             (editorMode === 'css' ? cssEditor.selection?.signature : editor.selection?.signature) ??
             null
           }
+          onViewChange={(v) => setTreeCodeView(v === 'code')}
         />
       )}
       {editor.editMode &&

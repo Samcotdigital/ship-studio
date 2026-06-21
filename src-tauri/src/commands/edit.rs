@@ -2350,7 +2350,7 @@ fn locate_element(
         Resolution::Multi { .. } => {
             return Err(CommandError::Validation {
                 field: "element".into(),
-                reason: "this element appears in several places — edit it in code".into(),
+                reason: "This element appears in several identical places, so editing its markup here could change the wrong one. Ask your agent to edit it instead.".into(),
             })
         }
         Resolution::ReadOnly { reason } => {
