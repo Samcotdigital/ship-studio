@@ -35,9 +35,14 @@
 }
 
 .ss-codeedit__hl {
-  pointer-events: none;
-  z-index: 0;
+  z-index: 1;
   color: var(--text-secondary);
+}
+/* The highlight layer (and everything Shiki renders inside it) must never
+   intercept clicks — the textarea above owns all interaction. */
+.ss-codeedit__hl,
+.ss-codeedit__hl * {
+  pointer-events: none !important;
 }
 /* Shiki renders its own <pre> with a background + padding; flatten it so it
    lines up with the textarea and the wrapper background shows through. */
@@ -52,12 +57,13 @@
 }
 
 .ss-codeedit__area {
-  z-index: 1;
+  z-index: 2;
   border: none;
   background: transparent;
   color: transparent;
   caret-color: var(--text-primary);
   resize: none;
+  pointer-events: auto;
 }
 /* Before the first highlight loads, keep the text visible. */
 .ss-codeedit__area.is-plain {

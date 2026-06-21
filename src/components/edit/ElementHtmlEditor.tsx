@@ -13,6 +13,7 @@ import { Button } from '../primitives/Button';
 import { CodeOverlayEditor } from './CodeOverlayEditor';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { resolveElementHtml, applyElementHtml } from '../../lib/edit-html';
+import { asCommandError, formatCommandError } from '../../lib/errors';
 import type { ElementSignature } from '../../lib/edit';
 
 interface Props {
@@ -43,7 +44,7 @@ export function ElementHtmlEditor({ projectPath, signature }: Props) {
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(String(e));
+        setError(formatCommandError(asCommandError(e)));
         setStatus('error');
       });
     return () => {
@@ -68,7 +69,7 @@ export function ElementHtmlEditor({ projectPath, signature }: Props) {
       baselineRef.current = text;
       showToast('Markup saved', 'success');
     } catch (e) {
-      showToast(String(e), 'error');
+      showToast(formatCommandError(asCommandError(e)), 'error');
     } finally {
       setSaving(false);
     }

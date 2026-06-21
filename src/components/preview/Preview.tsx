@@ -48,7 +48,7 @@ import { VisualEditorPanel } from '../edit/VisualEditorPanel';
 import { ElementTreePanel } from '../edit/ElementTreePanel';
 import { useElementTree } from '../../hooks/useElementTree';
 import { PreviewLocaleSwitcher, type PreviewLocaleConfig } from './PreviewLocaleSwitcher';
-import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon } from '../icons';
+import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon, UndoIcon, RedoIcon } from '../icons';
 import { Button } from '../primitives/Button';
 import { Spinner } from '../primitives/Spinner';
 import { pathLocale, switchPathLocale } from '../../lib/i18n';
@@ -200,6 +200,11 @@ interface PreviewProps {
   onRunInstall?: () => void;
   /** Jump to a source file:line in the Code tab (from the visual editor). */
   onOpenInCode?: (file: string, line: number) => void;
+  /** Snapshot undo/redo, surfaced in the fullscreen toolbar. */
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 /**
@@ -266,6 +271,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     needsInstall,
     onRunInstall,
     onOpenInCode,
+    canUndo,
+    canRedo,
+    onUndo,
+    onRedo,
   },
   ref
 ) {
@@ -891,6 +900,33 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         >
           <ResetIcon size={14} />
         </button>
+
+        {/* Undo/redo live in the workspace header, which is hidden in fullscreen
+            — surface them here so visual edits can be undone while editing. */}
+        {isFullscreen && onUndo && (
+          <button
+            type="button"
+            className="preview-fullscreen-btn"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo last change (⌘Z)"
+            aria-label="Undo"
+          >
+            <UndoIcon size={14} />
+          </button>
+        )}
+        {isFullscreen && onRedo && (
+          <button
+            type="button"
+            className="preview-fullscreen-btn"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo (⌘⇧Z)"
+            aria-label="Redo"
+          >
+            <RedoIcon size={14} />
+          </button>
+        )}
 
         <button
           type="button"
