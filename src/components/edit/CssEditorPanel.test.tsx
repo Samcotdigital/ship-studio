@@ -26,6 +26,7 @@ function renderPanel(
     saving: false,
     onPreview: vi.fn(),
     onSave: vi.fn(),
+    onSaveMany: vi.fn(),
     onCreateRule: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
@@ -40,8 +41,8 @@ describe('CssEditorPanel', () => {
     expect(screen.getByText(/click an element to edit its styles/i)).toBeInTheDocument();
   });
 
-  it('renders a resolved rule’s declarations and the selector', () => {
-    const selection: CssSelection = {
+  const resolved = (declarations: { property: string; value: string; important: boolean }[]) =>
+    ({
       signature: sig('hero-title'),
       resolution: {
         status: 'resolved',
@@ -49,39 +50,38 @@ describe('CssEditorPanel', () => {
         selector: '.hero-title',
         line: 4,
         media_min_px: null,
-        declarations: [
-          { property: 'color', value: 'red', important: false },
-          { property: 'padding', value: '24px', important: false },
-        ],
+        declarations,
       },
       instanceCount: 1,
-    };
-    renderPanel(selection);
+    }) as CssSelection;
+
+  it('renders a resolved rule with the selector and Visual/Code toggle', () => {
+    renderPanel(resolved([{ property: 'color', value: 'red', important: false }]));
     expect(screen.getByText('.hero-title')).toBeInTheDocument();
-    expect(screen.getByText('color')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('24px')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Visual' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Code' })).toBeInTheDocument();
+    // Default Visual view shows the Layout category controls.
+    expect(screen.getByText('Display')).toBeInTheDocument();
   });
 
-  it('saves an edited declaration value on Enter', () => {
+  it('a structured control saves a single property', () => {
     const onSave = vi.fn();
-    const selection: CssSelection = {
-      signature: sig('hero-title'),
-      resolution: {
-        status: 'resolved',
-        file: 'src/styles/main.css',
-        selector: '.hero-title',
-        line: 4,
-        media_min_px: null,
-        declarations: [{ property: 'color', value: 'red', important: false }],
-      },
-      instanceCount: 1,
-    };
-    renderPanel(selection, { onSave });
-    const input = screen.getByDisplayValue('red');
-    fireEvent.change(input, { target: { value: 'blue' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.blur(input);
-    expect(onSave).toHaveBeenCalledWith('color', 'blue');
+    renderPanel(resolved([{ property: 'display', value: 'block', important: false }]), { onSave });
+    fireEvent.click(screen.getByRole('button', { name: 'Flex' }));
+    expect(onSave).toHaveBeenCalledWith('display', 'flex');
+  });
+
+  it('Code view shows raw CSS and saves the diff', () => {
+    const onSaveMany = vi.fn();
+    renderPanel(resolved([{ property: 'color', value: 'red', important: false }]), { onSaveMany });
+    fireEvent.click(screen.getByRole('button', { name: 'Code' }));
+    const area = screen.getByDisplayValue(/color: red;/);
+    fireEvent.change(area, { target: { value: 'color: blue;\npadding: 8px;' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onSaveMany).toHaveBeenCalledWith([
+      { property: 'color', value: 'blue' },
+      { property: 'padding', value: '8px' },
+    ]);
   });
 
   it('offers to create a rule when none is found', () => {

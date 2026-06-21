@@ -2,12 +2,17 @@
  * CSS-Mode editor panel — the properties panel for the CSS visual editor
  * (`useCssEditor`). A SEPARATE feature from `VisualEditorPanel` (the Tailwind
  * one); it shares the `ss-edit-panel` chrome (draggable header, pin, close) for
- * an identical look, but its body edits a CSS rule's declarations directly:
- * any property, any value, written surgically to the stylesheet.
+ * an identical look, but its body edits a CSS rule directly.
  *
- * States mirror the resolver: `resolved` (edit the rule's declarations),
- * `not_found` (offer to create the rule in an authored sheet), and the
- * read-only `needs_class` / `inline` / `multiple` cases with guidance.
+ * A resolved rule offers two views:
+ * - **Visual** — structured controls grouped by category (Layout, Spacing,
+ *   Type, …), each reading/writing one CSS property off the rule.
+ * - **Code** — the rule's declarations as raw, editable CSS, for a direct
+ *   connection to the source.
+ *
+ * Other states mirror the resolver: `not_found` (create the rule), and the
+ * read-only `needs_class` / `inline` / `multiple` cases, each offering the
+ * agent-prep prompt.
  */
 
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
@@ -16,25 +21,55 @@ import { PinIcon } from '../icons/layout';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import { trackEvent } from '../../lib/analytics';
 import { buildCssPrepPrompt } from '../../lib/edit-css';
+import { CssControls } from './CssControls';
+import { CSS_CATEGORIES } from '../../lib/cssControls';
 import type { CssSelection } from '../../hooks/useCssEditor';
 import type { CssDeclaration } from '../../lib/edit-css';
 
 const PANEL_WIDTH = 340;
+const VIEW_KEY = 'ss:cssEditor:view';
 
-/** Whether the browser accepts `value` for `prop` (unit validation). */
-function cssSupports(prop: string, value: string): boolean {
-  try {
-    return (
-      typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports(prop, value)
-    );
-  } catch {
-    return false;
-  }
+type DeclChange = { property: string; value: string | null };
+
+/** Serialize a rule's declarations to CSS text for the Code view. */
+function serializeDeclarations(declarations: CssDeclaration[]): string {
+  return declarations
+    .map((d) => `${d.property}: ${d.value}${d.important ? ' !important' : ''};`)
+    .join('\n');
 }
 
-/** A valid CSS property name (lowercase letters, digits, hyphens; optional `--`). */
-function isValidProperty(prop: string): boolean {
-  return /^-{0,2}[a-z][a-z0-9-]*$/.test(prop.trim());
+/** Parse the Code view's text back into `property: value` pairs. */
+function parseCssText(text: string): { property: string; value: string }[] {
+  const out: { property: string; value: string }[] = [];
+  for (const chunk of text.split(';')) {
+    const i = chunk.indexOf(':');
+    if (i < 0) continue;
+    const property = chunk.slice(0, i).trim().toLowerCase();
+    const value = chunk.slice(i + 1).trim();
+    if (property && value) out.push({ property, value });
+  }
+  return out;
+}
+
+/** Diff edited declarations against the current rule into a change set. */
+function diffDeclarations(
+  current: CssDeclaration[],
+  edited: { property: string; value: string }[]
+): DeclChange[] {
+  const changes: DeclChange[] = [];
+  const editedMap = new Map(edited.map((d) => [d.property.toLowerCase(), d.value]));
+  const currentMap = new Map(current.map((d) => [d.property.toLowerCase(), d]));
+  // Added / changed.
+  for (const [prop, value] of editedMap) {
+    const cur = currentMap.get(prop);
+    const curVal = cur ? `${cur.value}${cur.important ? ' !important' : ''}` : null;
+    if (curVal !== value) changes.push({ property: prop, value });
+  }
+  // Removed.
+  for (const prop of currentMap.keys()) {
+    if (!editedMap.has(prop)) changes.push({ property: prop, value: null });
+  }
+  return changes;
 }
 
 interface Props {
@@ -45,6 +80,8 @@ interface Props {
   onPreview: (property: string, value: string | null) => void;
   /** Persist a property (remove when value is null). */
   onSave: (property: string, value: string | null) => void;
+  /** Persist several declaration changes at once (the Code view's Save). */
+  onSaveMany: (changes: DeclChange[]) => void;
   /** Create a rule for `selector` in `file` (the not-found case). */
   onCreateRule: (file: string, selector: string, declarations?: CssDeclaration[]) => void;
   /** Paste the prep prompt into the agent terminal (user presses Enter). */
@@ -54,116 +91,43 @@ interface Props {
   onTogglePin?: () => void;
 }
 
-/** One editable `property: value` row. Previews on change, saves on commit
- *  (blur / Enter), reverts on Escape. */
-function DeclarationRow({
-  decl,
-  onPreview,
-  onSave,
+/** The raw-CSS view of the rule: edit declarations as text, save the diff. */
+function CodeView({
+  declarations,
+  onSaveMany,
 }: {
-  decl: CssDeclaration;
-  onPreview: (property: string, value: string | null) => void;
-  onSave: (property: string, value: string | null) => void;
+  declarations: CssDeclaration[];
+  onSaveMany: (changes: DeclChange[]) => void;
 }) {
-  // Seeded from the declaration; the parent keys this row by property+value, so a
-  // save (which advances decl.value) remounts it with the fresh seed — no effect.
-  const [value, setValue] = useState(decl.value);
-  const valid = value.trim() !== '' && cssSupports(decl.property, value.trim());
-
-  const commit = () => {
-    const next = value.trim();
-    if (next === decl.value || !valid) {
-      setValue(decl.value); // revert invalid / unchanged
-      onPreview(decl.property, decl.value);
-      return;
-    }
-    onSave(decl.property, next);
-  };
-
+  const serialized = serializeDeclarations(declarations);
+  const [text, setText] = useState(serialized);
+  const dirty = text !== serialized;
   return (
-    <div className="ss-css-row">
-      <span className="ss-css-row__prop" title={decl.property}>
-        {decl.property}
-      </span>
-      <input
-        className={`ss-css-row__value${value.trim() && !valid ? ' is-invalid' : ''}`}
-        value={value}
+    <div className="ss-css-code">
+      <textarea
+        className="ss-css-code__area"
+        value={text}
         spellCheck={false}
-        onChange={(e) => {
-          setValue(e.target.value);
-          const v = e.target.value.trim();
-          if (v && cssSupports(decl.property, v)) onPreview(decl.property, v);
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          else if (e.key === 'Escape') {
-            setValue(decl.value);
-            onPreview(decl.property, decl.value);
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
+        rows={Math.max(4, text.split('\n').length + 1)}
+        placeholder={'property: value;'}
+        onChange={(e) => setText(e.target.value)}
       />
-      <button
-        type="button"
-        className="ss-css-row__remove"
-        title={`Remove ${decl.property}`}
-        aria-label={`Remove ${decl.property}`}
-        onClick={() => onSave(decl.property, null)}
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-/** The "add a new property" row. */
-function AddDeclaration({
-  onSave,
-  onPreview,
-}: {
-  onSave: (property: string, value: string | null) => void;
-  onPreview: (property: string, value: string | null) => void;
-}) {
-  const [prop, setProp] = useState('');
-  const [value, setValue] = useState('');
-  const propOk = isValidProperty(prop);
-  const ready = propOk && value.trim() !== '' && cssSupports(prop.trim(), value.trim());
-
-  const add = () => {
-    if (!ready) return;
-    onSave(prop.trim().toLowerCase(), value.trim());
-    setProp('');
-    setValue('');
-  };
-
-  return (
-    <div className="ss-css-add">
-      <input
-        className="ss-css-add__prop"
-        placeholder="property"
-        value={prop}
-        spellCheck={false}
-        onChange={(e) => setProp(e.target.value)}
-      />
-      <input
-        className="ss-css-add__value"
-        placeholder="value"
-        value={value}
-        spellCheck={false}
-        onChange={(e) => {
-          setValue(e.target.value);
-          if (propOk && e.target.value.trim() && cssSupports(prop.trim(), e.target.value.trim())) {
-            onPreview(prop.trim().toLowerCase(), e.target.value.trim());
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') add();
-        }}
-      />
-      <Button variant="secondary" size="sm" onClick={add} disabled={!ready}>
-        Add
-      </Button>
+      <div className="ss-css-code__actions">
+        <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setText(serialized)}>
+          Revert
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!dirty}
+          onClick={() => {
+            const changes = diffDeclarations(declarations, parseCssText(text));
+            if (changes.length) onSaveMany(changes);
+          }}
+        >
+          Save
+        </Button>
+      </div>
     </div>
   );
 }
@@ -174,6 +138,7 @@ export function CssEditorPanel({
   saving,
   onPreview,
   onSave,
+  onSaveMany,
   onCreateRule,
   onSendToClaude,
   onClose,
@@ -192,6 +157,39 @@ export function CssEditorPanel({
   // The create-rule target; defaults (derived, no effect) to the first sheet.
   const [sheet, setSheet] = useState('');
   const effectiveSheet = sheet || authoredSheets[0] || '';
+
+  // Visual (structured controls) vs Code (raw CSS), remembered across sessions.
+  const [view, setView] = useState<'visual' | 'code'>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'code' ? 'code' : 'visual';
+    } catch {
+      return 'visual';
+    }
+  });
+  const setViewMode = useCallback((next: 'visual' | 'code') => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const [activeCat, setActiveCat] = useState('layout');
+
+  // Agent-prep flow: a reviewable prompt that refactors an off-spec project
+  // toward the editor's conventions.
+  const [prep, setPrep] = useState(false);
+  const { copy, isCopied } = useCopyToClipboard();
+  const prepPrompt = buildCssPrepPrompt(authoredSheets);
+  const openPrep = useCallback(() => {
+    setPrep(true);
+    void trackEvent('visual_prep_started', { mode: 'css' });
+  }, []);
+  const prepLink = (
+    <button type="button" className="ss-css-prep-link" onClick={openPrep}>
+      Prepare this project for visual editing →
+    </button>
+  );
 
   const onHeaderPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('.ss-edit-panel__header-actions')) return;
@@ -213,22 +211,6 @@ export function CssEditorPanel({
     e.currentTarget.releasePointerCapture?.(e.pointerId);
   }, []);
 
-  // Agent-prep flow: a reviewable prompt that refactors an off-spec project
-  // toward the editor's conventions. Shown from the empty state and the
-  // read-only (inline / multiple / needs-class) states.
-  const [prep, setPrep] = useState(false);
-  const { copy, isCopied } = useCopyToClipboard();
-  const prepPrompt = buildCssPrepPrompt(authoredSheets);
-  const openPrep = useCallback(() => {
-    setPrep(true);
-    void trackEvent('visual_prep_started', { mode: 'css' });
-  }, []);
-  const prepLink = (
-    <button type="button" className="ss-css-prep-link" onClick={openPrep}>
-      Prepare this project for visual editing →
-    </button>
-  );
-
   const res = selection?.resolution;
 
   return (
@@ -245,7 +227,7 @@ export function CssEditorPanel({
               left: pos.left,
               right: 'auto',
               zIndex: 1000,
-              maxHeight: `min(520px, calc(100vh - ${pos.top + 16}px))`,
+              maxHeight: `min(560px, calc(100vh - ${pos.top + 16}px))`,
             }
       }
     >
@@ -325,20 +307,56 @@ export function CssEditorPanel({
                 {selection.instanceCount} elements share this class — a save updates all of them.
               </p>
             )}
-            <div className="ss-css-decls">
-              {res.declarations.length === 0 && (
-                <p className="ss-css-status">No declarations yet — add one below.</p>
-              )}
-              {res.declarations.map((d) => (
-                <DeclarationRow
-                  key={`${d.property}:${d.value}`}
-                  decl={d}
+
+            <div className="ss-css-modes" role="group" aria-label="Editor view">
+              <button
+                type="button"
+                className={`ss-css-mode${view === 'visual' ? ' is-active' : ''}`}
+                aria-pressed={view === 'visual'}
+                onClick={() => setViewMode('visual')}
+              >
+                Visual
+              </button>
+              <button
+                type="button"
+                className={`ss-css-mode${view === 'code' ? ' is-active' : ''}`}
+                aria-pressed={view === 'code'}
+                onClick={() => setViewMode('code')}
+              >
+                Code
+              </button>
+            </div>
+
+            {view === 'visual' ? (
+              <>
+                <div className="ss-css-tabs" role="tablist">
+                  {CSS_CATEGORIES.filter((c) => c.id !== 'custom').map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      role="tab"
+                      className={`ss-css-tab${activeCat === cat.id ? ' is-active' : ''}`}
+                      aria-selected={activeCat === cat.id}
+                      onClick={() => setActiveCat(cat.id)}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+                <CssControls
+                  category={activeCat}
+                  declarations={res.declarations}
                   onPreview={onPreview}
                   onSave={onSave}
                 />
-              ))}
-            </div>
-            <AddDeclaration onSave={onSave} onPreview={onPreview} />
+              </>
+            ) : (
+              <CodeView
+                key={res.selector}
+                declarations={res.declarations}
+                onSaveMany={onSaveMany}
+              />
+            )}
           </>
         )}
 

@@ -88,9 +88,15 @@ Net-new:
   selecting a node fires the same `ss:select` the CSS editor handles. *(Phase 3 ✓)*
 - **Prep flow** — a `LanguagesModal`-style reviewable agent prompt
   (`buildCssPrepPrompt`) surfaced from the empty + read-only states. *(Phase 3 ✓)*
-- **Expanded controls** — typography, full color, spacing, flex/grid, borders,
-  background, effects, position (not scale-bound), plus the static-HTML path.
-  *(Phase 4 — next)*
+- **Structured controls + Code view** — `lib/cssControls.ts` schema +
+  `CssControls` render category tabs (Layout, Spacing, Size, Type, Background,
+  Border) of segmented / select / length / color widgets, each reading & writing
+  one CSS property off the rule. A Visual/Code toggle swaps to a raw, editable
+  CSS textarea (diffed and saved via `saveDeclarations`) for a direct connection
+  to the source. *(Phase 4 ✓)*
+- **Remaining** — more categories (shadows, effects, visibility, 4-side
+  spacing), icon affordances for align/justify, and the static-HTML project path
+  (its preview must inject the select script). *(Phase 4+ — next)*
 
 ## Phase 1 — Rust CSS engine (this phase)
 

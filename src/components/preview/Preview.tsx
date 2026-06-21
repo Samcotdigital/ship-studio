@@ -1140,6 +1140,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               saving={cssEditor.saving}
               onPreview={cssEditor.previewDeclaration}
               onSave={(prop, value) => void cssEditor.saveDeclaration(prop, value)}
+              onSaveMany={(changes) => void cssEditor.saveDeclarations(changes)}
               onCreateRule={(file, selector, decls) =>
                 void cssEditor.createRule(file, selector, decls)
               }

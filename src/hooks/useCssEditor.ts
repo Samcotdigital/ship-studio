@@ -188,6 +188,35 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     [projectPath, onToast, post, resolvedRule]
   );
 
+  /** Apply several declaration changes to the resolved rule in one go (the Code
+   *  view's Save). Writes are sequential — they touch the same file — then the
+   *  rule is re-resolved so the local declarations stay truthful. */
+  const saveDeclarations = useCallback(
+    async (changes: { property: string; value: string | null }[]) => {
+      const sel = selection;
+      if (!resolvedRule || !sel || changes.length === 0) return;
+      const { file, selector, media_min_px } = resolvedRule;
+      post({ type: 'ss:suppressReload' });
+      setSaving(true);
+      try {
+        for (const c of changes) {
+          await setCssDeclaration(projectPath, file, selector, c.property, c.value, media_min_px);
+        }
+        const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature));
+        setSelection((prev) => (prev ? { ...prev, resolution } : prev));
+        post({ type: 'ss:commit' });
+        editsCommittedRef.current += changes.length;
+        void trackEvent('visual_style_saved', { mode: 'css', bulk: changes.length });
+      } catch (err) {
+        logger.error('[CssEditor] bulk write-back failed', { error: String(err) });
+        onToast?.(String(err), 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [projectPath, onToast, post, resolvedRule, selection]
+  );
+
   /** Create a rule for the current selection's class (the `not_found` case) in
    *  the chosen authored stylesheet, then re-resolve so it becomes editable. */
   const createRule = useCallback(
@@ -238,6 +267,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     saving,
     previewDeclaration,
     saveDeclaration,
+    saveDeclarations,
     createRule,
   };
 }
