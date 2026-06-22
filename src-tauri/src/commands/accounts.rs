@@ -346,24 +346,37 @@ pub fn get_env_vars_for_account(account_id: &str) -> HashMap<String, String> {
 
     let mut vars = HashMap::new();
 
-    vars.insert(
-        "CLAUDE_CONFIG_DIR".to_string(),
-        claude_config_dir(account_id).to_string_lossy().to_string(),
-    );
-    vars.insert(
-        "GH_CONFIG_DIR".to_string(),
-        gh_config_dir(account_id).to_string_lossy().to_string(),
-    );
-    vars.insert(
-        "CODEX_HOME".to_string(),
-        codex_home_dir(account_id).to_string_lossy().to_string(),
-    );
-    vars.insert(
-        "XDG_DATA_HOME".to_string(),
-        opencode_data_home_dir(account_id)
-            .to_string_lossy()
-            .to_string(),
-    );
+    // Only override the CLI config/data dirs for isolated (non-default)
+    // workspaces. The Default workspace MUST let each tool resolve its own
+    // native location so the user's existing global login is found on every
+    // platform. Forcing these for Default broke GitHub auth on Windows (gh's
+    // native dir is %AppData%\GitHub CLI, never ~/.config/gh) and on Macs whose
+    // token lived elsewhere (e.g. a shell-set GH_CONFIG_DIR/XDG_CONFIG_HOME a
+    // Dock-launched GUI can't see, the same limitation we work around for PATH),
+    // and broke opencode on Windows (XDG_DATA_HOME != %LOCALAPPDATA%). Not
+    // injecting restores pre-Workspaces behavior: if the app's own environment
+    // already carries one of these (launched from a configured shell), the child
+    // still inherits it; otherwise the tool resolves natively.
+    if account_id != DEFAULT_ACCOUNT_ID {
+        vars.insert(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            claude_config_dir(account_id).to_string_lossy().to_string(),
+        );
+        vars.insert(
+            "GH_CONFIG_DIR".to_string(),
+            gh_config_dir(account_id).to_string_lossy().to_string(),
+        );
+        vars.insert(
+            "CODEX_HOME".to_string(),
+            codex_home_dir(account_id).to_string_lossy().to_string(),
+        );
+        vars.insert(
+            "XDG_DATA_HOME".to_string(),
+            opencode_data_home_dir(account_id)
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
 
     for (key, env_name) in CRED_ENV_VARS {
         if let Some(value) = read_from_keychain(account_id, key) {
@@ -596,7 +609,12 @@ pub async fn get_account_credential_status(
     let mut gh_cmd = tokio::process::Command::from(create_command("gh"));
     gh_cmd.args(["auth", "status"]);
     gh_cmd.env("PATH", get_extended_path());
-    gh_cmd.env("GH_CONFIG_DIR", gh_config_dir(&id));
+    // Only pin GH_CONFIG_DIR for isolated workspaces; the Default workspace must
+    // let `gh` find its own native config (see get_env_vars_for_account) or this
+    // status read reports "not connected" even when the user is logged in.
+    if id != DEFAULT_ACCOUNT_ID {
+        gh_cmd.env("GH_CONFIG_DIR", gh_config_dir(&id));
+    }
     let github_auth_email = match run_with_timeout(gh_cmd, "gh auth status", 10).await {
         Ok(output) => parse_gh_auth_status(
             output.status.success(),
@@ -677,12 +695,37 @@ mod tests {
     }
 
     #[test]
-    fn get_env_vars_always_includes_config_dirs() {
+    fn get_env_vars_injects_config_dirs_for_isolated_workspaces() {
+        // A non-default workspace must override the CLI config/data dirs so its
+        // logins stay isolated from the global ones.
         let vars = get_env_vars_for_account("nonexistent-account-xyz-test");
         assert!(vars.contains_key("CLAUDE_CONFIG_DIR"));
         assert!(vars.contains_key("GH_CONFIG_DIR"));
+        assert!(vars.contains_key("CODEX_HOME"));
+        assert!(vars.contains_key("XDG_DATA_HOME"));
         // No credentials stored for this account, so no token vars
         assert!(!vars.contains_key("VERCEL_TOKEN"));
+    }
+
+    #[test]
+    fn get_env_vars_omits_config_dirs_for_default_workspace() {
+        // Regression (GitHub auth loop on Windows + some Macs): forcing these on
+        // the Default workspace pointed gh/opencode at a dir the token wasn't in,
+        // so status reads found no login and the connect button looped. The
+        // Default workspace must let each tool resolve its own native location.
+        let vars = get_env_vars_for_account(DEFAULT_ACCOUNT_ID);
+        assert!(!vars.contains_key("GH_CONFIG_DIR"));
+        assert!(!vars.contains_key("CLAUDE_CONFIG_DIR"));
+        assert!(!vars.contains_key("CODEX_HOME"));
+        assert!(!vars.contains_key("XDG_DATA_HOME"));
+    }
+
+    #[test]
+    fn get_env_vars_falls_back_to_default_for_invalid_id() {
+        // An invalid id falls back to Default, which (post-fix) injects no config
+        // dirs — so a tampered id can't smuggle in a forced GH_CONFIG_DIR either.
+        let vars = get_env_vars_for_account("../../etc");
+        assert!(!vars.contains_key("GH_CONFIG_DIR"));
     }
 
     #[test]
