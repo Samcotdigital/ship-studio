@@ -6,6 +6,12 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.11.2
+
+- **Create a branch with unsaved work** - Creating a branch while you have uncommitted changes no longer errors out. You now get a choice: commit them on your current branch first, or stash them aside — then the new branch is created and switched to.
+- **Clearer Git errors** - Errors in the Branches tab now show the real message instead of "[object Object]".
+
+
 ## What's New in v0.11.1
 
 - **GitHub connect fix** - Fixed a loop where connecting GitHub would authenticate in the browser (GitHub showed connected) but the button stayed grey and kept re-prompting. Hit Windows users especially, plus some Macs. Your default workspace now finds your existing GitHub login wherever it actually lives.
