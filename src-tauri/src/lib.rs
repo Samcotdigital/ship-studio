@@ -336,6 +336,7 @@ pub fn run() {
             commands::git::get_stash_info,
             commands::git::apply_stash,
             commands::git::drop_stash,
+            commands::git::stash_changes,
             commands::git::discard_changes,
             commands::git::commit_changes,
             commands::git::create_branch,
