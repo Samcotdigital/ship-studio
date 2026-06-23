@@ -713,15 +713,6 @@ export const WorkspaceView = memo(function WorkspaceView({
   }, [showPreviewLogs]);
 
   // Workspace-scoped palette commands (branch + PR flows).
-  // Relaunch the active tab's agent. `restartTerminalTab` no-ops while the
-  // agent is still running (it checks the tab's exited state), so this only
-  // recovers a tab whose process has exited — a mouse/palette path to the same
-  // restart the in-terminal "press Enter" hint offers, e.g. after toggling
-  // Auto-accept on a stopped agent.
-  const handleRestartActiveAgent = useCallback(() => {
-    restartTerminalTab(activeTerminalTab);
-  }, [restartTerminalTab, activeTerminalTab]);
-
   useWorkspaceCommands({
     currentBranch,
     hasUncommittedChanges,
@@ -729,7 +720,6 @@ export const WorkspaceView = memo(function WorkspaceView({
     setWorkspaceTab,
     setShowSubmitReview,
     handleResolveConflicts: () => void handleResolveConflicts(),
-    restartActiveAgent: handleRestartActiveAgent,
   });
 
   // Shopify themes: preview gate state + palette commands.
@@ -1182,7 +1172,6 @@ export const WorkspaceView = memo(function WorkspaceView({
                               onSkills={skillsModal.open}
                               onMcp={mcpModal.open}
                               onAutoAcceptToggle={handleToolbarAutoAcceptToggle}
-                              onRestartAgent={handleRestartActiveAgent}
                               onHelp={helpModal.open}
                               terminalPlugins={getSlotPlugins('terminal')}
                               pluginProject={pluginProject}
