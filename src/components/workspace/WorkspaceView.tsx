@@ -106,6 +106,7 @@ interface TerminalProps {
   closeTerminalTab: (id: number) => void;
   focusActiveTerminal: () => void;
   switchTabAgent: (tabId: number, agentId: string) => void;
+  restartTerminalTab: (tabId: number, projectPath?: string) => void;
   getActiveTabAgent: () => AgentConfig;
   /** Side-by-side view: tab ids visible in panes, or null when off. */
   splitPaneTabIds: number[] | null;
@@ -394,6 +395,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     addTerminalTab,
     closeTerminalTab,
     focusActiveTerminal,
+    restartTerminalTab,
     getActiveTabAgent,
     splitPaneTabIds,
     splitPaneSizes,
@@ -1027,6 +1029,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             onGoHome={onGoHome}
             autoAcceptMode={autoAcceptMode}
             handleTerminalExit={handleTerminalExit}
+            restartTerminalTab={restartTerminalTab}
             createTabStatusHandler={createTabStatusHandler}
             handleTabTitleChange={handleTabTitleChange}
           />
@@ -1307,6 +1310,9 @@ export const WorkspaceView = memo(function WorkspaceView({
                                     sessionName={tab.sessionId}
                                     isActive={isVisible}
                                     shouldResume={tab.shouldResume}
+                                    onRequestRestart={() =>
+                                      restartTerminalTab(tab.id, session.projectPath)
+                                    }
                                   />
                                 </div>
                               );
