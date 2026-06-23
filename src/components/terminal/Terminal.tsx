@@ -1054,10 +1054,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       {isReady && showFirstRunHint && (
         <div className="terminal-firstrun-hint">
           <div className="terminal-firstrun-hint-card" role="note">
-            <strong>This is your AI builder</strong>
+            <strong>This is your agent</strong>
             <span>
-              Type what you want to build in plain English (like "make me a landing page for a
-              coffee shop"), then press Enter.
+              Whether you use Claude Code, Codex, Opencode, or something else, your agent runs right
+              here. Tell it what you want to build in plain English, then press Enter.
             </span>
           </div>
         </div>
