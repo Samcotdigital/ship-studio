@@ -822,17 +822,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         });
         pushDisposable(unlistenExit);
 
+        // Dismiss the first-run hint on the user's first real keystroke — and
+        // broadcast so sibling terminals (split panes / tabs) clear theirs too.
+        // We gate on onKey (genuine keyboard input) rather than onData, because
+        // onData also fires for xterm's automatic replies to the program's
+        // terminal-capability queries (Device Attributes / cursor-position
+        // reports an agent's TUI sends on startup). Using onData would dismiss
+        // the hint a frame after it appears — before the user could read it.
+        const firstKeyDisposable = term.onKey(() => {
+          if (firstInputDoneRef.current) return;
+          firstInputDoneRef.current = true;
+          localStorage.setItem(FIRST_AGENT_INPUT_KEY, '1');
+          setShowFirstRunHint(false);
+          window.dispatchEvent(new Event(FIRST_AGENT_INPUT_EVENT));
+        });
+        ptyDisposablesRef.current.push(firstKeyDisposable);
+
         // Handle terminal input -> PTY. Resolves the session id lazily
         // from the ref so re-attach doesn't need a new listener.
         const inputDisposable = term.onData((data) => {
-          // Dismiss the first-run hint the moment the user types anything — and
-          // broadcast so sibling terminals (split panes / tabs) clear theirs too.
-          if (!firstInputDoneRef.current) {
-            firstInputDoneRef.current = true;
-            localStorage.setItem(FIRST_AGENT_INPUT_KEY, '1');
-            setShowFirstRunHint(false);
-            window.dispatchEvent(new Event(FIRST_AGENT_INPUT_EVENT));
-          }
           const sid = ptyRef.current?.sessionId;
           if (sid) void writePtySession(sid, data);
           // When user sends input to an agent without title-based status detection,
