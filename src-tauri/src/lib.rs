@@ -388,6 +388,7 @@ pub fn run() {
             commands::edit::apply_element_html,
             commands::edit::detect_breakpoints,
             commands::edit::is_tailwind_active,
+            commands::edit::project_uses_react,
             commands::edit_css::resolve_css_rule,
             commands::edit_css::set_css_declaration,
             commands::edit_css::create_css_class,
