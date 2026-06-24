@@ -84,6 +84,9 @@ vi.mock('./WorkspaceConnectTerminal', () => ({
 vi.mock('../icons', () => ({
   CheckIcon: () => <span data-testid="check-icon" />,
   ClaudeIcon: () => <span data-testid="claude-icon" />,
+  CodexIcon: () => <span data-testid="codex-icon" />,
+  OpencodeIcon: () => <span data-testid="opencode-icon" />,
+  CursorIcon: () => <span data-testid="cursor-icon" />,
   GitHubIcon: () => <span data-testid="github-icon" />,
   VercelIcon: () => <span data-testid="vercel-icon" />,
 }));

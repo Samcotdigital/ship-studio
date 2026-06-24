@@ -39,7 +39,15 @@ import { Spinner } from '../primitives/Spinner';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { useWorkspaceConnect } from '../../hooks/useWorkspaceConnect';
 import { logger } from '../../lib/logger';
-import { CheckIcon, ClaudeIcon, CursorIcon, GitHubIcon, VercelIcon } from '../icons';
+import {
+  CheckIcon,
+  ClaudeIcon,
+  CodexIcon,
+  CursorIcon,
+  GitHubIcon,
+  OpencodeIcon,
+  VercelIcon,
+} from '../icons';
 
 function KebabGlyph() {
   return (
@@ -99,6 +107,12 @@ function GenericAgentIcon({ size = 16 }: { size?: number }) {
 function iconFor(agentId: string) {
   if (agentId === 'claude-code') {
     return <ClaudeIcon size={18} />;
+  }
+  if (agentId === 'codex') {
+    return <CodexIcon size={18} />;
+  }
+  if (agentId === 'opencode') {
+    return <OpencodeIcon size={18} />;
   }
   if (agentId === 'cursor') {
     return <CursorIcon size={18} />;
