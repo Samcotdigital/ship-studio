@@ -34,6 +34,26 @@ pub struct AgentStatus {
     pub uninstall_supported: bool,
 }
 
+/// Determine an agent's sign-in state by asking its own CLI, for agents whose
+/// credential lives outside the filesystem (e.g. Cursor keeps its token in the
+/// system keychain, so no auth-indicator file is reliable). Runs the agent's
+/// `auth_status_args` and looks for `auth_status_ready_substr` in the output.
+///
+/// Returns `None` for agents that use file-based auth indicators — the caller
+/// then falls back to checking `auth_indicators` on disk.
+pub fn agent_command_auth_status(agent: &crate::agent::AgentConfig) -> Option<bool> {
+    let args = agent.auth_status_args?;
+    let needle = agent.auth_status_ready_substr?;
+    let binary = find_binary_by_name(agent.binary_name)?;
+    let output = create_command(&binary).args(args).output().ok()?;
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    Some(combined.contains(needle))
+}
+
 /// Return the status of every known agent in a single call.
 /// Avoids the N round-trips the dashboard would otherwise need.
 #[tauri::command]
@@ -79,6 +99,9 @@ pub async fn get_agents_status() -> Vec<AgentStatus> {
                 )
             } else if !installed {
                 (false, None, false)
+            } else if let Some(authed) = agent_command_auth_status(agent) {
+                // Keychain-based agents (Cursor): ask the CLI, not the filesystem.
+                (authed, None, false)
             } else {
                 let dir = agent_auth_dir(&active_account_id, agent);
                 let authed = agent
@@ -125,6 +148,19 @@ pub async fn sign_out_agent(agent_id: String) -> Result<(), CommandError> {
     // Reject unknown IDs: get_agent_by_id falls back to CLAUDE_CODE, so explicitly check.
     if agent.id != agent_id {
         return Err((format!("Unknown agent: {agent_id}")).into());
+    }
+
+    // Keychain-based agents (Cursor) can't be signed out by deleting files —
+    // their token lives in the system keychain. Use the CLI's own logout.
+    if let Some(args) = agent.logout_args {
+        if let Some(binary) = find_binary_by_name(agent.binary_name) {
+            let _ = create_command(&binary).args(args).output();
+        }
+        tracing::info!(
+            agent_id = agent_id.as_str(),
+            "Agent signed out via CLI logout"
+        );
+        return Ok(());
     }
 
     let active_account_id = get_active_account_id().unwrap_or_else(|_| "default".to_string());

@@ -39,7 +39,15 @@ import { Spinner } from '../primitives/Spinner';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { useWorkspaceConnect } from '../../hooks/useWorkspaceConnect';
 import { logger } from '../../lib/logger';
-import { CheckIcon, ClaudeIcon, GitHubIcon, VercelIcon } from '../icons';
+import {
+  CheckIcon,
+  ClaudeIcon,
+  CodexIcon,
+  CursorIcon,
+  GitHubIcon,
+  OpencodeIcon,
+  VercelIcon,
+} from '../icons';
 
 function KebabGlyph() {
   return (
@@ -64,8 +72,13 @@ interface UninstallConfirm {
   displayName: string;
 }
 
-function getSetupItemId(binaryName: string, kind: 'install' | 'auth'): string | null {
-  const pair = AGENT_ITEM_PAIRS.find((p) => p.binaryId === binaryName);
+function getSetupItemId(agent: AgentStatus, kind: 'install' | 'auth'): string | null {
+  // A setup item id (e.g. "cursor") isn't always the binary name (e.g.
+  // "cursor-agent"), so match the pair by binary name OR agent id. The other
+  // three agents have binaryName === binaryId, so this is a superset.
+  const pair = AGENT_ITEM_PAIRS.find(
+    (p) => p.binaryId === agent.binaryName || p.binaryId === agent.id
+  );
   if (!pair) return null;
   return kind === 'install' ? pair.binaryId : pair.authId;
 }
@@ -94,6 +107,15 @@ function GenericAgentIcon({ size = 16 }: { size?: number }) {
 function iconFor(agentId: string) {
   if (agentId === 'claude-code') {
     return <ClaudeIcon size={18} />;
+  }
+  if (agentId === 'codex') {
+    return <CodexIcon size={18} />;
+  }
+  if (agentId === 'opencode') {
+    return <OpencodeIcon size={18} />;
+  }
+  if (agentId === 'cursor') {
+    return <CursorIcon size={18} />;
   }
   return <GenericAgentIcon size={18} />;
 }
@@ -450,7 +472,7 @@ export function AgentsPanel() {
 
   const openTerminal = useCallback((agent: AgentStatus, kind: 'install' | 'auth') => {
     setOpenMenuId(null);
-    const itemId = getSetupItemId(agent.binaryName, kind);
+    const itemId = getSetupItemId(agent, kind);
     if (!itemId) {
       return;
     }
