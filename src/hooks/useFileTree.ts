@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   listProjectFiles,
   readProjectFile,
+  saveProjectFile,
   buildFileTree,
   type FileTreeNode,
   type FileContent,
@@ -30,6 +31,17 @@ interface UseFileTreeResult {
   toggleDirectory: (path: string) => void;
   selectFile: (path: string) => void;
   refreshTree: () => void;
+  // Inline editing of the selected file.
+  isEditing: boolean;
+  draft: string;
+  isDirty: boolean;
+  isSaving: boolean;
+  saveError: string | null;
+  beginEdit: () => void;
+  cancelEdit: () => void;
+  updateDraft: (value: string) => void;
+  /** Persist the draft; resolves true on success, false on failure. */
+  saveFile: () => Promise<boolean>;
 }
 
 export function useFileTree(projectPath: string): UseFileTreeResult {
@@ -91,14 +103,32 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
   );
   const fileError = fileErrorObj ? fileErrorObj.message : null;
 
+  // Inline edit state for the selected file.
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const isDirty = isEditing && fileContent != null && draft !== fileContent.content;
+  // The file-switch guard reads dirtiness from a closure, so mirror it in a ref.
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  const exitEdit = useCallback(() => {
+    setIsEditing(false);
+    setDraft('');
+    setSaveError(null);
+  }, []);
+
   // Reset state when project changes
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset UI state when project changes
     setSelectedFilePath(null);
     setFileContent(null);
     resetFile();
     setExpandedPaths(new Set());
-  }, [projectPath, setFileContent, resetFile]);
+    exitEdit();
+  }, [projectPath, setFileContent, resetFile, exitEdit]);
 
   const loadTree = useCallback(() => executeLoadTree(projectPath), [executeLoadTree, projectPath]);
 
@@ -122,15 +152,57 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
   const selectFile = useCallback(
     async (path: string) => {
       if (path === selectedFileRef.current) return;
+      // Guard against silently dropping unsaved edits when switching files.
+      if (
+        isDirtyRef.current &&
+        !window.confirm('You have unsaved changes. Discard them and switch files?')
+      ) {
+        return;
+      }
+      exitEdit();
       setSelectedFilePath(path);
       await executeLoadFileAndClear(projectPath, path);
     },
-    [projectPath, executeLoadFileAndClear]
+    [projectPath, executeLoadFileAndClear, exitEdit]
   );
 
   const refreshTree = useCallback(() => {
     void loadTree();
   }, [loadTree]);
+
+  const beginEdit = useCallback(() => {
+    if (!fileContent || fileContent.isBinary || fileContent.isTruncated) return;
+    setDraft(fileContent.content);
+    setSaveError(null);
+    setIsEditing(true);
+  }, [fileContent]);
+
+  const saveFile = useCallback(async (): Promise<boolean> => {
+    const path = selectedFileRef.current;
+    if (!path || !isEditing) return false;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await saveProjectFile(projectPath, path, draft);
+      // Commit the buffer into fileContent so the read view reflects the save
+      // and the dirty flag clears, without a round-trip re-read.
+      if (fileContent) {
+        setFileContent({
+          ...fileContent,
+          content: draft,
+          size: new TextEncoder().encode(draft).length,
+        });
+      }
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to save file', { path, error: msg });
+      setSaveError(msg);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [projectPath, draft, isEditing, fileContent, setFileContent]);
 
   return {
     tree,
@@ -144,5 +216,14 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
     toggleDirectory,
     selectFile: (path: string) => void selectFile(path),
     refreshTree,
+    isEditing,
+    draft,
+    isDirty,
+    isSaving,
+    saveError,
+    beginEdit,
+    cancelEdit: exitEdit,
+    updateDraft: setDraft,
+    saveFile,
   };
 }

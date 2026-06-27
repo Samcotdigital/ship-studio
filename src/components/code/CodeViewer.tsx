@@ -15,9 +15,11 @@ import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { Dropdown, DropdownItem } from '../primitives/Dropdown';
 import { Spinner } from '../primitives/Spinner';
+import { Button } from '../primitives/Button';
 import { ChevronIcon, CodeIcon, FileIcon, VSCodeIcon, CursorIcon, CopyIcon } from '../icons';
 import { trackEvent } from '../../lib/analytics';
 import { fileExtensionForAnalytics } from '../../lib/code';
+import { CodeFileEditor } from './CodeFileEditor';
 
 interface CodeViewerProps {
   projectPath: string;
@@ -28,6 +30,17 @@ interface CodeViewerProps {
   onSendToAgent?: (text: string) => void;
   /** A 1-based line to highlight + scroll into view (jump-to-code). */
   revealLine?: number | null;
+  // Inline editing (Code tab). When `isEditing`, the read-only view is replaced
+  // by an editable CodeMirror surface.
+  isEditing?: boolean;
+  draft?: string;
+  isDirty?: boolean;
+  isSaving?: boolean;
+  saveError?: string | null;
+  onBeginEdit?: () => void;
+  onCancelEdit?: () => void;
+  onDraftChange?: (value: string) => void;
+  onSave?: () => Promise<boolean>;
 }
 
 interface SelectionInfo {
@@ -79,6 +92,15 @@ export function CodeViewer({
   error,
   onSendToAgent,
   revealLine,
+  isEditing = false,
+  draft = '',
+  isDirty = false,
+  isSaving = false,
+  saveError = null,
+  onBeginEdit,
+  onCancelEdit,
+  onDraftChange,
+  onSave,
 }: CodeViewerProps) {
   const { showToast } = useOptionalToast();
   const onToast = (message: string, type?: 'success' | 'error' | 'info') =>
@@ -307,6 +329,12 @@ export function CodeViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionInfo, filePath, fileContent?.language, question, onToast, onSendToAgent]);
 
+  const handleSave = useCallback(async () => {
+    if (!onSave) return;
+    const ok = await onSave();
+    showToast(ok ? 'Saved' : 'Failed to save file', ok ? 'success' : 'error');
+  }, [onSave, showToast]);
+
   // Cleanup timer and drag listeners on unmount
   useEffect(() => {
     return () => {
@@ -479,7 +507,36 @@ export function CodeViewer({
       <div className="code-viewer-header">
         <FileIcon size={14} />
         <span className="code-viewer-path">{filePath}</span>
+        {isDirty && <span className="code-viewer-dirty" title="Unsaved changes" aria-hidden />}
         {fileContent && <span className="code-viewer-size">{formatSize(fileContent.size)}</span>}
+        {isEditing ? (
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onCancelEdit}
+              disabled={isSaving}
+              style={{ marginLeft: 8 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void handleSave()}
+              disabled={!isDirty || isSaving}
+              style={{ marginLeft: 8 }}
+            >
+              {isSaving ? <Spinner size="sm" /> : 'Save'}
+            </Button>
+          </>
+        ) : (
+          onBeginEdit && (
+            <Button size="sm" variant="secondary" onClick={onBeginEdit} style={{ marginLeft: 8 }}>
+              Edit
+            </Button>
+          )
+        )}
         {hasIde && (
           // Portal mode: .code-tab clips overflow, so the menu renders fixed
           // in a body portal. Right-aligned — the button sits at the right
@@ -515,39 +572,57 @@ export function CodeViewer({
           </Dropdown>
         )}
       </div>
-      <div className="code-viewer-content" ref={codeRef}>
-        <div className="code-viewer-code-wrapper">
-          <div className="code-viewer-gutter">
-            {lines.map((_, i) => (
-              <div key={i} className="code-viewer-gutter-line">
-                {i + 1}
-              </div>
-            ))}
-          </div>
-          <div className="code-viewer-code" onMouseDown={handleMouseDown}>
-            {highlightedHtml ? (
-              <div
-                className="code-viewer-highlighted"
-                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-              />
-            ) : (
-              <pre className="code-viewer-plain">{fileContent?.content ?? ''}</pre>
-            )}
-          </div>
-          {highlightedLines && (
-            <div className="code-selection-overlay" aria-hidden>
-              {Array.from({ length: highlightedLines.end - highlightedLines.start + 1 }, (_, i) => (
-                <div
-                  key={highlightedLines.start + i}
-                  className="code-selection-line"
-                  style={{ top: CODE_PADDING_TOP + (highlightedLines.start + i - 1) * LINE_HEIGHT }}
-                />
+      {isEditing ? (
+        <div className="code-viewer-editor">
+          <CodeFileEditor
+            value={draft}
+            onChange={(v) => onDraftChange?.(v)}
+            language={fileContent?.language ?? 'plaintext'}
+            onSave={() => void handleSave()}
+          />
+          {saveError && <div className="code-viewer-save-error">Save failed: {saveError}</div>}
+        </div>
+      ) : (
+        <div className="code-viewer-content" ref={codeRef}>
+          <div className="code-viewer-code-wrapper">
+            <div className="code-viewer-gutter">
+              {lines.map((_, i) => (
+                <div key={i} className="code-viewer-gutter-line">
+                  {i + 1}
+                </div>
               ))}
             </div>
-          )}
+            <div className="code-viewer-code" onMouseDown={handleMouseDown}>
+              {highlightedHtml ? (
+                <div
+                  className="code-viewer-highlighted"
+                  dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                />
+              ) : (
+                <pre className="code-viewer-plain">{fileContent?.content ?? ''}</pre>
+              )}
+            </div>
+            {highlightedLines && (
+              <div className="code-selection-overlay" aria-hidden>
+                {Array.from(
+                  { length: highlightedLines.end - highlightedLines.start + 1 },
+                  (_, i) => (
+                    <div
+                      key={highlightedLines.start + i}
+                      className="code-selection-line"
+                      style={{
+                        top: CODE_PADDING_TOP + (highlightedLines.start + i - 1) * LINE_HEIGHT,
+                      }}
+                    />
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {selectionInfo &&
+      )}
+      {!isEditing &&
+        selectionInfo &&
         popoverStyle &&
         createPortal(
           <div className="code-selection-popover" ref={popoverRef} style={popoverStyle}>

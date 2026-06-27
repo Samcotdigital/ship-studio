@@ -35,6 +35,15 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     toggleDirectory,
     selectFile: selectFileRaw,
     refreshTree: refreshTreeRaw,
+    isEditing,
+    draft,
+    isDirty,
+    isSaving,
+    saveError,
+    beginEdit,
+    cancelEdit,
+    updateDraft,
+    saveFile,
   } = useFileTree(projectPath);
 
   const selectFile = useCallback(
@@ -177,6 +186,15 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
           error={fileError}
           onSendToAgent={onSendToAgent}
           revealLine={revealTarget?.line}
+          isEditing={isEditing}
+          draft={draft}
+          isDirty={isDirty}
+          isSaving={isSaving}
+          saveError={saveError}
+          onBeginEdit={beginEdit}
+          onCancelEdit={cancelEdit}
+          onDraftChange={updateDraft}
+          onSave={saveFile}
         />
       </div>
     </div>
